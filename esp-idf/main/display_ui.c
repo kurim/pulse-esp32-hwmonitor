@@ -14,6 +14,7 @@
 #include "lvgl.h"
 #include <time.h>
 #include <string.h>
+#include <stdio.h>
 
 static const char *TAG = "ui";
 
@@ -414,9 +415,19 @@ static void refresh_now(void)
 
         lv_label_set_text(det_title, is_cpu ? "CPU Verlauf" : "GPU Verlauf");
         lv_obj_set_style_text_color(det_title, is_cpu ? COL_ACCENT : COL_GPU, 0);
-        lv_label_set_text_fmt(det_load,  "Auslastung: %.1f %%", load);
-        lv_label_set_text_fmt(det_temp,  "Temperatur: %.1f C", temp);
-        lv_label_set_text_fmt(det_power, "Leistung:   %.1f W", power);
+
+        // lv_label_set_text_fmt() nutzt LVGLs eigenes lv_snprintf, das ohne
+        // LV_SPRINTF_USE_FLOAT keine %f-Konvertierung beherrscht (Ergebnis:
+        // nur das 'f' bleibt stehen). Daher hier mit der libc-snprintf
+        // (unterstuetzt Floats immer) vorformatieren und als fertigen String
+        // setzen.
+        char buf[32];
+        snprintf(buf, sizeof(buf), "Auslastung: %.1f %%", load);
+        lv_label_set_text(det_load, buf);
+        snprintf(buf, sizeof(buf), "Temperatur: %.1f C", temp);
+        lv_label_set_text(det_temp, buf);
+        snprintf(buf, sizeof(buf), "Leistung:   %.1f W", power);
+        lv_label_set_text(det_power, buf);
 
         update_chart(chart_load, ser_load, h->load, h->count);
         update_chart(chart_temp, ser_temp, h->temp, h->count);

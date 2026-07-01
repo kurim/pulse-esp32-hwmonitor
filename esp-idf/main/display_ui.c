@@ -112,14 +112,20 @@ static void lcd_init(lv_display_t **out_disp)
 
     // Rotation -> swap/mirror + Aufloesung. UI ist auf Landscape (320x240)
     // ausgelegt (rotation 1/3); Portrait ist nicht gelayoutet.
+    //
+    // Auf realer CYD-Hardware verifiziert: rotation=1 mit mirror_x=true
+    // ergab ein horizontal gespiegeltes Bild (Text seitenverkehrt, oben/unten
+    // korrekt) - mirror_x fuer rotation=1 daher auf false korrigiert.
+    // rotation=3 ist die 180-Grad-Variante von rotation=1 (beide Mirror-Bits
+    // gegenueber rotation=1 invertiert) und entsprechend mitgezogen.
     bool swap_xy, mirror_x, mirror_y;
     int hres, vres;
     switch (app_config.rotation) {
         case 0: swap_xy = false; mirror_x = false; mirror_y = false; hres = 240; vres = 320; break;
         case 2: swap_xy = false; mirror_x = true;  mirror_y = true;  hres = 240; vres = 320; break;
-        case 3: swap_xy = true;  mirror_x = false; mirror_y = true;  hres = 320; vres = 240; break;
+        case 3: swap_xy = true;  mirror_x = true;  mirror_y = true;  hres = 320; vres = 240; break;
         case 1:
-        default: swap_xy = true; mirror_x = true;  mirror_y = false; hres = 320; vres = 240; break;
+        default: swap_xy = true; mirror_x = false; mirror_y = false; hres = 320; vres = 240; break;
     }
 
     lvgl_port_cfg_t pcfg = ESP_LVGL_PORT_INIT_CONFIG();

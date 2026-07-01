@@ -5,10 +5,10 @@ Core). Gleiche Funktion: Uhrzeit/Datum, optional Wetter, CPU/GPU-Auslastung,
 -Temperatur und -Leistung per MQTT, Verlaufsdiagramme per Antippen der Kacheln,
 WLAN-Setup über offenen Access Point mit Config-Webportal und OTA-Update.
 
-> ⚠️ **Ungetestet auf Hardware.** Dieser Port wurde ohne Board erstellt.
-> Er ist ein vollständiger, idiomatischer Startpunkt — vor produktivem Einsatz
-> bitte auf einem echten CYD bauen, flashen und die unten markierten
-> Kalibrier-/Board-Punkte prüfen.
+> ⚠️ **Teilweise auf Hardware verifiziert.** Baut und flasht erfolgreich mit
+> ESP-IDF 6.0.x. Die Display-Orientierung für `rotation=1` (Default) wurde
+> auf echter Hardware korrigiert (siehe Punkt 2 unten). Die übrigen unten
+> markierten Kalibrier-/Board-Punkte sind noch nicht einzeln gegengeprüft.
 
 ## Framework-Abbildung (Arduino → ESP-IDF)
 
@@ -23,7 +23,7 @@ WLAN-Setup über offenen Access Point mit Config-Webportal und OTA-Update.
 | `Update` (OTA) | `esp_ota_ops` (`web_portal.c`, Raw-Binary-Upload) |
 | `TFT_eSPI` | `esp_lcd` (ILI9341) + **LVGL 9** via `esp_lvgl_port` (`display_ui.c`) |
 | `XPT2046_Touchscreen` | eigener SPI-Treiber (`touch_xpt2046.c`) |
-| `ArduinoJson` | `cJSON` (im IDF enthalten) |
+| `ArduinoJson` | `cJSON` (Core bei IDF <6.0, managed component `espressif/cjson` ab 6.0) |
 
 ## Voraussetzungen
 
@@ -53,8 +53,12 @@ Diese Punkte sind board-abhängig und ließen sich ohne Gerät nicht verifiziere
    Wirkt das Bild farbverfälscht/negativ, auf `false` setzen. Bei falscher
    Rot/Blau-Vertauschung `LCD_RGB_ELEMENT_ORDER_BGR` ↔ `_RGB` tauschen.
 2. **Display-Rotation / Spiegelung** — `lcd_init()` setzt `swap_xy/mirror_x/
-   mirror_y` je `rotation`. Wenn das Bild gespiegelt/kopfüber steht, die
-   `mirror_*`-Flags des betreffenden `case` anpassen.
+   mirror_y` je `rotation`. Für `rotation=1` (Default) auf Hardware
+   verifiziert und korrigiert (war horizontal gespiegelt, jetzt behoben);
+   `rotation=3` als 180°-Gegenstück mitgezogen, aber nicht einzeln getestet.
+   `rotation=0/2` (Portrait) sind zusätzlich unlayoutet, da die UI fest auf
+   320×240 Landscape ausgelegt ist. Steht das Bild weiterhin gespiegelt/
+   kopfüber, die `mirror_*`-Flags des betreffenden `case` anpassen.
 3. **Touch-Kalibrierung** — `touch_xpt2046.c`: `TOUCH_RAW_*`-Grenzen und die
    Achsen-Zuordnung pro `rotation`. Bei versetztem/gespiegeltem Touch dort
    nachziehen (analog zur Arduino-Version; `rotation=3` ist bereits beide

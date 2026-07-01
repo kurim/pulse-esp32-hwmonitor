@@ -319,11 +319,31 @@ static bool connectWifiSTA() {
 
 static void startApMode() {
   apMode = true;
+
+  // Sauberer Übergang in den AP-Modus: Modus setzen und dem WLAN-Treiber kurz
+  // Zeit zum Initialisieren geben. Ohne diese Verzögerung kann softAP()
+  // zurückkehren, bevor die AP-Konfiguration vollständig angewendet wurde.
   WiFi.mode(WIFI_AP);
+  delay(100);
+  WiFi.setSleep(false); // Radio wach halten -> zuverlässigerer Verbindungsaufbau
+
   String apName = "CYD-Setup-" + String((uint32_t)ESP.getEfuseMac(), HEX).substring(0, 4);
-  WiFi.softAP(apName.c_str(), "password!"); // mind. 8 Zeichen Passwort
+
+  // Offener Setup-AP (kein Passwort, nullptr = keine Verschlüsselung).
+  // Grund: Der WPA2/WPA3-Handshake der ESP32-SoftAP schlägt auf vielen Handys
+  // (v.a. neuere Android-Geräte mit PMF) sowie bei knapper USB-Stromversorgung
+  // reproduzierbar fehl und wird dort als "falsches Passwort" gemeldet. Der AP
+  // läuft nur zur Ersteinrichtung und ist ausschließlich lokal erreichbar.
+  bool ok = WiFi.softAP(apName.c_str(), nullptr, 1 /* Kanal */);
+  if (!ok) {
+    delay(200); // ein Wiederholungsversuch, falls der erste Start fehlschlägt
+    ok = WiFi.softAP(apName.c_str(), nullptr, 1);
+  }
+
   dnsServer.start(DNS_PORT, "*", WiFi.softAPIP());
-  Serial.printf("AP-Modus aktiv: SSID '%s', IP %s\n", apName.c_str(), WiFi.softAPIP().toString().c_str());
+  Serial.printf("AP-Modus %s: SSID '%s' (offen, ohne Passwort), IP %s\n",
+                ok ? "aktiv" : "FEHLGESCHLAGEN", apName.c_str(),
+                WiFi.softAPIP().toString().c_str());
 }
 
 namespace WebPortal {

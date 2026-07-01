@@ -20,9 +20,12 @@ Arduino IDE deutlich umständlicher reproduzieren.
 1. Projekt in VS Code mit PlatformIO-Extension öffnen.
 2. Board per USB anschließen, `pio run -t upload` (oder Upload-Button).
 3. Beim ersten Start (kein gespeichertes WLAN) öffnet das Board einen
-   Access Point `CYD-Setup-XXXX` (Passwort: `password!`). Mit Handy/PC
+   **offenen** Access Point `CYD-Setup-XXXX` (ohne Passwort). Mit Handy/PC
    verbinden, Captive-Portal öffnet automatisch die Konfigurationsseite
-   (sonst manuell `192.168.4.1` aufrufen).
+   (sonst manuell `192.168.4.1` aufrufen). Der AP läuft nur zur Ersteinrichtung
+   und ist rein lokal erreichbar; ein Passwort entfällt bewusst, da der
+   WPA2-Handshake der ESP32-SoftAP auf vielen Handys als „falsches Passwort"
+   fehlschlägt.
 4. WLAN-Zugangsdaten, MQTT-Broker, Zeitzone und optional Wetter-API-Key
    eintragen, speichern. Das Board startet neu und verbindet sich mit dem WLAN.
 5. Webinterface ist danach dauerhaft unter der im seriellen Monitor

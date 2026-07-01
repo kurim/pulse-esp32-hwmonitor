@@ -27,9 +27,11 @@ WLAN-Setup über offenen Access Point mit Config-Webportal und OTA-Update.
 
 ## Voraussetzungen
 
-- **ESP-IDF ≥ 5.1** (mit `idf.py` im PATH, `. $IDF_PATH/export.sh`).
-- Internetzugang beim ersten Build: Managed Components (LVGL, esp_lvgl_port,
-  esp_lcd_ili9341) werden automatisch aus dem ESP Component Registry geladen.
+- **ESP-IDF 5.1 – 6.x** (mit `idf.py` im PATH, `. $IDF_PATH/export.sh`).
+- Internetzugang beim ersten Build: Managed Components werden automatisch aus
+  dem ESP Component Registry geladen (LVGL, esp_lvgl_port, esp_lcd_ili9341
+  sowie ab **ESP-IDF v6.0** auch `espressif/mqtt` und `espressif/cjson`, da
+  esp-mqtt und cJSON dort nicht mehr Teil des Cores sind).
 
 ## Bauen & Flashen
 

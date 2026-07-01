@@ -10,6 +10,9 @@ idf_component_register(
         "time_service.c"
         "weather_service.c"
     INCLUDE_DIRS "."
+    # Nur Core-/Built-in-Komponenten hier auffuehren. Managed Components
+    # (lvgl, esp_lvgl_port, esp_lcd_ili9341, espressif/mqtt, espressif/cjson)
+    # werden ueber main/idf_component.yml eingebunden.
     REQUIRES
         nvs_flash
         esp_wifi
@@ -18,12 +21,9 @@ idf_component_register(
         esp_http_server
         esp_http_client
         app_update
-        mqtt
-        json
-        driver
         esp_lcd
         esp_timer
-        lvgl
-        esp_lvgl_port
-        esp_lcd_ili9341
+        esp_driver_spi
+        esp_driver_gpio
+        esp_driver_ledc
 )

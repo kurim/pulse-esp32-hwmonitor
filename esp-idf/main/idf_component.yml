@@ -1,8 +1,13 @@
 # Managed Components (werden von idf.py automatisch aus dem ESP Component
-# Registry geladen). Versionen ggf. an die installierte ESP-IDF-Version
-# anpassen (getestet gedacht fuer ESP-IDF >= 5.1).
+# Registry geladen und dem 'main'-Component als Abhaengigkeit hinzugefuegt -
+# daher NICHT zusaetzlich in main/CMakeLists.txt REQUIRES auffuehren).
+#
+# Ab ESP-IDF v6.0 sind esp-mqtt und cJSON nicht mehr im Core, sondern
+# managed components (espressif/mqtt bzw. espressif/cjson).
 dependencies:
   idf: ">=5.1"
-  lvgl/lvgl: "~9.2.0"
-  espressif/esp_lvgl_port: "~2.4.0"
-  espressif/esp_lcd_ili9341: "~1.2.0"
+  lvgl/lvgl: "^9"
+  espressif/esp_lvgl_port: "^2"
+  espressif/esp_lcd_ili9341: "^1"
+  espressif/mqtt: "*"
+  espressif/cjson: "*"

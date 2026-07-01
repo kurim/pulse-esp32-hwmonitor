@@ -44,9 +44,13 @@ static bool readTouch(uint16_t &sx, uint16_t &sy) {
       sx = map(ry, TOUCH_RAW_Y_MIN, TOUCH_RAW_Y_MAX, 320, 0);
       sy = map(rx, TOUCH_RAW_X_MIN, TOUCH_RAW_X_MAX, 240, 0);
       break;
-    case 3: // Landscape, USB links
-      sx = map(ry, TOUCH_RAW_Y_MIN, TOUCH_RAW_Y_MAX, 0, 320);
-      sy = map(rx, TOUCH_RAW_X_MIN, TOUCH_RAW_X_MAX, 0, 240);
+    case 3: // Landscape, USB links (180 Grad gegenueber rotation=1)
+      // Auf den getesteten CYD-Boards sind bei rotation=3 gegenueber dem
+      // vorherigen Mapping BEIDE Achsen invertiert: Antippen unten-rechts
+      // loeste oben-links aus und umgekehrt (reine 180-Grad-Punktspiegelung).
+      // Beide Achsen gespiegelt -> Touch deckt sich wieder mit der Anzeige.
+      sx = map(ry, TOUCH_RAW_Y_MIN, TOUCH_RAW_Y_MAX, 320, 0);
+      sy = map(rx, TOUCH_RAW_X_MIN, TOUCH_RAW_X_MAX, 240, 0);
       break;
     case 0: // Portrait
       sx = map(rx, TOUCH_RAW_X_MIN, TOUCH_RAW_X_MAX, 0, 240);

@@ -1,0 +1,8 @@
+# Managed Components (werden von idf.py automatisch aus dem ESP Component
+# Registry geladen). Versionen ggf. an die installierte ESP-IDF-Version
+# anpassen (getestet gedacht fuer ESP-IDF >= 5.1).
+dependencies:
+  idf: ">=5.1"
+  lvgl/lvgl: "~9.2.0"
+  espressif/esp_lvgl_port: "~2.4.0"
+  espressif/esp_lcd_ili9341: "~1.2.0"

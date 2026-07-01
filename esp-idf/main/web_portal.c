@@ -1,0 +1,459 @@
+#include "web_portal.h"
+#include "shared_state.h"
+#include "config_store.h"
+
+#include "esp_wifi.h"
+#include "esp_netif.h"
+#include "esp_event.h"
+#include "esp_http_server.h"
+#include "esp_ota_ops.h"
+#include "esp_mac.h"
+#include "esp_timer.h"
+#include "esp_system.h"
+#include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/event_groups.h"
+#include "cJSON.h"
+#include "lwip/sockets.h"
+#include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+static const char *TAG = "web";
+
+#define WIFI_CONNECTED_BIT BIT0
+#define WIFI_FAIL_BIT      BIT1
+#define STA_MAX_RETRY      8
+#define STA_TIMEOUT_MS     15000
+
+static EventGroupHandle_t s_wifi_events;
+static int  s_retry;
+static bool s_ap_mode;
+static char s_ip[16]   = "0.0.0.0";
+static char s_ap_ssid[24];
+static httpd_handle_t s_httpd;
+
+// ------------------------------------------------------------------
+// Eingebettete Config-Seite (identisch zum Arduino-Port; OTA-Upload sendet
+// die .bin roh als Request-Body, damit der esp_http_server sie direkt an
+// esp_ota_write() weiterreichen kann).
+// ------------------------------------------------------------------
+static const char INDEX_HTML[] =
+"<!DOCTYPE html><html lang=\"de\"><head><meta charset=\"UTF-8\">"
+"<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
+"<title>CYD Hardware-Monitor</title><style>"
+":root{--bg:#10141c;--card:#1a2030;--accent:#3fd0e0;--text:#e8edf4;--sub:#8893a8;--border:#2a3142;}"
+"*{box-sizing:border-box;}body{background:var(--bg);color:var(--text);font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:0;padding:24px 16px;}"
+".wrap{max-width:560px;margin:0 auto;}h1{font-size:1.4rem;margin-bottom:4px;}"
+".sub{color:var(--sub);margin-bottom:24px;font-size:.9rem;}"
+".card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px 20px;margin-bottom:16px;}"
+".card h2{font-size:1rem;margin:0 0 14px;color:var(--accent);}"
+"label{display:block;font-size:.82rem;color:var(--sub);margin:10px 0 4px;}"
+"input[type=text],input[type=password],input[type=number],select{width:100%;padding:9px 10px;border-radius:6px;border:1px solid var(--border);background:#0d111a;color:var(--text);font-size:.95rem;}"
+".row{display:flex;gap:12px;}.row>div{flex:1;}"
+".toggle{display:flex;align-items:center;gap:10px;margin:10px 0;}"
+"button{background:var(--accent);color:#04222a;border:none;border-radius:8px;padding:12px 18px;font-size:1rem;font-weight:600;cursor:pointer;width:100%;margin-top:6px;}"
+"button:hover{opacity:.9;}#status{margin-top:14px;font-size:.85rem;color:var(--sub);}"
+".statbar{display:flex;gap:16px;font-size:.85rem;color:var(--sub);margin-bottom:18px;flex-wrap:wrap;}"
+".dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;}"
+"</style></head><body><div class=\"wrap\">"
+"<h1>CYD Hardware-Monitor</h1><div class=\"sub\">Konfiguration f&uuml;r ESP32-2432S028 (ESP-IDF)</div>"
+"<div class=\"statbar\" id=\"livebar\">Lade Status...</div>"
+"<form id=\"cfgForm\">"
+"<div class=\"card\"><h2>WLAN</h2><label>SSID</label><input type=\"text\" id=\"wifi_ssid\" maxlength=\"32\">"
+"<label>Passwort</label><input type=\"password\" id=\"wifi_pass\" maxlength=\"64\" placeholder=\"unver&auml;ndert lassen = leer\"></div>"
+"<div class=\"card\"><h2>MQTT (Hardwaredaten vom PC)</h2><label>Broker-Host</label><input type=\"text\" id=\"mqtt_host\" maxlength=\"64\">"
+"<div class=\"row\"><div><label>Port</label><input type=\"number\" id=\"mqtt_port\" min=\"1\" max=\"65535\"></div>"
+"<div><label>Topic</label><input type=\"text\" id=\"mqtt_topic\" maxlength=\"64\"></div></div>"
+"<div class=\"row\"><div><label>Benutzer</label><input type=\"text\" id=\"mqtt_user\" maxlength=\"32\"></div>"
+"<div><label>Passwort</label><input type=\"password\" id=\"mqtt_pass\" maxlength=\"64\" placeholder=\"unver&auml;ndert lassen = leer\"></div></div></div>"
+"<div class=\"card\"><h2>Zeit</h2><label>NTP-Server</label><input type=\"text\" id=\"ntp_server\" maxlength=\"64\">"
+"<label>POSIX-Zeitzone</label><input type=\"text\" id=\"tz\" maxlength=\"64\"></div>"
+"<div class=\"card\"><h2>Wetter (optional, OpenWeatherMap)</h2>"
+"<div class=\"toggle\"><input type=\"checkbox\" id=\"weather_enabled\"><label style=\"margin:0\">Aktivieren</label></div>"
+"<label>API-Key</label><input type=\"text\" id=\"weather_api_key\" maxlength=\"40\" placeholder=\"unver&auml;ndert lassen = leer\">"
+"<div class=\"row\"><div><label>Ort (Stadt,Land)</label><input type=\"text\" id=\"weather_city\" maxlength=\"64\"></div>"
+"<div><label>Einheit</label><select id=\"weather_units\"><option value=\"metric\">&deg;C</option><option value=\"imperial\">&deg;F</option></select></div></div></div>"
+"<div class=\"card\"><h2>Display</h2><div class=\"row\">"
+"<div><label>Helligkeit (0-255)</label><input type=\"number\" id=\"brightness\" min=\"0\" max=\"255\"></div>"
+"<div><label>Rotation (0-3)</label><input type=\"number\" id=\"rotation\" min=\"0\" max=\"3\"></div></div></div>"
+"<button type=\"submit\">Speichern &amp; Neustart</button><div id=\"status\"></div></form>"
+"<div class=\"card\"><h2>Firmware-Update (OTA)</h2>"
+"<div class=\"sub\" style=\"margin-bottom:10px\">Aktuelle Version: <span id=\"fwVersion\">-</span></div>"
+"<input type=\"file\" id=\"fwFile\" accept=\".bin\">"
+"<button type=\"button\" onclick=\"uploadFirmware()\" style=\"background:#e0a53f\">.bin hochladen &amp; flashen</button>"
+"<progress id=\"otaProgress\" value=\"0\" max=\"100\" style=\"width:100%;margin-top:10px;display:none\"></progress>"
+"<div id=\"otaStatus\" style=\"margin-top:8px;font-size:.85rem;color:var(--sub)\"></div></div></div>"
+"<script>"
+"async function loadCfg(){const r=await fetch('/api/config');const c=await r.json();"
+"for(const k in c){const el=document.getElementById(k);if(!el)continue;if(el.type==='checkbox')el.checked=!!c[k];else el.value=c[k];}}"
+"async function loadStatus(){try{const r=await fetch('/api/status');const s=await r.json();"
+"document.getElementById('fwVersion').innerText=s.fw_version+' (freier Speicher: '+Math.round(s.free_heap/1024)+' KB)';"
+"document.getElementById('livebar').innerHTML='<span><span class=\"dot\" style=\"background:'+(s.wifi?'#3fd0e0':'#e05a5a')+'\"></span>WLAN</span>'+"
+"'<span><span class=\"dot\" style=\"background:'+(s.mqtt?'#3fd0e0':'#e05a5a')+'\"></span>MQTT</span>'+"
+"'<span>CPU '+s.cpu_load.toFixed(0)+'%</span><span>GPU '+s.gpu_load.toFixed(0)+'%</span><span>IP '+s.ip+'</span>';}catch(e){}}"
+"document.getElementById('cfgForm').addEventListener('submit',async(e)=>{e.preventDefault();"
+"const ids=['wifi_ssid','wifi_pass','mqtt_host','mqtt_port','mqtt_user','mqtt_pass','mqtt_topic','ntp_server','tz','weather_enabled','weather_api_key','weather_city','weather_units','brightness','rotation'];"
+"const payload={};ids.forEach(id=>{const el=document.getElementById(id);payload[id]=el.type==='checkbox'?el.checked:(el.type==='number'?Number(el.value):el.value);});"
+"document.getElementById('status').innerText='Speichere...';"
+"await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});"
+"document.getElementById('status').innerText='Gespeichert. Ger\\u00e4t startet neu...';});"
+"loadCfg();loadStatus();setInterval(loadStatus,2000);"
+"function uploadFirmware(){const f=document.getElementById('fwFile').files[0];"
+"if(!f){alert('Bitte zuerst eine .bin-Datei ausw\\u00e4hlen.');return;}"
+"if(!confirm('Firmware \"'+f.name+'\" jetzt aufspielen? Das Ger\\u00e4t startet danach automatisch neu.'))return;"
+"const p=document.getElementById('otaProgress'),s=document.getElementById('otaStatus');"
+"p.style.display='block';p.value=0;s.innerText='Lade hoch...';"
+"const xhr=new XMLHttpRequest();xhr.open('POST','/update',true);"
+"xhr.setRequestHeader('Content-Type','application/octet-stream');"
+"xhr.upload.onprogress=function(e){if(e.lengthComputable){const pct=Math.round(e.loaded/e.total*100);p.value=pct;s.innerText='Lade hoch... '+pct+'%';}};"
+"xhr.onload=function(){s.innerText=xhr.status===200?'Update erfolgreich - Ger\\u00e4t startet neu.':'Fehler beim Update: '+xhr.responseText;};"
+"xhr.onerror=function(){s.innerText='Verbindungsfehler beim Hochladen.';};xhr.send(f);}"
+"</script></body></html>";
+
+// ------------------------------------------------------------------
+// Neustart nach kurzer Verzoegerung (damit die HTTP-Antwort noch rausgeht)
+// ------------------------------------------------------------------
+static void restart_cb(void *arg) { esp_restart(); }
+
+static void schedule_restart(int ms)
+{
+    const esp_timer_create_args_t a = { .callback = restart_cb, .name = "restart" };
+    esp_timer_handle_t t;
+    if (esp_timer_create(&a, &t) == ESP_OK) esp_timer_start_once(t, (uint64_t)ms * 1000);
+}
+
+// ------------------------------------------------------------------
+// WLAN-Events
+// ------------------------------------------------------------------
+static void wifi_event_handler(void *arg, esp_event_base_t base, int32_t id, void *data)
+{
+    if (base == WIFI_EVENT && id == WIFI_EVENT_STA_START) {
+        esp_wifi_connect();
+    } else if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
+        wifi_connected = false;
+        if (s_retry < STA_MAX_RETRY) {
+            s_retry++;
+            esp_wifi_connect();
+        } else {
+            xEventGroupSetBits(s_wifi_events, WIFI_FAIL_BIT);
+        }
+    } else if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
+        ip_event_got_ip_t *evt = (ip_event_got_ip_t *)data;
+        snprintf(s_ip, sizeof(s_ip), IPSTR, IP2STR(&evt->ip_info.ip));
+        wifi_connected = true;
+        s_retry = 0;
+        xEventGroupSetBits(s_wifi_events, WIFI_CONNECTED_BIT);
+    }
+}
+
+// Einmalige WLAN-Grundinitialisierung: beide Default-Netifs anlegen, Treiber
+// initialisieren, Event-Handler registrieren.
+static void wifi_common_init(void)
+{
+    esp_netif_create_default_wifi_sta();
+    esp_netif_create_default_wifi_ap();
+
+    wifi_init_config_t ic = WIFI_INIT_CONFIG_DEFAULT();
+    ESP_ERROR_CHECK(esp_wifi_init(&ic));
+
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID,
+                                                        wifi_event_handler, NULL, NULL));
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP,
+                                                        wifi_event_handler, NULL, NULL));
+}
+
+static bool wifi_connect_sta(void)
+{
+    if (strlen(app_config.wifi_ssid) == 0) return false;
+
+    wifi_config_t wc = { 0 };
+    strlcpy((char *)wc.sta.ssid,     app_config.wifi_ssid, sizeof(wc.sta.ssid));
+    strlcpy((char *)wc.sta.password, app_config.wifi_pass, sizeof(wc.sta.password));
+
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wc));
+    ESP_ERROR_CHECK(esp_wifi_start());
+
+    EventBits_t bits = xEventGroupWaitBits(s_wifi_events, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
+                                           pdFALSE, pdFALSE, pdMS_TO_TICKS(STA_TIMEOUT_MS));
+    return (bits & WIFI_CONNECTED_BIT) != 0;
+}
+
+// ------------------------------------------------------------------
+// Captive-DNS: beantwortet jede A-Anfrage mit der AP-IP (192.168.4.1)
+// ------------------------------------------------------------------
+static void dns_server_task(void *arg)
+{
+    int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    if (sock < 0) { vTaskDelete(NULL); return; }
+    struct sockaddr_in server = {
+        .sin_family = AF_INET, .sin_port = htons(53), .sin_addr.s_addr = htonl(INADDR_ANY),
+    };
+    if (bind(sock, (struct sockaddr *)&server, sizeof(server)) < 0) {
+        close(sock); vTaskDelete(NULL); return;
+    }
+
+    uint8_t buf[512];
+    for (;;) {
+        struct sockaddr_in client;
+        socklen_t clen = sizeof(client);
+        int len = recvfrom(sock, buf, sizeof(buf), 0, (struct sockaddr *)&client, &clen);
+        if (len < (int)sizeof(uint16_t) * 6) continue;
+
+        // Antwort-Header: Standard-Query-Antwort, 1 Question, 1 Answer.
+        buf[2] |= 0x80;   // QR = Antwort
+        buf[3] |= 0x80;   // RA
+        buf[7] = 1;       // ANCOUNT = 1 (Answer)
+
+        int qlen = len; // Frage 1:1 anhaengen; Antwort dahinter
+        if (qlen + 16 > (int)sizeof(buf)) continue;
+        uint8_t *p = buf + qlen;
+        *p++ = 0xC0; *p++ = 0x0C;             // Name-Pointer auf Frage
+        *p++ = 0x00; *p++ = 0x01;             // TYPE A
+        *p++ = 0x00; *p++ = 0x01;             // CLASS IN
+        *p++ = 0x00; *p++ = 0x00; *p++ = 0x00; *p++ = 0x3C; // TTL 60s
+        *p++ = 0x00; *p++ = 0x04;             // RDLENGTH 4
+        *p++ = 192; *p++ = 168; *p++ = 4; *p++ = 1; // 192.168.4.1
+
+        sendto(sock, buf, qlen + 16, 0, (struct sockaddr *)&client, clen);
+    }
+}
+
+static void start_ap(void)
+{
+    s_ap_mode = true;
+    esp_wifi_stop(); // evtl. laufenden STA-Versuch beenden (Fehler ignorieren)
+
+    uint8_t mac[6] = { 0 };
+    esp_read_mac(mac, ESP_MAC_WIFI_SOFTAP);
+    snprintf(s_ap_ssid, sizeof(s_ap_ssid), "CYD-Setup-%02x%02x", mac[4], mac[5]);
+
+    wifi_config_t ap = { 0 };
+    strlcpy((char *)ap.ap.ssid, s_ap_ssid, sizeof(ap.ap.ssid));
+    ap.ap.ssid_len       = strlen(s_ap_ssid);
+    ap.ap.channel        = 1;
+    ap.ap.max_connection = 4;
+    ap.ap.authmode       = WIFI_AUTH_OPEN;   // offen: vermeidet WPA2/WPA3-Handshake-Probleme
+
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &ap));
+    ESP_ERROR_CHECK(esp_wifi_start());
+
+    strcpy(s_ip, "192.168.4.1");
+    xTaskCreate(dns_server_task, "dns", 3072, NULL, 4, NULL);
+    ESP_LOGI(TAG, "Setup-AP aktiv: SSID '%s' (offen), IP 192.168.4.1", s_ap_ssid);
+}
+
+// ------------------------------------------------------------------
+// HTTP-Handler
+// ------------------------------------------------------------------
+static esp_err_t h_root(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "text/html");
+    return httpd_resp_send(req, INDEX_HTML, HTTPD_RESP_USE_STRLEN);
+}
+
+static esp_err_t h_status(httpd_req_t *req)
+{
+    char buf[320];
+    int n = snprintf(buf, sizeof(buf),
+        "{\"wifi\":%s,\"mqtt\":%s,\"ip\":\"%s\",\"cpu_load\":%.1f,\"gpu_load\":%.1f,"
+        "\"cpu_temp\":%.1f,\"gpu_temp\":%.1f,\"cpu_power\":%.1f,\"gpu_power\":%.1f,"
+        "\"fw_version\":\"%s\",\"free_heap\":%u}",
+        wifi_connected ? "true" : "false", mqtt_connected ? "true" : "false", s_ip,
+        hw_info.cpu_load, hw_info.gpu_load, hw_info.cpu_temp, hw_info.gpu_temp,
+        hw_info.cpu_power, hw_info.gpu_power, FW_VERSION,
+        (unsigned)esp_get_free_heap_size());
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_send(req, buf, n);
+}
+
+static esp_err_t h_config_get(httpd_req_t *req)
+{
+    cJSON *d = cJSON_CreateObject();
+    cJSON_AddStringToObject(d, "wifi_ssid", app_config.wifi_ssid);
+    cJSON_AddStringToObject(d, "wifi_pass", "");        // Passwoerter nie zuruecksenden
+    cJSON_AddStringToObject(d, "mqtt_host", app_config.mqtt_host);
+    cJSON_AddNumberToObject(d, "mqtt_port", app_config.mqtt_port);
+    cJSON_AddStringToObject(d, "mqtt_user", app_config.mqtt_user);
+    cJSON_AddStringToObject(d, "mqtt_pass", "");
+    cJSON_AddStringToObject(d, "mqtt_topic", app_config.mqtt_topic);
+    cJSON_AddStringToObject(d, "ntp_server", app_config.ntp_server);
+    cJSON_AddStringToObject(d, "tz", app_config.tz);
+    cJSON_AddBoolToObject(  d, "weather_enabled", app_config.weather_enabled);
+    cJSON_AddStringToObject(d, "weather_api_key", "");
+    cJSON_AddStringToObject(d, "weather_city", app_config.weather_city);
+    cJSON_AddStringToObject(d, "weather_units", app_config.weather_units);
+    cJSON_AddNumberToObject(d, "brightness", app_config.brightness);
+    cJSON_AddNumberToObject(d, "rotation", app_config.rotation);
+
+    char *out = cJSON_PrintUnformatted(d);
+    httpd_resp_set_type(req, "application/json");
+    esp_err_t r = httpd_resp_send(req, out, HTTPD_RESP_USE_STRLEN);
+    cJSON_free(out);
+    cJSON_Delete(d);
+    return r;
+}
+
+static void cfg_str(cJSON *root, const char *key, char *dst, size_t sz, bool skip_empty)
+{
+    cJSON *v = cJSON_GetObjectItem(root, key);
+    if (cJSON_IsString(v)) {
+        if (skip_empty && strlen(v->valuestring) == 0) return;
+        strlcpy(dst, v->valuestring, sz);
+    }
+}
+
+static esp_err_t h_config_post(httpd_req_t *req)
+{
+    int total = req->content_len;
+    if (total <= 0 || total > 4096) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad length");
+        return ESP_FAIL;
+    }
+    char *body = malloc(total + 1);
+    if (!body) { httpd_resp_send_500(req); return ESP_FAIL; }
+
+    int received = 0;
+    while (received < total) {
+        int r = httpd_req_recv(req, body + received, total - received);
+        if (r <= 0) { free(body); httpd_resp_send_500(req); return ESP_FAIL; }
+        received += r;
+    }
+    body[total] = '\0';
+
+    cJSON *root = cJSON_Parse(body);
+    free(body);
+    if (!root) {
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_send(req, "{\"error\":\"invalid json\"}", HTTPD_RESP_USE_STRLEN);
+        return ESP_OK;
+    }
+
+    cfg_str(root, "wifi_ssid",  app_config.wifi_ssid,  sizeof(app_config.wifi_ssid),  false);
+    cfg_str(root, "wifi_pass",  app_config.wifi_pass,  sizeof(app_config.wifi_pass),  true);
+    cfg_str(root, "mqtt_host",  app_config.mqtt_host,  sizeof(app_config.mqtt_host),  false);
+    cJSON *port = cJSON_GetObjectItem(root, "mqtt_port");
+    if (cJSON_IsNumber(port)) app_config.mqtt_port = (uint16_t)port->valuedouble;
+    cfg_str(root, "mqtt_user",  app_config.mqtt_user,  sizeof(app_config.mqtt_user),  false);
+    cfg_str(root, "mqtt_pass",  app_config.mqtt_pass,  sizeof(app_config.mqtt_pass),  true);
+    cfg_str(root, "mqtt_topic", app_config.mqtt_topic, sizeof(app_config.mqtt_topic), false);
+    cfg_str(root, "ntp_server", app_config.ntp_server, sizeof(app_config.ntp_server), false);
+    cfg_str(root, "tz",         app_config.tz,         sizeof(app_config.tz),         false);
+    cJSON *wen = cJSON_GetObjectItem(root, "weather_enabled");
+    if (cJSON_IsBool(wen)) app_config.weather_enabled = cJSON_IsTrue(wen);
+    cfg_str(root, "weather_api_key", app_config.weather_api_key, sizeof(app_config.weather_api_key), true);
+    cfg_str(root, "weather_city",    app_config.weather_city,    sizeof(app_config.weather_city),    false);
+    cfg_str(root, "weather_units",   app_config.weather_units,   sizeof(app_config.weather_units),   false);
+    cJSON *br = cJSON_GetObjectItem(root, "brightness");
+    if (cJSON_IsNumber(br)) app_config.brightness = (uint8_t)br->valuedouble;
+    cJSON *ro = cJSON_GetObjectItem(root, "rotation");
+    if (cJSON_IsNumber(ro)) app_config.rotation = (uint8_t)ro->valuedouble;
+    cJSON_Delete(root);
+
+    config_store_save(&app_config);
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_send(req, "{\"ok\":true}", HTTPD_RESP_USE_STRLEN);
+    schedule_restart(1500);
+    return ESP_OK;
+}
+
+// Raw-Binary-OTA: der Request-Body IST die .bin.
+static esp_err_t h_update(httpd_req_t *req)
+{
+    const esp_partition_t *part = esp_ota_get_next_update_partition(NULL);
+    if (!part) { httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "no ota part"); return ESP_FAIL; }
+
+    esp_ota_handle_t ota;
+    if (esp_ota_begin(part, OTA_SIZE_UNKNOWN, &ota) != ESP_OK) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "ota begin"); return ESP_FAIL;
+    }
+
+    char buf[1024];
+    int remaining = req->content_len;
+    while (remaining > 0) {
+        int r = httpd_req_recv(req, buf, remaining < (int)sizeof(buf) ? remaining : (int)sizeof(buf));
+        if (r <= 0) {
+            if (r == HTTPD_SOCK_ERR_TIMEOUT) continue;
+            esp_ota_abort(ota);
+            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "recv");
+            return ESP_FAIL;
+        }
+        if (esp_ota_write(ota, buf, r) != ESP_OK) {
+            esp_ota_abort(ota);
+            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "ota write");
+            return ESP_FAIL;
+        }
+        remaining -= r;
+    }
+
+    if (esp_ota_end(ota) != ESP_OK || esp_ota_set_boot_partition(part) != ESP_OK) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "ota finalize");
+        return ESP_FAIL;
+    }
+
+    httpd_resp_sendstr(req, "OK");
+    ESP_LOGI(TAG, "OTA erfolgreich, Neustart folgt");
+    schedule_restart(1500);
+    return ESP_OK;
+}
+
+// Captive-Portal: alle unbekannten Pfade auf die Startseite umleiten (nur AP).
+static esp_err_t h_404(httpd_req_t *req, httpd_err_code_t err)
+{
+    if (s_ap_mode) {
+        httpd_resp_set_status(req, "302 Found");
+        httpd_resp_set_hdr(req, "Location", "http://192.168.4.1/");
+        httpd_resp_send(req, NULL, 0);
+        return ESP_OK;
+    }
+    httpd_resp_send_err(req, HTTPD_404_NOT_FOUND, "Not found");
+    return ESP_FAIL;
+}
+
+static void start_http(void)
+{
+    httpd_config_t cfg = HTTPD_DEFAULT_CONFIG();
+    cfg.stack_size      = 8192;
+    cfg.max_uri_handlers = 8;
+    cfg.lru_purge_enable = true;
+    if (httpd_start(&s_httpd, &cfg) != ESP_OK) {
+        ESP_LOGE(TAG, "httpd_start fehlgeschlagen");
+        return;
+    }
+
+    httpd_uri_t routes[] = {
+        { .uri = "/",            .method = HTTP_GET,  .handler = h_root },
+        { .uri = "/api/status", .method = HTTP_GET,  .handler = h_status },
+        { .uri = "/api/config", .method = HTTP_GET,  .handler = h_config_get },
+        { .uri = "/api/config", .method = HTTP_POST, .handler = h_config_post },
+        { .uri = "/update",     .method = HTTP_POST, .handler = h_update },
+    };
+    for (size_t i = 0; i < sizeof(routes) / sizeof(routes[0]); i++) {
+        httpd_register_uri_handler(s_httpd, &routes[i]);
+    }
+    httpd_register_err_handler(s_httpd, HTTPD_404_NOT_FOUND, h_404);
+}
+
+// ------------------------------------------------------------------
+void web_portal_begin(void)
+{
+    s_wifi_events = xEventGroupCreate();
+    wifi_common_init();
+
+    if (wifi_connect_sta()) {
+        wifi_connected = true;
+        ESP_LOGI(TAG, "WLAN verbunden, IP %s", s_ip);
+    } else {
+        wifi_connected = false;
+        start_ap();
+    }
+
+    start_http();
+}
+
+bool        web_portal_ap_mode(void)  { return s_ap_mode; }
+const char *web_portal_ip(void)       { return s_ip; }
+const char *web_portal_ap_ssid(void)  { return s_ap_ssid; }

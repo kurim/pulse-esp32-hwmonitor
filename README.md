@@ -6,6 +6,14 @@ XPT2046 Touch). Zeigt Uhrzeit, optional Wetter sowie CPU/GPU-Auslastung,
 geliefert werden. Tippen auf die CPU- oder GPU-Kachel öffnet ein
 Verlaufsdiagramm.
 
+## Zwei Varianten
+
+- **Arduino/PlatformIO** (dieses Verzeichnis, `src/` + `platformio.ini`) — die
+  primäre, auf Hardware erprobte Firmware.
+- **ESP-IDF-Port** (`esp-idf/`) — dieselbe Funktion auf purem ESP-IDF (LVGL +
+  `esp_lcd`, `esp_wifi`, `esp-mqtt`, …), baubar mit `idf.py`. Siehe
+  [`esp-idf/README.md`](esp-idf/README.md). Noch nicht auf Hardware verifiziert.
+
 ## Warum PlatformIO statt Arduino IDE?
 
 PlatformIO wurde gewählt, weil `TFT_eSPI` für CYD-Boards exakte Pin-Defines

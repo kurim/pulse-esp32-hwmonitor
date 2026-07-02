@@ -5,13 +5,11 @@ Core). Gleiche Funktion: Uhrzeit/Datum, optional Wetter, CPU/GPU-Auslastung,
 -Temperatur und -Leistung per MQTT, Verlaufsdiagramme per Antippen der Kacheln,
 WLAN-Setup über offenen Access Point mit Config-Webportal und OTA-Update.
 
-> ⚠️ **Auf Hardware verifiziert und iteriert.** Baut und flasht mit
-> ESP-IDF 6.0.x. Farbinversion, Display-Rotation (`rotation=1`) und das
-> Top-Bar-Layout wurden anhand von Fotos vom laufenden Gerät korrigiert.
-> Die Material-Design-Icons-Font brauchte drei Anläufe (siehe Abschnitt
-> "Icons") — per Diagnose-Log bestätigt, dass Codepoints/Cmap korrekt
-> waren, vierter Anlauf entfernt die Bitmap-Kompression, noch nicht
-> gegengeprüft.
+> ✅ **Auf Hardware verifiziert.** Baut und flasht mit ESP-IDF 6.0.x.
+> Farbinversion, Display-Rotation (`rotation=1`), Top-Bar-Layout und die
+> Material-Design-Icons-Font (siehe Abschnitt "Icons" — brauchte vier
+> Anläufe) wurden anhand von Fotos/Log-Ausgaben vom laufenden Gerät
+> korrigiert und bestätigt.
 
 ## Framework-Abbildung (Arduino → ESP-IDF)
 
@@ -154,20 +152,19 @@ Ergaenzen weiterer Icons derselbe Fehler droht):
    gegen die Font-Daten, unabhaengig vom Rendering) bestaetigte aber: der
    Codepoint-Lookup findet alle 8 Glyphen mit korrekten Massen — Cmap und
    Codepoints waren also gar nicht das Problem.
-4. Vierte, funktionierende Fassung: da Metadaten-Lookup nachweislich
+4. Vierte, **funktionierende** Fassung: da Metadaten-Lookup nachweislich
    funktionierte, aber nichts gezeichnet wurde, lag der Fehler vermutlich
    beim Dekomprimieren der RLE-komprimierten Bitmap-Daten (separater
    Codepfad, den die Diagnose nicht abdeckt). Mit `--no-compress
    --no-prefilter` neu generiert (`bitmap_format` 1 → 0, reine
    Rohpixel-Daten, kein Dekomprimierungsschritt mehr noetig). Die
    `MDI_*`-Makros in `mdi_icons.h` enthalten weiterhin die *remappten*
-   Codepoints (U+E001–E008), nicht die MDI-Originalwerte.
+   Codepoints (U+E001–E008), nicht die MDI-Originalwerte. **Auf Hardware
+   bestätigt: alle 8 Icons sichtbar.**
 
-Zwei temporaere Diagnose-Hilfsmittel sind noch in `display_ui.c`: eine
-grelle Magenta-Testbox mit Icon (`build_mdi_test()`, oben links, hoechste
-Z-Ordnung) und ein Boot-Log alle 8 Glyphen (`mdi_font_diag()`, Tag `ui`,
-Suche nach "MDI-Diagnose"). Beide sind als "TEMPORAER" markiert und koennen
-entfernt werden, sobald die Icons auf Hardware bestaetigt sind.
+Die zwei temporären Diagnose-Hilfsmittel aus der Fehlersuche (Magenta-
+Testbox, Boot-Log) sind nach der Bestätigung wieder aus `display_ui.c`
+entfernt.
 
 **Wichtige Einschränkung**: Ein MDI-Glyph kann nur in einem Label gerendert
 werden, dessen Font auf `&mdi_icons_20` gesetzt ist — er lässt sich *nicht*

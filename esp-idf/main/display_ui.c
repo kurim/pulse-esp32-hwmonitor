@@ -403,37 +403,6 @@ static void build_tile(lv_obj_t *parent, int x, const char *title, tile_ctx_t *t
     tile->trend_lbl = make_label(row, "-", &lv_font_montserrat_14, COL_SUB);
 }
 
-// ------------------------------------------------------------------
-// TEMPORAERER MDI-ISOLATIONSTEST - nach Diagnose wieder entfernen.
-// Grelle, unuebersehbare Box + Icon, unabhaengig vom restlichen Layout.
-// Drei moegliche Ergebnisse:
-//  1) Weder Box noch Icon sichtbar    -> Objekterzeugung/Rendering generell
-//     kaputt (sehr unwahrscheinlich, alles andere rendert ja).
-//  2) Box sichtbar, Icon NICHT        -> Font-Daten/Glyph-Lookup ist das
-//     Problem (Cmap/Codepoint weiterhin falsch).
-//  3) Box UND Icon sichtbar           -> MDI-Mechanismus funktioniert an
-//     sich - das eigentliche Problem liegt woanders in der Einbindung
-//     (Position ausserhalb des sichtbaren Bereichs, Ueberdeckung durch
-//     andere Elemente, Farbe = Hintergrundfarbe, o.ae.).
-// ------------------------------------------------------------------
-static void build_mdi_test(lv_obj_t *parent)
-{
-    lv_obj_t *box = lv_obj_create(parent);
-    lv_obj_set_pos(box, 0, 0);
-    lv_obj_set_size(box, 44, 44);
-    lv_obj_set_style_bg_color(box, lv_color_hex(0xFF00FF), 0); // Magenta
-    lv_obj_set_style_bg_opa(box, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(box, 0, 0);
-    lv_obj_set_style_radius(box, 0, 0);
-    lv_obj_clear_flag(box, LV_OBJ_FLAG_SCROLLABLE);
-
-    lv_obj_t *icon = make_label(box, MDI_CHIP, &mdi_icons_20, lv_color_hex(0xFFFFFF));
-    lv_obj_center(icon);
-
-    lv_obj_t *lbl = make_label(parent, "MDI TEST", &lv_font_montserrat_14, lv_color_hex(0xFF00FF));
-    lv_obj_set_pos(lbl, 0, 46);
-}
-
 static void build_main(void)
 {
     scr_main = lv_obj_create(NULL);
@@ -516,10 +485,6 @@ static void build_main(void)
     lv_obj_align(gear, LV_ALIGN_TOP_MID, 0, 2);
     lv_obj_t *set_lbl = make_label(settings_btn, "SETTINGS", &lv_font_montserrat_14, COL_SUB);
     lv_obj_align(set_lbl, LV_ALIGN_TOP_MID, 0, 26);
-
-    // Als letztes Element angelegt -> hoechste Z-Ordnung, garantiert nicht
-    // von der Top-Bar oder anderen Elementen verdeckt.
-    build_mdi_test(scr_main);
 }
 
 // ------------------------------------------------------------------
@@ -779,46 +744,11 @@ static void tick_cb(lv_timer_t *t)
     refresh_now();
 }
 
-// ------------------------------------------------------------------
-// TEMPORAERE MDI-DIAGNOSE - prueft die Font-Rohdaten direkt ueber die
-// LVGL-API, unabhaengig von jeglichem Rendering. Ausgabe im seriellen
-// Monitor ("idf.py monitor") direkt nach dem Boot suchen (Tag "ui").
-// ------------------------------------------------------------------
-static void mdi_font_diag(void)
-{
-    ESP_LOGI(TAG, "MDI-Diagnose: mdi_icons_20 line_height=%d base_line=%d",
-             mdi_icons_20.line_height, mdi_icons_20.base_line);
-
-    // Codepoints direkt hartkodiert (statt aus den MDI_*-Strings zu
-    // dekodieren) - vermeidet Abhaengigkeit von einer weiteren, hier noch
-    // nicht verwendeten LVGL-Textdecoder-API.
-    struct { const char *name; uint32_t cp; } icons[] = {
-        {"ARROW_LEFT",  0xE001},
-        {"COG",         0xE002},
-        {"THERMOMETER", 0xE003},
-        {"RAIN",        0xE004},
-        {"SUN",         0xE005},
-        {"WIND",        0xE006},
-        {"WIFI",        0xE007},
-        {"CHIP",        0xE008},
-    };
-
-    for (size_t i = 0; i < sizeof(icons) / sizeof(icons[0]); i++) {
-        lv_font_glyph_dsc_t dsc;
-        bool found = lv_font_get_glyph_dsc(&mdi_icons_20, &dsc, icons[i].cp, 0);
-        ESP_LOGI(TAG, "MDI-Diagnose: %-11s codepoint=0x%04lX gefunden=%d box=%dx%d adv_w=%d",
-                 icons[i].name, (unsigned long)icons[i].cp, found,
-                 found ? dsc.box_w : -1, found ? dsc.box_h : -1, found ? dsc.adv_w : -1);
-    }
-}
-
 void display_ui_begin(void)
 {
     lv_display_t *disp = NULL;
     lcd_init(&disp);
     touch_xpt2046_init();
-
-    mdi_font_diag();
 
     // Ab hier LVGL-Objekte nur unter Lock anlegen (esp_lvgl_port-Task laeuft).
     lvgl_port_lock(0);

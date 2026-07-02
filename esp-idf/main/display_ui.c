@@ -564,18 +564,17 @@ static lv_obj_t *make_chart(lv_obj_t *parent, int x, int y, int w, int h, int ym
     lv_obj_set_style_border_color(ch, COL_SUB, 0);
     lv_obj_set_style_border_width(ch, 1, 0);
     lv_obj_set_style_pad_all(ch, 2, 0);
-    lv_obj_set_style_pad_left(ch, 26, 0); // Platz fuer Y-Achsen-Beschriftung
     lv_obj_set_style_size(ch, 0, 0, LV_PART_INDICATOR); // keine Punkt-Marker
-    lv_obj_set_style_text_font(ch, &lv_font_montserrat_14, LV_PART_TICKS);
-    lv_obj_set_style_text_color(ch, COL_SUB, LV_PART_TICKS);
-    lv_obj_set_style_line_color(ch, COL_SUB, LV_PART_TICKS);
     lv_chart_set_type(ch, LV_CHART_TYPE_LINE);
     lv_chart_set_point_count(ch, HIST_LEN);
     lv_chart_set_range(ch, LV_CHART_AXIS_PRIMARY_Y, 0, ymax);
     // Kartenrand dient bereits als oberste/unterste Gitterlinie (0/ymax);
     // nur die "inneren" major_cnt-2 Werte brauchen eine eigene Linie.
+    // Hinweis: lv_chart_set_axis_tick()/LV_PART_TICKS (numerische
+    // Achsenbeschriftung) gibt es in LVGL 9 nicht mehr (in 9.0 entfernt,
+    // Ersatz waere ein separates lv_scale-Widget) - daher nur Gitterlinien
+    // ohne Zahlen, wie schon in der zuvor auf Hardware bestaetigten Version.
     lv_chart_set_div_line_count(ch, major_cnt - 2, 0);
-    lv_chart_set_axis_tick(ch, LV_CHART_AXIS_PRIMARY_Y, 4, 2, major_cnt, 1, true, 34);
     *ser = lv_chart_add_series(ch, col, LV_CHART_AXIS_PRIMARY_Y);
     return ch;
 }

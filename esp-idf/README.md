@@ -108,6 +108,10 @@ Farbverlauf-Balken, Wetter-/Wind-/Regen-Anzeige, Trend-Pfeile, Settings-Knopf):
 - **Trend-Pfeile**: vergleichen den aktuellen Auslastungswert mit dem Wert
   vor bis zu 10 Messungen (`compute_trend()` in `display_ui.c`); Schwelle
   ±3 Prozentpunkte für steigend/fallend, sonst "stabil" (Strich).
+- **Chart-Achsenbeschriftung**: `lv_chart_set_axis_tick()`/`LV_PART_TICKS`
+  gibt es in LVGL 9 nicht mehr (in 9.0 entfernt; Ersatz wäre ein separates
+  `lv_scale`-Widget neben dem Chart). Die Verlaufsdiagramme zeigen daher nur
+  Gitterlinien ohne Zahlenbeschriftung (wie in der zuvor bestätigten Version).
 
 ## Struktur
 

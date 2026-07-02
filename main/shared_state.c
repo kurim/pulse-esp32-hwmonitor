@@ -27,7 +27,7 @@ void config_set_defaults(app_config_t *cfg)
     strcpy(cfg->weather_units, "metric");
     cfg->brightness = 255;
     cfg->rotation   = 1;
-    cfg->display_type = DISPLAY_CYD_ILI9341;
+    cfg->display_type = board_profile_default();
 }
 
 void history_push(history_t *h, float load, float temp, float power)

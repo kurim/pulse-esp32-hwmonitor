@@ -81,7 +81,8 @@ static const char INDEX_HTML[] =
 "<div class=\"row\"><div><label>Ort (Stadt,Land)</label><input type=\"text\" id=\"weather_city\" maxlength=\"64\"></div>"
 "<div><label>Einheit</label><select id=\"weather_units\"><option value=\"metric\">&deg;C</option><option value=\"imperial\">&deg;F</option></select></div></div></div>"
 "<div class=\"card\"><h2>Display</h2>"
-"<label>Displaytyp</label><select id=\"display_type\"></select>"
+"<div id=\"displayFixed\" class=\"sub\" style=\"display:none;margin-bottom:6px\"></div>"
+"<div id=\"displayChoice\"><label>Displaytyp</label><select id=\"display_type\"></select></div>"
 "<div id=\"displayInfo\"></div>"
 "<div class=\"hint\">Nach dem Speichern startet das Ger&auml;t neu und initialisiert das gew&auml;hlte Panel. "
 "Verdrahtung wie oben angezeigt - bei abweichender eigener Verdrahtung m&uuml;ssen die Pins im Quellcode "
@@ -117,7 +118,13 @@ static const char INDEX_HTML[] =
 "async function loadDisplays(){const r=await fetch('/api/displays');displays=await r.json();"
 "const sel=document.getElementById('display_type');sel.innerHTML='';"
 "displays.forEach(d=>{const o=document.createElement('option');o.value=d.key;o.textContent=d.name;sel.appendChild(o);});"
-"sel.addEventListener('change',renderDisplayInfo);}"
+"sel.addEventListener('change',renderDisplayInfo);"
+"if(displays.length<=1){"
+"document.getElementById('displayChoice').style.display='none';"
+"const f=document.getElementById('displayFixed');f.style.display='block';"
+"f.textContent=displays.length?('Fest verbaut: '+displays[0].name):'Kein Display-Profil fuer dieses Firmware-Target verfuegbar.';"
+"if(displays.length)sel.value=displays[0].key;"
+"}}"
 "async function loadCfg(){const r=await fetch('/api/config');const c=await r.json();"
 "for(const k in c){const el=document.getElementById(k);if(!el)continue;if(el.type==='checkbox')el.checked=!!c[k];else el.value=c[k];}"
 "renderDisplayInfo();}"
@@ -338,6 +345,12 @@ static esp_err_t h_displays(httpd_req_t *req)
 {
     cJSON *arr = cJSON_CreateArray();
     for (int i = 0; i < DISPLAY_TYPE_COUNT; i++) {
+        // Nur Profile listen, die auf diesem Compile-Target (idf.py
+        // set-target) ueberhaupt Sinn ergeben - auf klassischem ESP32 nur
+        // CYD, auf allen anderen Chips nur die generischen Profile. Damit
+        // gibt es auf dem CYD-Build gar keine Auswahl (nur 1 Eintrag), das
+        // Webportal blendet das Dropdown dann aus (siehe renderDisplayInfo).
+        if (!board_profile_is_available((display_type_t)i)) continue;
         const board_profile_t *p = board_profile_get((display_type_t)i);
         cJSON *d = cJSON_CreateObject();
         cJSON_AddStringToObject(d, "key", board_profile_key((display_type_t)i));

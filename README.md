@@ -21,6 +21,15 @@ neu und initialisiert das gewaehlte Panel. Das Webportal zeigt zur gewaehlten
 Option automatisch die passende Pin-Tabelle an (`GET /api/displays`, aus
 `main/board_profiles.c` generiert - keine doppelte Pflege von Pinbelegungen).
 
+**Die Auswahl ist build-spezifisch gefiltert** (`board_profile_is_available()`
+in `board_profiles.c`, ausgewertet ueber `CONFIG_IDF_TARGET_ESP32`): auf einem
+Build fuer den klassischen ESP32 (`idf.py set-target esp32`) gibt es nur das
+ESP32-2432S028-Profil - das Webportal blendet das Dropdown dort aus und zeigt
+stattdessen nur "Fest verbaut: ...". Auf jedem anderen Chip (`esp32s3`,
+`esp32c3`, ...) erscheinen nur die vier generischen Profile im Dropdown,
+das ESP32-2432S028-Profil (feste Werksverdrahtung dieses einen Boards) taucht
+dort gar nicht erst auf.
+
 | Displaytyp | Aufloesung | Bus | Touch | UI |
 |---|---|---|---|---|
 | ESP32-2432S028, ILI9341 | 320x240 | SPI | XPT2046 | volle Kachel-UI (Verlauf, Settings) |

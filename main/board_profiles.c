@@ -1,4 +1,5 @@
 #include "board_profiles.h"
+#include "sdkconfig.h"
 #include <string.h>
 
 // ------------------------------------------------------------------
@@ -57,9 +58,33 @@ static const board_profile_t s_profiles[DISPLAY_TYPE_COUNT] = {
     },
 };
 
+bool board_profile_is_available(display_type_t type)
+{
+#if CONFIG_IDF_TARGET_ESP32
+    // Klassischer ESP32: nur das CYD-Profil (feste Werksverdrahtung des
+    // ESP32-2432S028) - die generischen Profile sind hier nicht gemeint,
+    // Auswahl im Webportal daher unnoetig.
+    return type == DISPLAY_CYD_ILI9341;
+#else
+    // Jeder andere Chip (S3/C3/...): CYD-Werksverdrahtung ergibt keinen
+    // Sinn (falsche Pins/Board), nur die generischen Profile anbieten.
+    return type != DISPLAY_CYD_ILI9341;
+#endif
+}
+
+display_type_t board_profile_default(void)
+{
+    for (int i = 0; i < DISPLAY_TYPE_COUNT; i++) {
+        if (board_profile_is_available((display_type_t)i)) return (display_type_t)i;
+    }
+    return DISPLAY_CYD_ILI9341;
+}
+
 const board_profile_t *board_profile_get(display_type_t type)
 {
-    if (type < 0 || type >= DISPLAY_TYPE_COUNT) type = DISPLAY_CYD_ILI9341;
+    if (type < 0 || type >= DISPLAY_TYPE_COUNT || !board_profile_is_available(type)) {
+        type = board_profile_default();
+    }
     return &s_profiles[type];
 }
 

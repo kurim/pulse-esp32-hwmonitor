@@ -1,10 +1,18 @@
 #pragma once
 // ------------------------------------------------------------------
 // Material Design Icons (https://materialdesignicons.com/, Pictogrammers,
-// Apache-2.0-Lizenz) als schlanke LVGL-Font-Teilmenge (nur die 12 hier
+// Apache-2.0-Lizenz) als schlanke LVGL-Font-Teilmenge (die 8 hier
 // tatsaechlich genutzten Glyphen, 20px, generiert mit lv_font_conv aus
 // dem npm-Paket "@mdi/font"). Ersetzt die vorherigen handgezeichneten
 // Vektor-Icons durch echte, wiedererkennbare Symbole.
+//
+// Bewusst NUR diese 8 eng beieinanderliegenden Codepoints (0xF004D-
+// 0xF061A) - ein frueherer Versuch mit zusaetzlichen, weit entfernten
+// Codepoints (unter anderem 0xF140B "lightning-bolt") loeste einen
+// bekannten lv_font_conv-Bug aus (github.com/lvgl/lv_font_conv Issue #62:
+// "Codepoint delta out of range" / kaputte sparse-cmap bei grossen Luecken
+// zwischen den Codepoints), wodurch auf dem Geraet KEIN einziges MDI-Icon
+// sichtbar war (leerer Platz statt Glyph).
 //
 // Verwendung: make_label(parent, MDI_CHIP, &mdi_icons_20, farbe);
 // ------------------------------------------------------------------
@@ -24,10 +32,6 @@ extern const lv_font_t mdi_icons_20;
 #define MDI_COG             "\xF3\xB0\x92\x93"   // mdi-cog              U+F0493
 #define MDI_ARROW_LEFT      "\xF3\xB0\x81\x8D"   // mdi-arrow-left       U+F004D
 #define MDI_WIFI            "\xF3\xB0\x96\xA9"   // mdi-wifi             U+F05A9
-#define MDI_LIGHTNING       "\xF3\xB1\x90\x8B"   // mdi-lightning-bolt   U+F140B
-#define MDI_TREND_UP        "\xF3\xB0\x94\xB5"   // mdi-trending-up      U+F0535
-#define MDI_TREND_DOWN      "\xF3\xB0\x94\xB3"   // mdi-trending-down    U+F0533
-#define MDI_TREND_NEUTRAL   "\xF3\xB0\x94\xB4"   // mdi-trending-neutral U+F0534
 
 #ifdef __cplusplus
 }

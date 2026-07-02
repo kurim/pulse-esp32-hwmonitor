@@ -7,9 +7,10 @@ WLAN-Setup über offenen Access Point mit Config-Webportal und OTA-Update.
 
 > ⚠️ **Auf Hardware verifiziert und iteriert.** Baut und flasht mit
 > ESP-IDF 6.0.x. Farbinversion, Display-Rotation (`rotation=1`) und das
-> Top-Bar-Layout wurden anhand von Fotos vom laufenden Gerät korrigiert.
-> Die Umstellung der Icons auf eine Material-Design-Icons-Font (Punkt 5
-> unten) ist die letzte noch nicht gegengeprüfte Änderung.
+> Top-Bar-Layout wurden anhand von Fotos vom laufenden Gerät korrigiert. Die
+> erste Fassung der Material-Design-Icons-Font zeigte auf Hardware **gar
+> keine** Icons (bekannter `lv_font_conv`-Bug, siehe Abschnitt "Icons") —
+> mit reduziertem Codepoint-Satz behoben, aber noch nicht gegengeprüft.
 
 ## Framework-Abbildung (Arduino → ESP-IDF)
 
@@ -117,7 +118,7 @@ Farbverlauf-Balken, Wetter-/Wind-/Regen-Anzeige, Trend-Pfeile, Settings-Knopf):
 `main/font_mdi_icons_20.c` ist eine mit
 [`lv_font_conv`](https://github.com/lvgl/lv_font_conv) aus dem npm-Paket
 `@mdi/font` (Material Design Icons, Pictogrammers, Apache-2.0-Lizenz)
-generierte LVGL-Font — **nur die 12 tatsächlich genutzten Glyphen** bei 20px/
+generierte LVGL-Font — **nur die 8 tatsächlich genutzten Glyphen** bei 20px/
 4bpp, nicht der komplette Icon-Satz (der hätte mehrere MB). `main/mdi_icons.h`
 deklariert die Font (`extern const lv_font_t mdi_icons_20;`) sowie ein
 `#define MDI_<NAME>` je Icon (UTF-8-codierter Codepoint als C-String), analog
@@ -126,11 +127,20 @@ zu LVGLs eigenen `LV_SYMBOL_*`-Makros nutzbar: `make_label(parent, MDI_COG,
 
 Verwendet werden `chip`, `thermometer`, `weather-sunny`, `weather-windy`,
 `weather-rainy`, `cog`, `arrow-left`, `wifi` (alle in `mdi_icons.h`
-dokumentiert mit Original-Namen und Unicode-Codepoint). Die generierte Font
-enthält zusätzlich `lightning-bolt` und `trending-up`/`_down`/`_neutral` als
-Reserve für eine spätere vollständige Umstellung von Power-/Trend-Anzeige
-(aktuell noch `LV_SYMBOL_CHARGE`/`_UP`/`_DOWN`, s.o.) — im Code bislang
-ungenutzt, aber bereits als `MDI_LIGHTNING`/`MDI_TREND_*` verfügbar.
+dokumentiert mit Original-Namen und Unicode-Codepoint).
+
+**Auf Hardware verifizierter Bug + Fix**: Eine erste Fassung enthielt
+zusätzlich `lightning-bolt` (U+F140B) — ein Codepoint weit entfernt von den
+übrigen acht (U+F004D–U+F061A). Das löste einen bekannten `lv_font_conv`-Bug
+aus ([Issue #62](https://github.com/lvgl/lv_font_conv/issues/62): fehlerhafte
+"sparse tiny" Cmap-Tabelle bei grossen Codepoint-Lücken), wodurch auf dem
+Gerät **kein einziges** MDI-Icon sichtbar war — nicht nur `lightning-bolt`,
+sondern alle acht, obwohl die Konvertierung ohne Fehlermeldung durchlief.
+Fix: `lightning-bolt` (und die ebenfalls entfernten `trending-*`-Icons, die
+nur als Reserve gedacht waren) aus dem Codepoint-Satz entfernt, sodass alle
+verbleibenden Glyphen eng beieinander liegen (Bereich nur noch 1486 statt
+5055). Power-/Trend-Symbole bleiben bei `LV_SYMBOL_CHARGE`/`_UP`/`_DOWN`
+(s.o.), nicht bei MDI.
 
 **Wichtige Einschränkung**: Ein MDI-Glyph kann nur in einem Label gerendert
 werden, dessen Font auf `&mdi_icons_20` gesetzt ist — er lässt sich *nicht*
@@ -140,7 +150,12 @@ Deshalb sind MDI-Icons im Code immer eigene, separate Label-Objekte neben dem
 Text, nie in einen gemeinsamen String eingebettet.
 
 **Weitere Icons ergänzen**: Icon-Name in `.../package/css/materialdesignicons.css`
-nachschlagen (Codepoint hinter `content: "\FXXXXX"`), dann neu generieren:
+nachschlagen (Codepoint hinter `content: "\FXXXXX"`), dann neu generieren.
+**Wichtig**: alle Codepoints im `-r`-Bereich sollten nahe beieinander liegen
+(grosse Lücken lösen den oben beschriebenen `lv_font_conv`-Bug aus) — nach
+dem Generieren `range_length` im erzeugten `.c`-File pruefen (sollte nicht
+in die Zehntausende gehen) und im Zweifel mit `python3 -c "print(hex(0x...))"`
+die tatsächlichen Ziel-Codepoints aus `range_start` + Delta gegenrechnen:
 
 ```bash
 npm pack @mdi/font@7.4.47 && tar xzf mdi-font-7.4.47.tgz

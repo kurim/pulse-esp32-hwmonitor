@@ -13,9 +13,10 @@ idf_component_register(
         "weather_service.c"
     INCLUDE_DIRS "."
     # Nur Core-/Built-in-Komponenten hier auffuehren. Managed Components
-    # (lvgl, esp_lvgl_port, esp_lcd_ili9341/ili9488/st7796/gc9a01/ssd1306,
+    # (lvgl, esp_lvgl_port, esp_lcd_ili9341/ili9488/st7796/gc9a01,
     # espressif/mqtt, espressif/cjson) werden ueber main/idf_component.yml
-    # eingebunden.
+    # eingebunden. SSD1306/SSD1309 sind bereits Teil des Core-esp_lcd (s.u.),
+    # brauchen also keinen Eintrag in idf_component.yml.
     REQUIRES
         nvs_flash
         esp_wifi

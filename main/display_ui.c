@@ -12,16 +12,11 @@
 #include "driver/ledc.h"
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_panel_ops.h"
+#include "esp_lcd_panel_vendor.h" // Core esp_lcd: SSD1306/SSD1309 (esp_lcd_new_panel_ssd1306)
 #include "esp_lcd_ili9341.h"
-// HINWEIS: Diese drei Header/Funktionsnamen folgen der ueblichen Espressif-
-// Namenskonvention fuer esp_lcd-Panel-Treiber (analog zu esp_lcd_ili9341.h /
-// esp_lcd_new_panel_ili9341). Noch nicht auf Hardware verifiziert - falls der
-// Component-Manager eine andere Komponente/Funktion fuer eines der Panels
-// aufloest, hier und in main/idf_component.yml nachziehen.
-#include "esp_lcd_ili9488.h"
+#include "esp_lcd_ili9488.h"      // Community component atanisoft/esp_lcd_ili9488
 #include "esp_lcd_st7796.h"
 #include "esp_lcd_gc9a01.h"
-#include "esp_lcd_panel_ssd1306.h"
 #include "esp_lvgl_port.h"
 #include "esp_system.h"
 #include "esp_log.h"
@@ -211,7 +206,11 @@ static lv_display_t *lcd_init_color_spi(const board_profile_t *p)
 
     switch (app_config.display_type) {
         case DISPLAY_ILI9488:
-            ESP_ERROR_CHECK(esp_lcd_new_panel_ili9488(io, &panel_cfg, &panel));
+            // atanisoft/esp_lcd_ili9488 braucht zusaetzlich die Groesse des
+            // internen RGB565->RGB666-Konvertierungspuffers (in Pixeln) -
+            // an die groesste zu erwartende draw_bitmap()-Flaeche angelehnt,
+            // hier eine LVGL-Flush-Kachel (Breite x 40 Zeilen, s. dcfg unten).
+            ESP_ERROR_CHECK(esp_lcd_new_panel_ili9488(io, &panel_cfg, p->h_res * 40, &panel));
             break;
         case DISPLAY_ST7796S:
             ESP_ERROR_CHECK(esp_lcd_new_panel_st7796(io, &panel_cfg, &panel));

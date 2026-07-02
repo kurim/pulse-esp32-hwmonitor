@@ -80,6 +80,18 @@ const char *board_profile_key(display_type_t type);
 // Parst einen Kurznamen zurueck in den Enum-Wert (DISPLAY_CYD_ILI9341 als Fallback).
 display_type_t board_profile_from_key(const char *key);
 
+// Ist dieses Profil auf dem aktuellen Compile-Target (idf.py set-target)
+// ueberhaupt sinnvoll waehlbar? DISPLAY_CYD_ILI9341 beschreibt die feste
+// Werksverdrahtung des ESP32-2432S028-Boards (klassischer ESP32) und ergibt
+// auf anderen Chips (S3/C3/...) keinen Sinn; die generischen Profile
+// ergeben dagegen auf jedem Chip Sinn. Wird genutzt, um die Webportal-
+// Displayauswahl build-spezifisch auszublenden (siehe web_portal.c).
+bool board_profile_is_available(display_type_t type);
+
+// Sinnvoller Default fuer config_set_defaults(): CYD auf klassischem ESP32,
+// sonst das erste generische Profil.
+display_type_t board_profile_default(void);
+
 #ifdef __cplusplus
 }
 #endif

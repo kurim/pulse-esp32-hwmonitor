@@ -18,7 +18,11 @@ dependencies:
   # atanisoft/esp_lcd_ili9488 ist der gaengige Community-Treiber (Header
   # esp_lcd_ili9488.h, Funktion esp_lcd_new_panel_ili9488() mit zusaetzlichem
   # buffer_size-Parameter fuer die interne RGB565->RGB666-Konvertierung).
-  atanisoft/esp_lcd_ili9488: "~1.0.0"
+  # WICHTIG: mindestens 1.1.0 - erst ab da unterstuetzt der Treiber
+  # ESP-IDF>=6.0 (rgb_ele_order statt des in 6.0 entfernten color_space-Felds/
+  # ESP_LCD_COLOR_SPACE_*-Enums). "~1.0.0" (nur 1.0.x) fuehrte auf ESP-IDF
+  # 6.0.2 zu Compile-Fehlern ("has no member named 'color_space'").
+  atanisoft/esp_lcd_ili9488: "^1.1.0"
   espressif/esp_lcd_st7796: "^1"
   espressif/esp_lcd_gc9a01: "^2"
   # SSD1306/SSD1309 sind bereits Teil des Core-esp_lcd-Components

@@ -8,11 +8,15 @@ Verlaufsdiagramm.
 
 ## Zwei Varianten
 
-- **Arduino/PlatformIO** (dieses Verzeichnis, `src/` + `platformio.ini`) — die
-  primäre, auf Hardware erprobte Firmware.
-- **ESP-IDF-Port** (`esp-idf/`) — dieselbe Funktion auf purem ESP-IDF (LVGL +
-  `esp_lcd`, `esp_wifi`, `esp-mqtt`, …), baubar mit `idf.py`. Siehe
-  [`esp-idf/README.md`](esp-idf/README.md). Noch nicht auf Hardware verifiziert.
+- **Arduino/PlatformIO** (dieser Branch `main`, `src/` + `platformio.ini`) —
+  die primäre, auf Hardware erprobte Firmware. Deckt aktuell nur das
+  ESP32-2432S028-Board ("CYD") mit ILI9341 + XPT2046-Touch ab.
+- **ESP-IDF-Port** — dieselbe Grundfunktion auf purem ESP-IDF (LVGL +
+  `esp_lcd`, `esp_wifi`, `esp-mqtt`, …), baubar mit `idf.py`, liegt in einem
+  eigenen Branch: **[`esp-idf`](../../tree/esp-idf)**. Dort auch die
+  Multi-Display-Unterstützung (ILI9341/ILI9488/ST7796S/GC9A01/SSD1309, Auswahl
+  zur Laufzeit im Webportal) — dieser Arduino-Branch bleibt bewusst auf das
+  CYD-Board beschränkt.
 
 ## Warum PlatformIO statt Arduino IDE?
 

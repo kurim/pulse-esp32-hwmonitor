@@ -1,6 +1,7 @@
 #pragma once
 #include <stdbool.h>
 #include <stdint.h>
+#include "board_profiles.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -33,7 +34,9 @@ typedef struct {
     char     weather_units[9];   // "metric" | "imperial"
 
     uint8_t  brightness;         // 0-255 (PWM)
-    uint8_t  rotation;           // 0-3
+    uint8_t  rotation;           // 0-3 (nur fuer LCD_SHAPE_RECT-Displays relevant)
+
+    display_type_t display_type; // welches Panel verbaut ist, siehe board_profiles.h
 } app_config_t;
 
 // ----------------------------------------------------------------

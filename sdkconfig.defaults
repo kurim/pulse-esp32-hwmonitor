@@ -14,6 +14,9 @@ CONFIG_HTTPD_MAX_URI_LEN=512
 # --- LVGL (Display-UI) ---
 CONFIG_LV_COLOR_DEPTH_16=y
 CONFIG_LV_USE_CHART=y
+CONFIG_LV_USE_ARC=y
+# GC9A01-Rundlayout nutzt lv_arc; SSD1309-Minimal-UI kommt mit den bereits
+# eingebundenen Montserrat-Fonts/Labels aus - keine weiteren Widgets noetig.
 CONFIG_LV_FONT_MONTSERRAT_14=y
 CONFIG_LV_FONT_MONTSERRAT_16=y
 CONFIG_LV_FONT_MONTSERRAT_20=y

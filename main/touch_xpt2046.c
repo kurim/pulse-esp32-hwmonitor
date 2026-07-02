@@ -1,5 +1,4 @@
 #include "touch_xpt2046.h"
-#include "bsp_pins.h"
 #include "shared_state.h"
 #include "driver/spi_master.h"
 #include "driver/gpio.h"
@@ -8,6 +7,8 @@
 
 static const char *TAG = "touch";
 static spi_device_handle_t s_spi;
+static int s_irq_pin;
+static int s_h_res, s_v_res;
 
 // Roh-ADC-Bereich (12 Bit) - Werksstreuung moeglich. Wenn Antippen an den
 // Raendern nicht anspricht oder "wandert", hier nachjustieren.
@@ -31,35 +32,39 @@ static int clampi(int v, int lo, int hi)
     return v < lo ? lo : (v > hi ? hi : v);
 }
 
-void touch_xpt2046_init(void)
+void touch_xpt2046_init(const board_profile_t *profile)
 {
+    s_irq_pin = profile->touch_irq;
+    s_h_res = profile->h_res;
+    s_v_res = profile->v_res;
+
     spi_bus_config_t buscfg = {
-        .mosi_io_num     = TOUCH_PIN_MOSI,
-        .miso_io_num     = TOUCH_PIN_MISO,
-        .sclk_io_num     = TOUCH_PIN_CLK,
+        .mosi_io_num     = profile->touch_mosi,
+        .miso_io_num     = profile->touch_miso,
+        .sclk_io_num     = profile->touch_clk,
         .quadwp_io_num   = -1,
         .quadhd_io_num   = -1,
         .max_transfer_sz = 32,
     };
-    ESP_ERROR_CHECK(spi_bus_initialize(TOUCH_SPI_HOST, &buscfg, SPI_DMA_DISABLED));
+    ESP_ERROR_CHECK(spi_bus_initialize(profile->touch_spi_host, &buscfg, SPI_DMA_DISABLED));
 
     spi_device_interface_config_t devcfg = {
-        .clock_speed_hz = TOUCH_SPI_HZ,
+        .clock_speed_hz = profile->touch_spi_hz,
         .mode           = 0,
-        .spics_io_num   = TOUCH_PIN_CS,
+        .spics_io_num   = profile->touch_cs,
         .queue_size     = 1,
     };
-    ESP_ERROR_CHECK(spi_bus_add_device(TOUCH_SPI_HOST, &devcfg, &s_spi));
+    ESP_ERROR_CHECK(spi_bus_add_device(profile->touch_spi_host, &devcfg, &s_spi));
 
     // IRQ-Pin (PENIRQ, aktiv LOW) als Eingang zur Beruehrungserkennung.
     gpio_config_t io = {
-        .pin_bit_mask = 1ULL << TOUCH_PIN_IRQ,
+        .pin_bit_mask = 1ULL << profile->touch_irq,
         .mode         = GPIO_MODE_INPUT,
         .pull_up_en   = GPIO_PULLUP_ENABLE,
     };
     gpio_config(&io);
 
-    ESP_LOGI(TAG, "XPT2046 initialisiert (SPI%d)", TOUCH_SPI_HOST + 1);
+    ESP_LOGI(TAG, "XPT2046 initialisiert (SPI%d)", profile->touch_spi_host + 1);
 }
 
 // Liest einen 12-Bit-Wert des angegebenen Kanals.
@@ -79,7 +84,7 @@ static int read_channel(uint8_t cmd)
 bool touch_xpt2046_read(uint16_t *sx, uint16_t *sy)
 {
     // PENIRQ LOW = beruehrt.
-    if (gpio_get_level(TOUCH_PIN_IRQ) != 0) return false;
+    if (gpio_get_level(s_irq_pin) != 0) return false;
 
     // Mehrere Messungen mitteln (rauschunterdrueckend).
     const int N = 4;
@@ -114,7 +119,7 @@ bool touch_xpt2046_read(uint16_t *sx, uint16_t *sy)
             break;
     }
 
-    *sx = (uint16_t)clampi(x, 0, TFT_H_RES - 1);
-    *sy = (uint16_t)clampi(y, 0, TFT_V_RES - 1);
+    *sx = (uint16_t)clampi(x, 0, s_h_res - 1);
+    *sy = (uint16_t)clampi(y, 0, s_v_res - 1);
     return true;
 }

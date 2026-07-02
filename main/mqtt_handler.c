@@ -76,7 +76,7 @@ void mqtt_handler_begin(void)
     uint8_t mac[6] = {0};
     esp_read_mac(mac, ESP_MAC_WIFI_STA);
     static char client_id[32];
-    snprintf(client_id, sizeof(client_id), "CYD-%02x%02x%02x", mac[3], mac[4], mac[5]);
+    snprintf(client_id, sizeof(client_id), "esp32hwmon-%02x%02x%02x", mac[3], mac[4], mac[5]);
 
     esp_mqtt_client_config_t cfg = {
         .broker.address.uri       = uri,

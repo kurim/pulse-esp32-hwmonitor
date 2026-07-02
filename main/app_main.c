@@ -14,7 +14,7 @@ static const char *TAG = "main";
 
 void app_main(void)
 {
-    ESP_LOGI(TAG, "=== CYD Hardware-Monitor (ESP-IDF %s) ===", FW_VERSION);
+    ESP_LOGI(TAG, "=== ESP32 Hardware-Monitor (ESP-IDF %s) ===", FW_VERSION);
 
     // Konfiguration laden (Defaults -> NVS-Overrides).
     config_store_init();

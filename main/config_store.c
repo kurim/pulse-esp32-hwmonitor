@@ -56,6 +56,10 @@ void config_store_load(app_config_t *cfg)
     nvs_get_u8(h, "bright", &cfg->brightness);
     nvs_get_u8(h, "rot",    &cfg->rotation);
 
+    uint8_t disp_type = (uint8_t)cfg->display_type;
+    nvs_get_u8(h, "disp_type", &disp_type);
+    cfg->display_type = (display_type_t)disp_type;
+
     nvs_close(h);
 }
 
@@ -83,6 +87,7 @@ void config_store_save(const app_config_t *cfg)
     nvs_set_str(h, "w_units",    cfg->weather_units);
     nvs_set_u8 (h, "bright",     cfg->brightness);
     nvs_set_u8 (h, "rot",        cfg->rotation);
+    nvs_set_u8 (h, "disp_type",  (uint8_t)cfg->display_type);
 
     err = nvs_commit(h);
     if (err != ESP_OK) ESP_LOGE(TAG, "nvs_commit: %s", esp_err_to_name(err));

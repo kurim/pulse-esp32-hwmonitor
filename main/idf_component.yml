@@ -11,5 +11,15 @@ dependencies:
   # esp_lcd_ili9341 >= 2.0.0 unterstuetzt ESP-IDF 6.0 (rgb_ele_order); die
   # 1.x-Reihe nutzt noch das in v6 entfernte rgb_endian und bricht dort ab.
   espressif/esp_lcd_ili9341: "^2"
+  # Weitere Panel-Treiber fuer die Displayauswahl im Webportal (siehe
+  # board_profiles.h). Komponentennamen folgen der ueblichen Espressif-
+  # Konvention, sind aber NOCH NICHT auf Hardware verifiziert - falls
+  # `idf.py build` eine dieser Abhaengigkeiten nicht auflösen kann, den
+  # exakten Namen im ESP Component Registry (https://components.espressif.com)
+  # nachschlagen und hier korrigieren.
+  espressif/esp_lcd_ili9488: "*"
+  espressif/esp_lcd_st7796: "^1"
+  espressif/esp_lcd_gc9a01: "^2"
+  espressif/esp_lcd_panel_ssd1306: "^1" # SSD1309 nutzt dasselbe Protokoll wie SSD1306
   espressif/mqtt: "*"
   espressif/cjson: "*"

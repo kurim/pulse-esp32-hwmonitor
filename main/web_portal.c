@@ -1,6 +1,7 @@
 #include "web_portal.h"
 #include "shared_state.h"
 #include "config_store.h"
+#include "board_profiles.h"
 
 #include "esp_wifi.h"
 #include "esp_netif.h"
@@ -42,7 +43,7 @@ static httpd_handle_t s_httpd;
 static const char INDEX_HTML[] =
 "<!DOCTYPE html><html lang=\"de\"><head><meta charset=\"UTF-8\">"
 "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
-"<title>CYD Hardware-Monitor</title><style>"
+"<title>ESP32 Hardware-Monitor</title><style>"
 ":root{--bg:#10141c;--card:#1a2030;--accent:#3fd0e0;--text:#e8edf4;--sub:#8893a8;--border:#2a3142;}"
 "*{box-sizing:border-box;}body{background:var(--bg);color:var(--text);font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:0;padding:24px 16px;}"
 ".wrap{max-width:560px;margin:0 auto;}h1{font-size:1.4rem;margin-bottom:4px;}"
@@ -57,8 +58,12 @@ static const char INDEX_HTML[] =
 "button:hover{opacity:.9;}#status{margin-top:14px;font-size:.85rem;color:var(--sub);}"
 ".statbar{display:flex;gap:16px;font-size:.85rem;color:var(--sub);margin-bottom:18px;flex-wrap:wrap;}"
 ".dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;}"
+".pintable{width:100%;border-collapse:collapse;margin-top:10px;font-size:.85rem;}"
+".pintable td{padding:3px 6px;border-bottom:1px solid var(--border);}"
+".pintable td:first-child{color:var(--sub);}"
+".hint{font-size:.8rem;color:var(--sub);margin-top:8px;}"
 "</style></head><body><div class=\"wrap\">"
-"<h1>CYD Hardware-Monitor</h1><div class=\"sub\">Konfiguration f&uuml;r ESP32-2432S028 (ESP-IDF)</div>"
+"<h1>ESP32 Hardware-Monitor</h1><div class=\"sub\">Konfiguration (ESP-IDF)</div>"
 "<div class=\"statbar\" id=\"livebar\">Lade Status...</div>"
 "<form id=\"cfgForm\">"
 "<div class=\"card\"><h2>WLAN</h2><label>SSID</label><input type=\"text\" id=\"wifi_ssid\" maxlength=\"32\">"
@@ -75,9 +80,15 @@ static const char INDEX_HTML[] =
 "<label>API-Key</label><input type=\"text\" id=\"weather_api_key\" maxlength=\"40\" placeholder=\"unver&auml;ndert lassen = leer\">"
 "<div class=\"row\"><div><label>Ort (Stadt,Land)</label><input type=\"text\" id=\"weather_city\" maxlength=\"64\"></div>"
 "<div><label>Einheit</label><select id=\"weather_units\"><option value=\"metric\">&deg;C</option><option value=\"imperial\">&deg;F</option></select></div></div></div>"
-"<div class=\"card\"><h2>Display</h2><div class=\"row\">"
+"<div class=\"card\"><h2>Display</h2>"
+"<label>Displaytyp</label><select id=\"display_type\"></select>"
+"<div id=\"displayInfo\"></div>"
+"<div class=\"hint\">Nach dem Speichern startet das Ger&auml;t neu und initialisiert das gew&auml;hlte Panel. "
+"Verdrahtung wie oben angezeigt - bei abweichender eigener Verdrahtung m&uuml;ssen die Pins im Quellcode "
+"(board_profiles.c) angepasst werden.</div>"
+"<div class=\"row\" style=\"margin-top:10px\">"
 "<div><label>Helligkeit (0-255)</label><input type=\"number\" id=\"brightness\" min=\"0\" max=\"255\"></div>"
-"<div><label>Rotation (0-3)</label><input type=\"number\" id=\"rotation\" min=\"0\" max=\"3\"></div></div></div>"
+"<div><label>Rotation (0-3, nur rechteckige Displays)</label><input type=\"number\" id=\"rotation\" min=\"0\" max=\"3\"></div></div></div>"
 "<button type=\"submit\">Speichern &amp; Neustart</button><div id=\"status\"></div></form>"
 "<div class=\"card\"><h2>Firmware-Update (OTA)</h2>"
 "<div class=\"sub\" style=\"margin-bottom:10px\">Aktuelle Version: <span id=\"fwVersion\">-</span></div>"
@@ -86,20 +97,42 @@ static const char INDEX_HTML[] =
 "<progress id=\"otaProgress\" value=\"0\" max=\"100\" style=\"width:100%;margin-top:10px;display:none\"></progress>"
 "<div id=\"otaStatus\" style=\"margin-top:8px;font-size:.85rem;color:var(--sub)\"></div></div></div>"
 "<script>"
+"let displays=[];"
+"function renderDisplayInfo(){"
+"const key=document.getElementById('display_type').value;"
+"const d=displays.find(x=>x.key===key);const el=document.getElementById('displayInfo');"
+"if(!d){el.innerHTML='';return;}"
+"let rows='<tr><td>Bus</td><td>'+d.bus.toUpperCase()+(d.has_touch?' + Touch (XPT2046)':'')+'</td></tr>'"
+"+'<tr><td>Aufl&ouml;sung</td><td>'+d.h_res+'x'+d.v_res+(d.shape==='round'?' (rund)':d.shape==='mono'?' (monochrom)':'')+'</td></tr>';"
+"if(d.bus==='spi'){rows+='<tr><td>MOSI/MISO/SCLK</td><td>GPIO'+d.pins.mosi+' / GPIO'+d.pins.miso+' / GPIO'+d.pins.sclk+'</td></tr>'"
+"+'<tr><td>CS / DC</td><td>GPIO'+d.pins.cs+' / GPIO'+d.pins.dc+'</td></tr>'"
+"+'<tr><td>RESET</td><td>'+(d.pins.rst<0?'nicht verdrahtet':'GPIO'+d.pins.rst)+'</td></tr>'"
+"+'<tr><td>Backlight</td><td>'+(d.pins.bl<0?'kein Pin (selbstleuchtend)':'GPIO'+d.pins.bl)+'</td></tr>';"
+"if(d.has_touch){rows+='<tr><td>Touch CS/IRQ</td><td>GPIO'+d.pins.touch_cs+' / GPIO'+d.pins.touch_irq+'</td></tr>'"
+"+'<tr><td>Touch MOSI/MISO/CLK</td><td>GPIO'+d.pins.touch_mosi+' / GPIO'+d.pins.touch_miso+' / GPIO'+d.pins.touch_clk+'</td></tr>';}"
+"}else{rows+='<tr><td>SDA / SCL</td><td>GPIO'+d.pins.sda+' / GPIO'+d.pins.scl+'</td></tr>'"
+"+'<tr><td>I2C-Adresse</td><td>0x'+d.pins.addr.toString(16).toUpperCase()+'</td></tr>'"
+"+'<tr><td>VCC / GND</td><td>3.3V / GND</td></tr>';}"
+"el.innerHTML='<table class=\"pintable\">'+rows+'</table>';}"
+"async function loadDisplays(){const r=await fetch('/api/displays');displays=await r.json();"
+"const sel=document.getElementById('display_type');sel.innerHTML='';"
+"displays.forEach(d=>{const o=document.createElement('option');o.value=d.key;o.textContent=d.name;sel.appendChild(o);});"
+"sel.addEventListener('change',renderDisplayInfo);}"
 "async function loadCfg(){const r=await fetch('/api/config');const c=await r.json();"
-"for(const k in c){const el=document.getElementById(k);if(!el)continue;if(el.type==='checkbox')el.checked=!!c[k];else el.value=c[k];}}"
+"for(const k in c){const el=document.getElementById(k);if(!el)continue;if(el.type==='checkbox')el.checked=!!c[k];else el.value=c[k];}"
+"renderDisplayInfo();}"
 "async function loadStatus(){try{const r=await fetch('/api/status');const s=await r.json();"
 "document.getElementById('fwVersion').innerText=s.fw_version+' (freier Speicher: '+Math.round(s.free_heap/1024)+' KB)';"
 "document.getElementById('livebar').innerHTML='<span><span class=\"dot\" style=\"background:'+(s.wifi?'#3fd0e0':'#e05a5a')+'\"></span>WLAN</span>'+"
 "'<span><span class=\"dot\" style=\"background:'+(s.mqtt?'#3fd0e0':'#e05a5a')+'\"></span>MQTT</span>'+"
 "'<span>CPU '+s.cpu_load.toFixed(0)+'%</span><span>GPU '+s.gpu_load.toFixed(0)+'%</span><span>IP '+s.ip+'</span>';}catch(e){}}"
 "document.getElementById('cfgForm').addEventListener('submit',async(e)=>{e.preventDefault();"
-"const ids=['wifi_ssid','wifi_pass','mqtt_host','mqtt_port','mqtt_user','mqtt_pass','mqtt_topic','ntp_server','tz','weather_enabled','weather_api_key','weather_city','weather_units','brightness','rotation'];"
+"const ids=['wifi_ssid','wifi_pass','mqtt_host','mqtt_port','mqtt_user','mqtt_pass','mqtt_topic','ntp_server','tz','weather_enabled','weather_api_key','weather_city','weather_units','brightness','rotation','display_type'];"
 "const payload={};ids.forEach(id=>{const el=document.getElementById(id);payload[id]=el.type==='checkbox'?el.checked:(el.type==='number'?Number(el.value):el.value);});"
 "document.getElementById('status').innerText='Speichere...';"
 "await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});"
 "document.getElementById('status').innerText='Gespeichert. Ger\\u00e4t startet neu...';});"
-"loadCfg();loadStatus();setInterval(loadStatus,2000);"
+"loadDisplays().then(loadCfg);loadStatus();setInterval(loadStatus,2000);"
 "function uploadFirmware(){const f=document.getElementById('fwFile').files[0];"
 "if(!f){alert('Bitte zuerst eine .bin-Datei ausw\\u00e4hlen.');return;}"
 "if(!confirm('Firmware \"'+f.name+'\" jetzt aufspielen? Das Ger\\u00e4t startet danach automatisch neu.'))return;"
@@ -228,7 +261,7 @@ static void start_ap(void)
 
     uint8_t mac[6] = { 0 };
     esp_read_mac(mac, ESP_MAC_WIFI_SOFTAP);
-    snprintf(s_ap_ssid, sizeof(s_ap_ssid), "CYD-Setup-%02x%02x", mac[4], mac[5]);
+    snprintf(s_ap_ssid, sizeof(s_ap_ssid), "ESP32-HWMon-%02x%02x", mac[4], mac[5]);
 
     wifi_config_t ap = { 0 };
     strlcpy((char *)ap.ap.ssid, s_ap_ssid, sizeof(ap.ap.ssid));
@@ -288,12 +321,63 @@ static esp_err_t h_config_get(httpd_req_t *req)
     cJSON_AddStringToObject(d, "weather_units", app_config.weather_units);
     cJSON_AddNumberToObject(d, "brightness", app_config.brightness);
     cJSON_AddNumberToObject(d, "rotation", app_config.rotation);
+    cJSON_AddStringToObject(d, "display_type", board_profile_key(app_config.display_type));
 
     char *out = cJSON_PrintUnformatted(d);
     httpd_resp_set_type(req, "application/json");
     esp_err_t r = httpd_resp_send(req, out, HTTPD_RESP_USE_STRLEN);
     cJSON_free(out);
     cJSON_Delete(d);
+    return r;
+}
+
+// Liefert alle unterstuetzten Displaytypen samt Pinbelegung als JSON-Array,
+// damit das Webportal Dropdown + Verdrahtungstabelle rendern kann, ohne die
+// board_profiles.c-Tabelle im JS zu duplizieren.
+static esp_err_t h_displays(httpd_req_t *req)
+{
+    cJSON *arr = cJSON_CreateArray();
+    for (int i = 0; i < DISPLAY_TYPE_COUNT; i++) {
+        const board_profile_t *p = board_profile_get((display_type_t)i);
+        cJSON *d = cJSON_CreateObject();
+        cJSON_AddStringToObject(d, "key", board_profile_key((display_type_t)i));
+        cJSON_AddStringToObject(d, "name", p->name);
+        cJSON_AddStringToObject(d, "bus", p->bus == LCD_BUS_I2C ? "i2c" : "spi");
+        cJSON_AddStringToObject(d, "shape",
+            p->shape == LCD_SHAPE_ROUND ? "round" : (p->shape == LCD_SHAPE_MONO ? "mono" : "rect"));
+        cJSON_AddBoolToObject(d, "has_touch", p->has_touch);
+        cJSON_AddNumberToObject(d, "h_res", p->h_res);
+        cJSON_AddNumberToObject(d, "v_res", p->v_res);
+
+        cJSON *pins = cJSON_CreateObject();
+        if (p->bus == LCD_BUS_I2C) {
+            cJSON_AddNumberToObject(pins, "sda", p->i2c_sda);
+            cJSON_AddNumberToObject(pins, "scl", p->i2c_scl);
+            cJSON_AddNumberToObject(pins, "addr", p->i2c_addr);
+        } else {
+            cJSON_AddNumberToObject(pins, "mosi", p->mosi);
+            cJSON_AddNumberToObject(pins, "miso", p->miso);
+            cJSON_AddNumberToObject(pins, "sclk", p->sclk);
+            cJSON_AddNumberToObject(pins, "cs",   p->cs);
+            cJSON_AddNumberToObject(pins, "dc",   p->dc);
+            cJSON_AddNumberToObject(pins, "rst",  p->rst);
+            cJSON_AddNumberToObject(pins, "bl",   p->bl);
+            if (p->has_touch) {
+                cJSON_AddNumberToObject(pins, "touch_cs",   p->touch_cs);
+                cJSON_AddNumberToObject(pins, "touch_irq",  p->touch_irq);
+                cJSON_AddNumberToObject(pins, "touch_mosi", p->touch_mosi);
+                cJSON_AddNumberToObject(pins, "touch_miso", p->touch_miso);
+                cJSON_AddNumberToObject(pins, "touch_clk",  p->touch_clk);
+            }
+        }
+        cJSON_AddItemToObject(d, "pins", pins);
+        cJSON_AddItemToArray(arr, d);
+    }
+    char *out = cJSON_PrintUnformatted(arr);
+    httpd_resp_set_type(req, "application/json");
+    esp_err_t r = httpd_resp_send(req, out, HTTPD_RESP_USE_STRLEN);
+    cJSON_free(out);
+    cJSON_Delete(arr);
     return r;
 }
 
@@ -351,6 +435,8 @@ static esp_err_t h_config_post(httpd_req_t *req)
     if (cJSON_IsNumber(br)) app_config.brightness = (uint8_t)br->valuedouble;
     cJSON *ro = cJSON_GetObjectItem(root, "rotation");
     if (cJSON_IsNumber(ro)) app_config.rotation = (uint8_t)ro->valuedouble;
+    cJSON *dt = cJSON_GetObjectItem(root, "display_type");
+    if (cJSON_IsString(dt)) app_config.display_type = board_profile_from_key(dt->valuestring);
     cJSON_Delete(root);
 
     config_store_save(&app_config);
@@ -417,7 +503,7 @@ static void start_http(void)
 {
     httpd_config_t cfg = HTTPD_DEFAULT_CONFIG();
     cfg.stack_size      = 8192;
-    cfg.max_uri_handlers = 8;
+    cfg.max_uri_handlers = 9;
     cfg.lru_purge_enable = true;
     if (httpd_start(&s_httpd, &cfg) != ESP_OK) {
         ESP_LOGE(TAG, "httpd_start fehlgeschlagen");
@@ -425,11 +511,12 @@ static void start_http(void)
     }
 
     httpd_uri_t routes[] = {
-        { .uri = "/",            .method = HTTP_GET,  .handler = h_root },
-        { .uri = "/api/status", .method = HTTP_GET,  .handler = h_status },
-        { .uri = "/api/config", .method = HTTP_GET,  .handler = h_config_get },
-        { .uri = "/api/config", .method = HTTP_POST, .handler = h_config_post },
-        { .uri = "/update",     .method = HTTP_POST, .handler = h_update },
+        { .uri = "/",             .method = HTTP_GET,  .handler = h_root },
+        { .uri = "/api/status",   .method = HTTP_GET,  .handler = h_status },
+        { .uri = "/api/config",   .method = HTTP_GET,  .handler = h_config_get },
+        { .uri = "/api/config",   .method = HTTP_POST, .handler = h_config_post },
+        { .uri = "/api/displays", .method = HTTP_GET,  .handler = h_displays },
+        { .uri = "/update",       .method = HTTP_POST, .handler = h_update },
     };
     for (size_t i = 0; i < sizeof(routes) / sizeof(routes[0]); i++) {
         httpd_register_uri_handler(s_httpd, &routes[i]);

@@ -3,6 +3,7 @@ idf_component_register(
         "app_main.c"
         "config_store.c"
         "shared_state.c"
+        "board_profiles.c"
         "display_ui.c"
         "font_mdi_icons_20.c"
         "touch_xpt2046.c"
@@ -12,8 +13,9 @@ idf_component_register(
         "weather_service.c"
     INCLUDE_DIRS "."
     # Nur Core-/Built-in-Komponenten hier auffuehren. Managed Components
-    # (lvgl, esp_lvgl_port, esp_lcd_ili9341, espressif/mqtt, espressif/cjson)
-    # werden ueber main/idf_component.yml eingebunden.
+    # (lvgl, esp_lvgl_port, esp_lcd_ili9341/ili9488/st7796/gc9a01/ssd1306,
+    # espressif/mqtt, espressif/cjson) werden ueber main/idf_component.yml
+    # eingebunden.
     REQUIRES
         nvs_flash
         esp_wifi
@@ -27,4 +29,8 @@ idf_component_register(
         esp_driver_spi
         esp_driver_gpio
         esp_driver_ledc
+        # "driver" statt esp_driver_i2c: touch_xpt2046.c/display_ui.c nutzen
+        # bewusst die alte driver/i2c.h-API (i2c_param_config/i2c_driver_install),
+        # die "driver" als Kompatibilitaets-Wrapper um esp_driver_i2c bereitstellt.
+        driver
 )

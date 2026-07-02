@@ -1,17 +1,27 @@
 #include "display_ui.h"
 #include "shared_state.h"
-#include "bsp_pins.h"
+#include "board_profiles.h"
 #include "touch_xpt2046.h"
 #include "web_portal.h"
 #include "weather_service.h"
 #include "mdi_icons.h"
 
 #include "driver/spi_master.h"
+#include "driver/i2c.h"
 #include "driver/gpio.h"
 #include "driver/ledc.h"
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_panel_ops.h"
 #include "esp_lcd_ili9341.h"
+// HINWEIS: Diese drei Header/Funktionsnamen folgen der ueblichen Espressif-
+// Namenskonvention fuer esp_lcd-Panel-Treiber (analog zu esp_lcd_ili9341.h /
+// esp_lcd_new_panel_ili9341). Noch nicht auf Hardware verifiziert - falls der
+// Component-Manager eine andere Komponente/Funktion fuer eines der Panels
+// aufloest, hier und in main/idf_component.yml nachziehen.
+#include "esp_lcd_ili9488.h"
+#include "esp_lcd_st7796.h"
+#include "esp_lcd_gc9a01.h"
+#include "esp_lcd_panel_ssd1306.h"
 #include "esp_lvgl_port.h"
 #include "esp_system.h"
 #include "esp_log.h"
@@ -45,12 +55,18 @@ static const char *TAG = "ui";
 #define COL_THERMO      lv_color_hex(0xE0555A)
 #define COL_RAIN        lv_color_hex(0x4FA6E0)
 
-// ---- Layout-Konstanten (320x240 Landscape) ----
+// ---- Layout-Konstanten der Kachel-UI (LCD_SHAPE_RECT) ----
+// Breiten skalieren mit der tatsaechlichen Panel-Aufloesung (s_hres/s_vres,
+// siehe unten); Hoehen bleiben absolut wie auf dem 320x240-Referenzdisplay
+// (CYD) - auf groesseren Panels (z.B. ILI9488 480x320) bleibt dadurch mehr
+// Luft, statt dass Elemente verzerrt werden.
 #define TOPBAR_H 62
 #define CARD_Y   66
-#define CARD_H   116   // war 128; kleiner Karten, damit die Settings-Zeile
-                        // darunter mehr Luft hat (wurde an der physischen
-                        // Bildschirmunterkante abgeschnitten)
+#define CARD_H   116
+
+// Panel-/UI-Zustand, in lcd_init() bzw. den *_init()-Helfern gesetzt.
+static const board_profile_t *s_profile;
+static int s_hres, s_vres;
 
 // ---- Bildschirmzustand ----
 enum { SCR_MAIN = 0, SCR_CPU = 1, SCR_GPU = 2, SCR_SETTINGS = 3 };
@@ -87,11 +103,17 @@ static lv_obj_t *set_ap_btn, *set_ap_btn_lbl;
 static bool s_ap_confirm_armed = false;
 static lv_timer_t *s_ap_confirm_timer = NULL;
 
+// Widgets der Minimal-UIs (LCD_SHAPE_MONO / LCD_SHAPE_ROUND)
+static lv_obj_t *mono_lbl_cpu, *mono_lbl_gpu, *mono_lbl_time;
+static lv_obj_t *round_arc_cpu, *round_arc_gpu, *round_lbl_cpu, *round_lbl_gpu, *round_lbl_time;
+
 // ------------------------------------------------------------------
 // Display-/Backlight-Init
 // ------------------------------------------------------------------
-static void backlight_init(void)
+static void backlight_init(int bl_gpio)
 {
+    if (bl_gpio < 0) return; // z.B. selbstleuchtende OLEDs ohne Backlight-Pin
+
     ledc_timer_config_t t = {
         .speed_mode      = LEDC_LOW_SPEED_MODE,
         .duty_resolution = LEDC_TIMER_8_BIT,
@@ -101,7 +123,7 @@ static void backlight_init(void)
     };
     ledc_timer_config(&t);
     ledc_channel_config_t c = {
-        .gpio_num   = TFT_PIN_BL,
+        .gpio_num   = bl_gpio,
         .speed_mode = LEDC_LOW_SPEED_MODE,
         .channel    = LEDC_CHANNEL_0,
         .timer_sel  = LEDC_TIMER_0,
@@ -117,13 +139,15 @@ static void backlight_init(void)
 // beide Faelle über denselben Zeitvergleich ab, da last_update_ms beim
 // Boot bei 0 startet). Aufwecken per Touch (erster Touch weckt nur, loest
 // keine Aktion aus) oder automatisch, sobald wieder Daten eintreffen.
+// Nur fuer Panels mit Backlight-Pin relevant (siehe backlight_init()).
 // ------------------------------------------------------------------
 #define STANDBY_TIMEOUT_MS (2 * 60 * 1000) // 2 Minuten ohne Daten -> Standby
 static bool s_standby = false;
+static bool s_has_backlight = false;
 
 static void enter_standby(void)
 {
-    if (s_standby) return;
+    if (s_standby || !s_has_backlight) return;
     s_standby = true;
     ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, 0);
     ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
@@ -139,6 +163,7 @@ static void exit_standby(void)
 
 static void check_standby(void)
 {
+    if (!s_has_backlight) return;
     bool no_data = (now_ms() - hw_info.last_update_ms) > STANDBY_TIMEOUT_MS;
     if (no_data) {
         enter_standby();
@@ -147,65 +172,83 @@ static void check_standby(void)
     }
 }
 
-static void lcd_init(lv_display_t **out_disp)
+// ------------------------------------------------------------------
+// Farb-SPI-Panels (ILI9341/ILI9488/ST7796S/GC9A01)
+// ------------------------------------------------------------------
+static lv_display_t *lcd_init_color_spi(const board_profile_t *p)
 {
-    backlight_init();
+    backlight_init(p->bl);
+    s_has_backlight = (p->bl >= 0);
 
     spi_bus_config_t bus = {
-        .mosi_io_num     = TFT_PIN_MOSI,
-        .miso_io_num     = TFT_PIN_MISO,
-        .sclk_io_num     = TFT_PIN_SCLK,
+        .mosi_io_num     = p->mosi,
+        .miso_io_num     = p->miso,
+        .sclk_io_num     = p->sclk,
         .quadwp_io_num   = -1,
         .quadhd_io_num   = -1,
-        .max_transfer_sz = TFT_H_RES * 80 * sizeof(uint16_t),
+        .max_transfer_sz = p->h_res * 80 * sizeof(uint16_t),
     };
-    ESP_ERROR_CHECK(spi_bus_initialize(TFT_SPI_HOST, &bus, SPI_DMA_CH_AUTO));
+    ESP_ERROR_CHECK(spi_bus_initialize(p->spi_host, &bus, SPI_DMA_CH_AUTO));
 
     esp_lcd_panel_io_handle_t io = NULL;
     esp_lcd_panel_io_spi_config_t io_cfg = {
-        .dc_gpio_num   = TFT_PIN_DC,
-        .cs_gpio_num   = TFT_PIN_CS,
-        .pclk_hz       = TFT_SPI_HZ,
+        .dc_gpio_num   = p->dc,
+        .cs_gpio_num   = p->cs,
+        .pclk_hz       = p->spi_hz,
         .lcd_cmd_bits  = 8,
         .lcd_param_bits = 8,
         .spi_mode      = 0,
         .trans_queue_depth = 10,
     };
-    ESP_ERROR_CHECK(esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)TFT_SPI_HOST, &io_cfg, &io));
+    ESP_ERROR_CHECK(esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)p->spi_host, &io_cfg, &io));
 
     esp_lcd_panel_handle_t panel = NULL;
     esp_lcd_panel_dev_config_t panel_cfg = {
-        .reset_gpio_num = TFT_PIN_RST,
-        .rgb_ele_order  = LCD_RGB_ELEMENT_ORDER_BGR, // CYD i.d.R. BGR; falls Farben vertauscht: RGB
+        .reset_gpio_num = p->rst,
+        .rgb_ele_order  = p->bgr ? LCD_RGB_ELEMENT_ORDER_BGR : LCD_RGB_ELEMENT_ORDER_RGB,
         .bits_per_pixel = 16,
     };
-    ESP_ERROR_CHECK(esp_lcd_new_panel_ili9341(io, &panel_cfg, &panel));
+
+    switch (app_config.display_type) {
+        case DISPLAY_ILI9488:
+            ESP_ERROR_CHECK(esp_lcd_new_panel_ili9488(io, &panel_cfg, &panel));
+            break;
+        case DISPLAY_ST7796S:
+            ESP_ERROR_CHECK(esp_lcd_new_panel_st7796(io, &panel_cfg, &panel));
+            break;
+        case DISPLAY_GC9A01:
+            ESP_ERROR_CHECK(esp_lcd_new_panel_gc9a01(io, &panel_cfg, &panel));
+            break;
+        case DISPLAY_CYD_ILI9341:
+        default:
+            ESP_ERROR_CHECK(esp_lcd_new_panel_ili9341(io, &panel_cfg, &panel));
+            break;
+    }
 
     ESP_ERROR_CHECK(esp_lcd_panel_reset(panel));
     ESP_ERROR_CHECK(esp_lcd_panel_init(panel));
-    // Auf realer CYD-Hardware verifiziert: Farbinversion "true" ergab ein
-    // komplett invertiertes Bild (schwarzer Hintergrund -> weiss, cyan/orange
-    // Akzente -> rot/blau vertauscht). Fuer dieses Panel daher deaktiviert.
+    // Auf realer CYD-Hardware (ILI9341) verifiziert: Farbinversion "true" ergab
+    // ein komplett invertiertes Bild. Fuer die anderen Panels noch nicht
+    // gegengeprueft - bei falschen Farben hier pro Displaytyp anpassen.
     ESP_ERROR_CHECK(esp_lcd_panel_invert_color(panel, false));
     ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(panel, true));
 
-    // Rotation -> swap/mirror + Aufloesung. UI ist auf Landscape (320x240)
-    // ausgelegt (rotation 1/3); Portrait ist nicht gelayoutet.
-    //
-    // Auf realer CYD-Hardware verifiziert: rotation=1 mit mirror_x=true
-    // ergab ein horizontal gespiegeltes Bild (Text seitenverkehrt, oben/unten
-    // korrekt) - mirror_x fuer rotation=1 daher auf false korrigiert.
-    // rotation=3 ist die 180-Grad-Variante von rotation=1 (beide Mirror-Bits
-    // gegenueber rotation=1 invertiert) und entsprechend mitgezogen.
-    bool swap_xy, mirror_x, mirror_y;
-    int hres, vres;
-    switch (app_config.rotation) {
-        case 0: swap_xy = false; mirror_x = false; mirror_y = false; hres = 240; vres = 320; break;
-        case 2: swap_xy = false; mirror_x = true;  mirror_y = true;  hres = 240; vres = 320; break;
-        case 3: swap_xy = true;  mirror_x = true;  mirror_y = true;  hres = 320; vres = 240; break;
-        case 1:
-        default: swap_xy = true; mirror_x = false; mirror_y = false; hres = 320; vres = 240; break;
+    // Rotation -> swap/mirror + Aufloesung. Nur fuer LCD_SHAPE_RECT relevant;
+    // das runde GC9A01 bleibt immer in nativer Aufloesung (kein Rotationsfall
+    // vorgesehen, die Round-UI ist symmetrisch aufgebaut).
+    bool swap_xy = false, mirror_x = false, mirror_y = false;
+    int hres = p->h_res, vres = p->v_res;
+    if (p->shape == LCD_SHAPE_RECT) {
+        switch (app_config.rotation) {
+            case 0: swap_xy = false; mirror_x = false; mirror_y = false; hres = p->v_res; vres = p->h_res; break;
+            case 2: swap_xy = false; mirror_x = true;  mirror_y = true;  hres = p->v_res; vres = p->h_res; break;
+            case 3: swap_xy = true;  mirror_x = true;  mirror_y = true;  hres = p->h_res; vres = p->v_res; break;
+            case 1:
+            default: swap_xy = true; mirror_x = false; mirror_y = false; hres = p->h_res; vres = p->v_res; break;
+        }
     }
+    s_hres = hres;
+    s_vres = vres;
 
     lvgl_port_cfg_t pcfg = ESP_LVGL_PORT_INIT_CONFIG();
     ESP_ERROR_CHECK(lvgl_port_init(&pcfg));
@@ -213,7 +256,7 @@ static void lcd_init(lv_display_t **out_disp)
     lvgl_port_display_cfg_t dcfg = {
         .io_handle     = io,
         .panel_handle  = panel,
-        .buffer_size   = TFT_H_RES * 40,
+        .buffer_size   = p->h_res * 40,
         .double_buffer = true,
         .hres          = hres,
         .vres          = vres,
@@ -229,11 +272,83 @@ static void lcd_init(lv_display_t **out_disp)
             .swap_bytes  = true,
         },
     };
-    *out_disp = lvgl_port_add_disp(&dcfg);
+    return lvgl_port_add_disp(&dcfg);
 }
 
 // ------------------------------------------------------------------
-// Touch -> LVGL-Eingabegeraet
+// Monochromes I2C-OLED (SSD1309, SSD1306-kompatibles Protokoll)
+// ------------------------------------------------------------------
+static lv_display_t *lcd_init_mono_i2c(const board_profile_t *p)
+{
+    s_has_backlight = false; // OLED ist selbstleuchtend, kein Backlight-Pin
+
+    i2c_config_t i2c_cfg = {
+        .mode             = I2C_MODE_MASTER,
+        .sda_io_num       = p->i2c_sda,
+        .scl_io_num       = p->i2c_scl,
+        .sda_pullup_en    = GPIO_PULLUP_ENABLE,
+        .scl_pullup_en    = GPIO_PULLUP_ENABLE,
+        .master.clk_speed = p->i2c_hz,
+    };
+    ESP_ERROR_CHECK(i2c_param_config(I2C_NUM_0, &i2c_cfg));
+    ESP_ERROR_CHECK(i2c_driver_install(I2C_NUM_0, i2c_cfg.mode, 0, 0, 0));
+
+    esp_lcd_panel_io_handle_t io = NULL;
+    esp_lcd_panel_io_i2c_config_t io_cfg = {
+        .dev_addr          = p->i2c_addr,
+        .control_phase_bytes = 1,
+        .lcd_cmd_bits      = 8,
+        .lcd_param_bits    = 8,
+        .dc_bit_offset     = 6,
+    };
+    ESP_ERROR_CHECK(esp_lcd_new_panel_io_i2c((esp_lcd_i2c_bus_handle_t)I2C_NUM_0, &io_cfg, &io));
+
+    esp_lcd_panel_ssd1306_config_t ssd_cfg = { .height = p->v_res };
+    esp_lcd_panel_dev_config_t panel_cfg = {
+        .reset_gpio_num = -1,
+        .bits_per_pixel = 1,
+        .vendor_config  = &ssd_cfg,
+    };
+    esp_lcd_panel_handle_t panel = NULL;
+    ESP_ERROR_CHECK(esp_lcd_new_panel_ssd1306(io, &panel_cfg, &panel));
+    ESP_ERROR_CHECK(esp_lcd_panel_reset(panel));
+    ESP_ERROR_CHECK(esp_lcd_panel_init(panel));
+    ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(panel, true));
+
+    s_hres = p->h_res;
+    s_vres = p->v_res;
+
+    lvgl_port_cfg_t pcfg = ESP_LVGL_PORT_INIT_CONFIG();
+    ESP_ERROR_CHECK(lvgl_port_init(&pcfg));
+
+    lvgl_port_display_cfg_t dcfg = {
+        .io_handle     = io,
+        .panel_handle  = panel,
+        .buffer_size   = p->h_res * p->v_res,
+        .double_buffer = false,
+        .hres          = p->h_res,
+        .vres          = p->v_res,
+        .monochrome    = true,
+        .color_format  = LV_COLOR_FORMAT_I1,
+        .rotation      = { .swap_xy = false, .mirror_x = false, .mirror_y = false },
+        .flags         = { .buff_dma = false, .swap_bytes = false },
+    };
+    return lvgl_port_add_disp(&dcfg);
+}
+
+static lv_display_t *lcd_init(void)
+{
+    s_profile = board_profile_get(app_config.display_type);
+    ESP_LOGI(TAG, "Display: %s", s_profile->name);
+
+    if (s_profile->bus == LCD_BUS_I2C) {
+        return lcd_init_mono_i2c(s_profile);
+    }
+    return lcd_init_color_spi(s_profile);
+}
+
+// ------------------------------------------------------------------
+// Touch -> LVGL-Eingabegeraet (nur Profile mit has_touch=true)
 // ------------------------------------------------------------------
 static void touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
 {
@@ -327,7 +442,8 @@ static void compute_trend(const history_t *h, const char **sym, lv_color_t *col)
 }
 
 // ------------------------------------------------------------------
-// Navigation
+// Navigation (nur LCD_SHAPE_RECT-UI, die anderen Shapes haben keine Touch-
+// Navigation und zeigen alles auf einem einzigen Screen)
 // ------------------------------------------------------------------
 static void refresh_now(void); // fwd
 
@@ -395,12 +511,12 @@ static void ap_btn_click_cb(lv_event_t *e)
 }
 
 // ------------------------------------------------------------------
-// Aufbau Hauptschirm
+// Aufbau Hauptschirm (LCD_SHAPE_RECT)
 // ------------------------------------------------------------------
-static void build_tile(lv_obj_t *parent, int x, const char *title, tile_ctx_t *tile, int which,
+static void build_tile(lv_obj_t *parent, int x, int w, const char *title, tile_ctx_t *tile, int which,
                        bool is_gpu, lv_color_t bar_a, lv_color_t bar_b)
 {
-    lv_obj_t *card = make_card(parent, x, CARD_Y, 148, CARD_H, COL_CARD_BORDER);
+    lv_obj_t *card = make_card(parent, x, CARD_Y, w, CARD_H, COL_CARD_BORDER);
     lv_obj_add_flag(card, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(card, tile_click_cb, LV_EVENT_CLICKED, (void *)(intptr_t)which);
 
@@ -412,7 +528,7 @@ static void build_tile(lv_obj_t *parent, int x, const char *title, tile_ctx_t *t
 
     if (is_gpu) {
         lv_obj_t *badge = shape_rrect(card, 28, 16, 8, COL_BADGE_BG);
-        lv_obj_set_pos(badge, 148 - 34, 6);
+        lv_obj_set_pos(badge, w - 34, 6);
         lv_obj_t *bl = make_label(badge, "3D", &lv_font_montserrat_14, COL_BADGE_TEXT);
         lv_obj_center(bl);
     }
@@ -421,7 +537,7 @@ static void build_tile(lv_obj_t *parent, int x, const char *title, tile_ctx_t *t
     lv_obj_align(tile->load_lbl, LV_ALIGN_CENTER, 0, -14);
 
     tile->bar = lv_bar_create(card);
-    lv_obj_set_size(tile->bar, 120, 8);
+    lv_obj_set_size(tile->bar, w - 28, 8);
     lv_obj_align(tile->bar, LV_ALIGN_BOTTOM_MID, 0, -30);
     lv_bar_set_range(tile->bar, 0, 100);
     lv_obj_set_style_radius(tile->bar, 4, LV_PART_MAIN);
@@ -434,7 +550,7 @@ static void build_tile(lv_obj_t *parent, int x, const char *title, tile_ctx_t *t
     lv_obj_set_style_bg_opa(tile->bar, LV_OPA_COVER, LV_PART_INDICATOR);
 
     lv_obj_t *row = lv_obj_create(card);
-    lv_obj_set_size(row, 132, 18);
+    lv_obj_set_size(row, w - 16, 18);
     lv_obj_align(row, LV_ALIGN_BOTTOM_MID, 0, -6);
     lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(row, 0, 0);
@@ -459,7 +575,7 @@ static void build_main(void)
     // ---- Top-Bar ----
     lv_obj_t *bar = lv_obj_create(scr_main);
     lv_obj_set_pos(bar, 0, 0);
-    lv_obj_set_size(bar, 320, TOPBAR_H);
+    lv_obj_set_size(bar, s_hres, TOPBAR_H);
     lv_obj_set_style_bg_color(bar, COL_CARD, 0);
     lv_obj_set_style_bg_opa(bar, LV_OPA_COVER, 0);
     lv_obj_set_style_radius(bar, 0, 0);
@@ -511,14 +627,16 @@ static void build_main(void)
     icon_wifi = make_label(bar, MDI_WIFI, &mdi_icons_20, COL_WARN);
     lv_obj_align(icon_wifi, LV_ALIGN_TOP_RIGHT, -4, 3);
 
-    // ---- Kacheln ----
-    build_tile(scr_main, 6,   "CPU", &cpu_tile, SCR_CPU, false, COL_CPU_BAR_A, COL_CPU_BAR_B);
-    build_tile(scr_main, 166, "GPU", &gpu_tile, SCR_GPU, true,  COL_GPU_BAR_A, COL_GPU_BAR_B);
+    // ---- Kacheln (Breite anhand der Panel-Aufloesung berechnet) ----
+    const int margin = 6, gap = 6;
+    int tile_w = (s_hres - 2 * margin - gap) / 2;
+    build_tile(scr_main, margin, tile_w, "CPU", &cpu_tile, SCR_CPU, false, COL_CPU_BAR_A, COL_CPU_BAR_B);
+    build_tile(scr_main, margin + tile_w + gap, tile_w, "GPU", &gpu_tile, SCR_GPU, true, COL_GPU_BAR_A, COL_GPU_BAR_B);
 
     // "Warte auf Daten"-Hinweis, ueberlagert die Kachel-Unterkante bis zur
     // ersten MQTT-Nachricht (danach ausgeblendet).
     lbl_waiting = make_label(scr_main, "Warte auf MQTT-Daten...", &lv_font_montserrat_14, COL_SUB);
-    lv_obj_set_width(lbl_waiting, 308);
+    lv_obj_set_width(lbl_waiting, s_hres - 12);
     lv_obj_set_style_text_align(lbl_waiting, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_style_bg_color(lbl_waiting, COL_BG, 0);
     lv_obj_set_style_bg_opa(lbl_waiting, LV_OPA_80, 0);
@@ -528,16 +646,13 @@ static void build_main(void)
     // ---- Settings-Knopf (unten) ----
     lv_obj_t *settings_btn = lv_obj_create(scr_main);
     lv_obj_set_pos(settings_btn, 0, CARD_Y + CARD_H);
-    lv_obj_set_size(settings_btn, 320, 240 - (CARD_Y + CARD_H));
+    lv_obj_set_size(settings_btn, s_hres, s_vres - (CARD_Y + CARD_H));
     lv_obj_set_style_bg_opa(settings_btn, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(settings_btn, 0, 0);
     lv_obj_clear_flag(settings_btn, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(settings_btn, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(settings_btn, settings_click_cb, LV_EVENT_CLICKED, NULL);
 
-    // War zuvor bis an die physische Bildschirmunterkante (y=240) positioniert
-    // und wurde dort abgeschnitten - jetzt mit Sicherheitsabstand nach oben
-    // gerueckt.
     lv_obj_t *gear = make_label(settings_btn, MDI_COG, &mdi_icons_20, COL_SUB);
     lv_obj_align(gear, LV_ALIGN_TOP_MID, 0, 2);
     lv_obj_t *set_lbl = make_label(settings_btn, "SETTINGS", &lv_font_montserrat_14, COL_SUB);
@@ -613,11 +728,11 @@ static void build_detail(void)
 
     lv_obj_t *cap1 = make_label(scr_detail, "Auslastung (%) - Verlauf", &lv_font_montserrat_14, COL_SUB);
     lv_obj_set_pos(cap1, 12, 108);
-    chart_load = make_chart(scr_detail, 12, 124, 300, 50, 100, 5, COL_ACCENT, &ser_load);
+    chart_load = make_chart(scr_detail, 12, 124, s_hres - 20, 50, 100, 5, COL_ACCENT, &ser_load);
 
     lv_obj_t *cap2 = make_label(scr_detail, "Temperatur (C) - Verlauf", &lv_font_montserrat_14, COL_SUB);
     lv_obj_set_pos(cap2, 12, 180);
-    chart_temp = make_chart(scr_detail, 12, 196, 300, 40, 120, 5, COL_GPU, &ser_temp);
+    chart_temp = make_chart(scr_detail, 12, 196, s_hres - 20, 40, 120, 5, COL_GPU, &ser_temp);
 }
 
 // ------------------------------------------------------------------
@@ -654,12 +769,12 @@ static void build_settings(void)
         "WLAN/MQTT/Wetter werden weiterhin ueber das Webportal konfiguriert.",
         &lv_font_montserrat_14, COL_SUB);
     lv_obj_set_pos(hint, 16, 158);
-    lv_obj_set_width(hint, 288);
+    lv_obj_set_width(hint, s_hres - 32);
     lv_label_set_long_mode(hint, LV_LABEL_LONG_MODE_WRAP);
 
     set_ap_btn = lv_button_create(scr_settings);
     lv_obj_set_pos(set_ap_btn, 16, 198);
-    lv_obj_set_size(set_ap_btn, 288, 34);
+    lv_obj_set_size(set_ap_btn, s_hres - 32, 34);
     lv_obj_set_style_bg_color(set_ap_btn, COL_CARD, 0);
     lv_obj_add_event_cb(set_ap_btn, ap_btn_click_cb, LV_EVENT_CLICKED, NULL);
     set_ap_btn_lbl = make_label(set_ap_btn, "Neustart in Setup-AP", &lv_font_montserrat_14, COL_TEXT);
@@ -667,7 +782,98 @@ static void build_settings(void)
 }
 
 // ------------------------------------------------------------------
-// Dynamische Updates
+// Minimal-UI fuer monochrome Displays (SSD1309, 128x64) - kein Touch, kein
+// Farbverlauf/Balken (1bpp), nur Text. Platzhalter-Layout, das spaeter noch
+// verfeinert werden kann.
+// ------------------------------------------------------------------
+static void build_mono_ui(void)
+{
+    scr_main = lv_obj_create(NULL);
+    style_screen(scr_main);
+
+    mono_lbl_time = make_label(scr_main, "--:--:--", &lv_font_montserrat_14, COL_TEXT);
+    lv_obj_set_pos(mono_lbl_time, 2, 0);
+
+    mono_lbl_cpu = make_label(scr_main, "CPU --% --C", &lv_font_montserrat_14, COL_TEXT);
+    lv_obj_set_pos(mono_lbl_cpu, 2, 24);
+    mono_lbl_gpu = make_label(scr_main, "GPU --% --C", &lv_font_montserrat_14, COL_TEXT);
+    lv_obj_set_pos(mono_lbl_gpu, 2, 44);
+}
+
+static void refresh_mono_ui(void)
+{
+    char buf[32];
+    time_t now = time(NULL);
+    struct tm ti;
+    localtime_r(&now, &ti);
+    if (ti.tm_year > 100) {
+        strftime(buf, sizeof(buf), "%H:%M:%S", &ti);
+        lv_label_set_text(mono_lbl_time, buf);
+    }
+    snprintf(buf, sizeof(buf), "CPU %d%% %dC", (int)(hw_info.cpu_load + 0.5f), (int)(hw_info.cpu_temp + 0.5f));
+    lv_label_set_text(mono_lbl_cpu, buf);
+    snprintf(buf, sizeof(buf), "GPU %d%% %dC", (int)(hw_info.gpu_load + 0.5f), (int)(hw_info.gpu_temp + 0.5f));
+    lv_label_set_text(mono_lbl_gpu, buf);
+}
+
+// ------------------------------------------------------------------
+// Minimal-UI fuer runde Displays (GC9A01, 240x240) - kein Touch, zwei Arcs
+// fuer CPU/GPU-Auslastung, Uhrzeit in der Mitte. Platzhalter-Layout, das
+// spaeter noch durch ein ausgearbeitetes rundes Layout ersetzt werden kann.
+// ------------------------------------------------------------------
+static void build_round_ui(void)
+{
+    scr_main = lv_obj_create(NULL);
+    style_screen(scr_main);
+
+    int d = s_hres < s_vres ? s_hres : s_vres; // Durchmesser = kleinere Kante
+
+    round_arc_cpu = lv_arc_create(scr_main);
+    lv_obj_set_size(round_arc_cpu, d - 8, d - 8);
+    lv_obj_center(round_arc_cpu);
+    lv_arc_set_rotation(round_arc_cpu, 270);
+    lv_arc_set_bg_angles(round_arc_cpu, 0, 180);
+    lv_arc_set_range(round_arc_cpu, 0, 100);
+    lv_obj_set_style_arc_color(round_arc_cpu, COL_CPU_BAR_A, LV_PART_INDICATOR);
+    lv_obj_remove_flag(round_arc_cpu, LV_OBJ_FLAG_CLICKABLE);
+
+    round_arc_gpu = lv_arc_create(scr_main);
+    lv_obj_set_size(round_arc_gpu, d - 28, d - 28);
+    lv_obj_center(round_arc_gpu);
+    lv_arc_set_rotation(round_arc_gpu, 90);
+    lv_arc_set_bg_angles(round_arc_gpu, 0, 180);
+    lv_arc_set_range(round_arc_gpu, 0, 100);
+    lv_obj_set_style_arc_color(round_arc_gpu, COL_GPU_BAR_A, LV_PART_INDICATOR);
+    lv_obj_remove_flag(round_arc_gpu, LV_OBJ_FLAG_CLICKABLE);
+
+    round_lbl_time = make_label(scr_main, "--:--:--", &lv_font_montserrat_20, COL_TEXT);
+    lv_obj_align(round_lbl_time, LV_ALIGN_CENTER, 0, -20);
+    round_lbl_cpu = make_label(scr_main, "CPU --%", &lv_font_montserrat_16, COL_ACCENT);
+    lv_obj_align(round_lbl_cpu, LV_ALIGN_CENTER, 0, 6);
+    round_lbl_gpu = make_label(scr_main, "GPU --%", &lv_font_montserrat_16, COL_GPU);
+    lv_obj_align(round_lbl_gpu, LV_ALIGN_CENTER, 0, 28);
+}
+
+static void refresh_round_ui(void)
+{
+    char buf[16];
+    time_t now = time(NULL);
+    struct tm ti;
+    localtime_r(&now, &ti);
+    if (ti.tm_year > 100) {
+        strftime(buf, sizeof(buf), "%H:%M:%S", &ti);
+        lv_label_set_text(round_lbl_time, buf);
+    }
+    lv_arc_set_value(round_arc_cpu, (int)(hw_info.cpu_load + 0.5f));
+    lv_arc_set_value(round_arc_gpu, (int)(hw_info.gpu_load + 0.5f));
+    snprintf(buf, sizeof(buf), "CPU %d%%", (int)(hw_info.cpu_load + 0.5f));
+    lv_label_set_text(round_lbl_cpu, buf);
+    snprintf(buf, sizeof(buf), "GPU %d%%", (int)(hw_info.gpu_load + 0.5f));
+    lv_label_set_text(round_lbl_gpu, buf);
+}
+
+// ------------------------------------------------------------------
+// Dynamische Updates (LCD_SHAPE_RECT)
 // ------------------------------------------------------------------
 static void update_tile(tile_ctx_t *tile, const history_t *hist, float load, float temp, float power)
 {
@@ -803,31 +1009,51 @@ static void tick_cb(lv_timer_t *t)
 {
     (void)t;
     check_standby();
-    refresh_now();
+    switch (s_profile->shape) {
+        case LCD_SHAPE_MONO:  refresh_mono_ui();  break;
+        case LCD_SHAPE_ROUND: refresh_round_ui(); break;
+        default:              refresh_now();      break;
+    }
 }
 
 void display_ui_begin(void)
 {
-    lv_display_t *disp = NULL;
-    lcd_init(&disp);
-    touch_xpt2046_init();
+    lv_display_t *disp = lcd_init();
+
+    if (s_profile->has_touch) {
+        touch_xpt2046_init(s_profile);
+    }
 
     // Ab hier LVGL-Objekte nur unter Lock anlegen (esp_lvgl_port-Task laeuft).
     lvgl_port_lock(0);
 
-    lv_indev_t *indev = lv_indev_create();
-    lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);
-    lv_indev_set_read_cb(indev, touch_read_cb);
-    lv_indev_set_display(indev, disp);
+    if (s_profile->has_touch) {
+        lv_indev_t *indev = lv_indev_create();
+        lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);
+        lv_indev_set_read_cb(indev, touch_read_cb);
+        lv_indev_set_display(indev, disp);
+    }
 
-    build_main();
-    build_detail();
-    build_settings();
-    lv_screen_load(scr_main);
+    switch (s_profile->shape) {
+        case LCD_SHAPE_MONO:
+            build_mono_ui();
+            lv_screen_load(scr_main);
+            break;
+        case LCD_SHAPE_ROUND:
+            build_round_ui();
+            lv_screen_load(scr_main);
+            break;
+        default:
+            build_main();
+            build_detail();
+            build_settings();
+            lv_screen_load(scr_main);
+            break;
+    }
 
     lv_timer_create(tick_cb, 1000, NULL); // 1x/Sek aktualisieren
-    refresh_now();
+    tick_cb(NULL);
 
     lvgl_port_unlock();
-    ESP_LOGI(TAG, "UI initialisiert");
+    ESP_LOGI(TAG, "UI initialisiert (%s)", s_profile->name);
 }

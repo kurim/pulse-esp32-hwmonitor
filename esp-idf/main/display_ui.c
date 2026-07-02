@@ -549,10 +549,13 @@ static void build_main(void)
     lv_obj_add_flag(settings_btn, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(settings_btn, settings_click_cb, LV_EVENT_CLICKED, NULL);
 
+    // War zuvor bis an die physische Bildschirmunterkante (y=240) positioniert
+    // und wurde dort abgeschnitten - jetzt mit Sicherheitsabstand nach oben
+    // gerueckt.
     lv_obj_t *gear = make_label(settings_btn, LV_SYMBOL_SETTINGS, &lv_font_montserrat_20, COL_SUB);
-    lv_obj_align(gear, LV_ALIGN_TOP_MID, 0, 2);
+    lv_obj_align(gear, LV_ALIGN_TOP_MID, 0, 0);
     lv_obj_t *set_lbl = make_label(settings_btn, "SETTINGS", &lv_font_montserrat_14, COL_SUB);
-    lv_obj_align(set_lbl, LV_ALIGN_TOP_MID, 0, 26);
+    lv_obj_align(set_lbl, LV_ALIGN_TOP_MID, 0, 22);
 }
 
 // ------------------------------------------------------------------
@@ -732,7 +735,10 @@ static void refresh_now(void)
         snprintf(buf, sizeof(buf), "%.0fkm/h %s",
                  weather_info.wind_speed, weather_wind_compass(weather_info.wind_deg));
         lv_label_set_text(lbl_wind, buf);
-        snprintf(buf, sizeof(buf), "%.1fmm", weather_info.rain_1h);
+        // Ohne "mm"-Einheit: das Regen-Icon liefert den Kontext, und die
+        // 48px breite Box (Sicherheitsabstand zum WLAN-Icon) reichte fuer
+        // "X.Xmm" nicht zuverlässig (wurde auf Hardware abgeschnitten).
+        snprintf(buf, sizeof(buf), "%.1f", weather_info.rain_1h);
         lv_label_set_text(lbl_rain, buf);
     } else if (app_config.weather_enabled) {
         lv_label_set_text(lbl_weather, "--C --%");

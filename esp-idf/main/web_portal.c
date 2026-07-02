@@ -457,3 +457,10 @@ void web_portal_begin(void)
 bool        web_portal_ap_mode(void)  { return s_ap_mode; }
 const char *web_portal_ip(void)       { return s_ip; }
 const char *web_portal_ap_ssid(void)  { return s_ap_ssid; }
+
+void web_portal_force_ap(void)
+{
+    wifi_connected = false;
+    mqtt_connected  = false;
+    start_ap();
+}

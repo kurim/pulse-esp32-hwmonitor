@@ -2,6 +2,8 @@
 #include "shared_state.h"
 #include "bsp_pins.h"
 #include "touch_xpt2046.h"
+#include "web_portal.h"
+#include "weather_service.h"
 
 #include "driver/spi_master.h"
 #include "driver/gpio.h"
@@ -10,6 +12,7 @@
 #include "esp_lcd_panel_ops.h"
 #include "esp_lcd_ili9341.h"
 #include "esp_lvgl_port.h"
+#include "esp_system.h"
 #include "esp_log.h"
 #include "lvgl.h"
 #include <time.h>
@@ -18,33 +21,67 @@
 
 static const char *TAG = "ui";
 
-// ---- Farben (RGB565-Hex wie im Arduino-Port) ----
-#define COL_BG      lv_color_hex(0x000000)
-#define COL_CARD    lv_color_hex(0x171C28)
-#define COL_ACCENT  lv_color_hex(0x00FFFF)
-#define COL_GPU     lv_color_hex(0xFFA400)
-#define COL_TEXT    lv_color_hex(0xFFFFFF)
-#define COL_SUB     lv_color_hex(0x8893A8)
-#define COL_WARN    lv_color_hex(0xF80000)
-#define COL_GREEN   lv_color_hex(0x33DD55)
-#define COL_YELLOW  lv_color_hex(0xEECC33)
+// ---- Farben ----
+#define COL_BG       lv_color_hex(0x000000)
+#define COL_CARD     lv_color_hex(0x171C28)
+#define COL_ACCENT   lv_color_hex(0x00FFFF)   // CPU-Datenfarbe (Chart/Text)
+#define COL_GPU      lv_color_hex(0xFFA400)   // GPU-Datenfarbe (Chart/Text)
+#define COL_TEXT     lv_color_hex(0xFFFFFF)
+#define COL_SUB      lv_color_hex(0x8893A8)
+#define COL_WARN     lv_color_hex(0xF80000)
+#define COL_GREEN    lv_color_hex(0x33DD55)
+#define COL_YELLOW   lv_color_hex(0xEECC33)
+
+// Karten-Rahmen (beide Kacheln teilen sich denselben "Frame"-Farbton;
+// Unterscheidung erfolgt ueber Balken-Gradient + "3D"-Badge auf GPU).
+#define COL_CARD_BORDER lv_color_hex(0x2FB6E0)
+#define COL_CPU_BAR_A   lv_color_hex(0x2FB6E0)
+#define COL_CPU_BAR_B   lv_color_hex(0x0D5A8A)
+#define COL_GPU_BAR_A   lv_color_hex(0xE9E14C)
+#define COL_GPU_BAR_B   lv_color_hex(0x6FCB4C)
+#define COL_BADGE_BG    lv_color_hex(0x2FB6E0)
+#define COL_BADGE_TEXT  lv_color_hex(0x04222A)
+#define COL_THERMO      lv_color_hex(0xE0555A)
+#define COL_RAIN        lv_color_hex(0x4FA6E0)
+
+// ---- Layout-Konstanten (320x240 Landscape) ----
+#define TOPBAR_H 62
+#define CARD_Y   66
+#define CARD_H   128
 
 // ---- Bildschirmzustand ----
-enum { SCR_MAIN = 0, SCR_CPU = 1, SCR_GPU = 2 };
+enum { SCR_MAIN = 0, SCR_CPU = 1, SCR_GPU = 2, SCR_SETTINGS = 3 };
 static int s_screen = SCR_MAIN;
 
-static lv_obj_t *scr_main, *scr_detail;
+static lv_obj_t *scr_main, *scr_detail, *scr_settings;
 
-// Hauptschirm-Widgets
-static lv_obj_t *lbl_time, *lbl_date, *lbl_weather, *dot_status;
-static lv_obj_t *cpu_load_lbl, *cpu_info_lbl, *cpu_bar;
-static lv_obj_t *gpu_load_lbl, *gpu_info_lbl, *gpu_bar;
+// Kachel-Widgets, gebuendelt pro Kachel (CPU/GPU)
+typedef struct {
+    lv_obj_t *load_lbl;
+    lv_obj_t *bar;
+    lv_obj_t *temp_lbl;
+    lv_obj_t *power_lbl;
+    lv_obj_t *trend_lbl;
+} tile_ctx_t;
+static tile_ctx_t cpu_tile, gpu_tile;
+
+// Hauptschirm-Widgets (Top-Bar)
+static lv_obj_t *lbl_time, *lbl_date;
+static lv_obj_t *lbl_weather, *lbl_weather_sub, *lbl_wind, *lbl_rain;
+static lv_obj_t *icon_wifi;
 static lv_obj_t *lbl_waiting;
 
 // Detailschirm-Widgets
 static lv_obj_t *det_title, *det_load, *det_temp, *det_power;
+static lv_obj_t *lbl_quick_cpu, *lbl_quick_gpu;
 static lv_obj_t *chart_load, *chart_temp;
 static lv_chart_series_t *ser_load, *ser_temp;
+
+// Settings-Screen-Widgets
+static lv_obj_t *set_fw, *set_ip, *set_wifi, *set_mqtt, *set_heap;
+static lv_obj_t *set_ap_btn, *set_ap_btn_lbl;
+static bool s_ap_confirm_armed = false;
+static lv_timer_t *s_ap_confirm_timer = NULL;
 
 // ------------------------------------------------------------------
 // Display-/Backlight-Init
@@ -187,9 +224,9 @@ static lv_obj_t *make_card(lv_obj_t *parent, int x, int y, int w, int h, lv_colo
     lv_obj_set_size(c, w, h);
     lv_obj_set_style_bg_color(c, COL_CARD, 0);
     lv_obj_set_style_bg_opa(c, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(c, 8, 0);
+    lv_obj_set_style_radius(c, 10, 0);
     lv_obj_set_style_border_color(c, border, 0);
-    lv_obj_set_style_border_width(c, 1, 0);
+    lv_obj_set_style_border_width(c, 2, 0);
     lv_obj_set_style_pad_all(c, 0, 0);
     lv_obj_clear_flag(c, LV_OBJ_FLAG_SCROLLABLE);
     return c;
@@ -205,7 +242,116 @@ static lv_obj_t *make_label(lv_obj_t *parent, const char *txt, const lv_font_t *
 }
 
 // ------------------------------------------------------------------
-// Event: Kachel angetippt / Zurueck
+// Einfache Vektor-Icons (nur lv_obj-Rechtecke/-Kreise, keine Bild-/SD-Karten-
+// Assets noetig). Bewusst simpel gehalten, da ungetestet auf Hardware -
+// als Annaeherung an den gewuenschten Look gedacht, nicht als Pixelkopie.
+// ------------------------------------------------------------------
+static lv_obj_t *icon_box(lv_obj_t *parent, int size)
+{
+    lv_obj_t *box = lv_obj_create(parent);
+    lv_obj_set_size(box, size, size);
+    lv_obj_set_style_bg_opa(box, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(box, 0, 0);
+    lv_obj_set_style_pad_all(box, 0, 0);
+    lv_obj_clear_flag(box, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clear_flag(box, LV_OBJ_FLAG_CLICKABLE);
+    return box;
+}
+
+static lv_obj_t *shape_dot(lv_obj_t *parent, int size, lv_color_t col)
+{
+    lv_obj_t *d = lv_obj_create(parent);
+    lv_obj_set_size(d, size, size);
+    lv_obj_set_style_radius(d, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(d, col, 0);
+    lv_obj_set_style_bg_opa(d, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(d, 0, 0);
+    lv_obj_clear_flag(d, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clear_flag(d, LV_OBJ_FLAG_CLICKABLE);
+    return d;
+}
+
+static lv_obj_t *shape_rrect(lv_obj_t *parent, int w, int h, int radius, lv_color_t col)
+{
+    lv_obj_t *r = lv_obj_create(parent);
+    lv_obj_set_size(r, w, h);
+    lv_obj_set_style_radius(r, radius, 0);
+    lv_obj_set_style_bg_color(r, col, 0);
+    lv_obj_set_style_bg_opa(r, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(r, 0, 0);
+    lv_obj_clear_flag(r, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clear_flag(r, LV_OBJ_FLAG_CLICKABLE);
+    return r;
+}
+
+static lv_obj_t *icon_chip(lv_obj_t *parent, lv_color_t col)
+{
+    lv_obj_t *box = icon_box(parent, 18);
+    lv_obj_t *outer = shape_rrect(box, 18, 18, 4, COL_CARD);
+    lv_obj_set_style_border_width(outer, 2, 0);
+    lv_obj_set_style_border_color(outer, col, 0);
+    lv_obj_set_pos(outer, 0, 0);
+    lv_obj_t *inner = shape_rrect(box, 8, 8, 2, col);
+    lv_obj_center(inner);
+    return box;
+}
+
+static lv_obj_t *icon_thermo(lv_obj_t *parent, lv_color_t col)
+{
+    lv_obj_t *box = icon_box(parent, 14);
+    lv_obj_t *stem = shape_rrect(box, 6, 10, 3, col);
+    lv_obj_align(stem, LV_ALIGN_TOP_MID, 0, 0);
+    lv_obj_t *bulb = shape_dot(box, 10, col);
+    lv_obj_align(bulb, LV_ALIGN_BOTTOM_MID, 0, 0);
+    return box;
+}
+
+static lv_obj_t *icon_sun(lv_obj_t *parent)
+{
+    lv_obj_t *box = icon_box(parent, 18);
+    lv_obj_t *core = shape_dot(box, 10, COL_YELLOW);
+    lv_obj_center(core);
+    lv_obj_t *r1 = shape_dot(box, 3, COL_YELLOW); lv_obj_align(r1, LV_ALIGN_TOP_MID, 0, 0);
+    lv_obj_t *r2 = shape_dot(box, 3, COL_YELLOW); lv_obj_align(r2, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_t *r3 = shape_dot(box, 3, COL_YELLOW); lv_obj_align(r3, LV_ALIGN_LEFT_MID, 0, 0);
+    lv_obj_t *r4 = shape_dot(box, 3, COL_YELLOW); lv_obj_align(r4, LV_ALIGN_RIGHT_MID, 0, 0);
+    return box;
+}
+
+static lv_obj_t *icon_wind(lv_obj_t *parent, lv_color_t col)
+{
+    lv_obj_t *box = icon_box(parent, 18);
+    lv_obj_t *l1 = shape_rrect(box, 10, 2, 1, col); lv_obj_align(l1, LV_ALIGN_TOP_LEFT, 0, 3);
+    lv_obj_t *l2 = shape_rrect(box, 15, 2, 1, col); lv_obj_align(l2, LV_ALIGN_LEFT_MID, 0, 0);
+    lv_obj_t *l3 = shape_rrect(box, 8,  2, 1, col); lv_obj_align(l3, LV_ALIGN_BOTTOM_LEFT, 0, -3);
+    return box;
+}
+
+static lv_obj_t *icon_rain(lv_obj_t *parent, lv_color_t col)
+{
+    lv_obj_t *box = icon_box(parent, 14);
+    lv_obj_t *d = shape_dot(box, 10, col);
+    lv_obj_center(d);
+    return box;
+}
+
+// ------------------------------------------------------------------
+// Trend-Pfeil (steigend/fallend/stabil) aus dem Auslastungs-Verlauf
+// ------------------------------------------------------------------
+static void compute_trend(const history_t *h, const char **sym, lv_color_t *col)
+{
+    if (h->count < 4) { *sym = "-"; *col = COL_SUB; return; }
+    int back = (h->count > 10) ? 10 : (h->count - 1);
+    float newest = h->load[HIST_LEN - 1];
+    float older  = h->load[HIST_LEN - 1 - back];
+    float diff = newest - older;
+    if (diff > 3.0f)       { *sym = LV_SYMBOL_UP;   *col = COL_GREEN; }
+    else if (diff < -3.0f) { *sym = LV_SYMBOL_DOWN; *col = COL_WARN;  }
+    else                   { *sym = "-";             *col = COL_SUB;  }
+}
+
+// ------------------------------------------------------------------
+// Navigation
 // ------------------------------------------------------------------
 static void refresh_now(void); // fwd
 
@@ -225,31 +371,108 @@ static void back_click_cb(lv_event_t *e)
     refresh_now();
 }
 
+static void settings_click_cb(lv_event_t *e)
+{
+    (void)e;
+    s_screen = SCR_SETTINGS;
+    lv_screen_load(scr_settings);
+    refresh_now();
+}
+
+static void settings_back_cb(lv_event_t *e)
+{
+    (void)e;
+    s_screen = SCR_MAIN;
+    lv_screen_load(scr_main);
+    refresh_now();
+}
+
+// "Neustart in Setup-AP": zwei Taps noetig (Bestaetigung), da das die
+// aktuelle WLAN-Verbindung trennt. Erster Tap "bewaffnet" den Knopf fuer 3s,
+// zweiter Tap innerhalb des Fensters loest tatsaechlich aus.
+static void ap_confirm_revert_cb(lv_timer_t *t)
+{
+    (void)t;
+    s_ap_confirm_armed = false;
+    lv_label_set_text(set_ap_btn_lbl, "Neustart in Setup-AP");
+    lv_obj_set_style_bg_color(set_ap_btn, COL_CARD, 0);
+    s_ap_confirm_timer = NULL;
+}
+
+static void ap_btn_click_cb(lv_event_t *e)
+{
+    (void)e;
+    if (!s_ap_confirm_armed) {
+        s_ap_confirm_armed = true;
+        lv_label_set_text(set_ap_btn_lbl, "Wirklich? Nochmal tippen");
+        lv_obj_set_style_bg_color(set_ap_btn, COL_WARN, 0);
+        if (s_ap_confirm_timer) lv_timer_delete(s_ap_confirm_timer);
+        s_ap_confirm_timer = lv_timer_create(ap_confirm_revert_cb, 3000, NULL);
+        lv_timer_set_repeat_count(s_ap_confirm_timer, 1);
+    } else {
+        if (s_ap_confirm_timer) { lv_timer_delete(s_ap_confirm_timer); s_ap_confirm_timer = NULL; }
+        s_ap_confirm_armed = false;
+        lv_label_set_text(set_ap_btn_lbl, "Wechsle in Setup-AP...");
+        lv_obj_set_style_bg_color(set_ap_btn, COL_CARD, 0);
+        web_portal_force_ap();
+    }
+}
+
 // ------------------------------------------------------------------
 // Aufbau Hauptschirm
 // ------------------------------------------------------------------
-static void build_tile(lv_obj_t *parent, int x, const char *title, lv_color_t accent,
-                       lv_obj_t **load_lbl, lv_obj_t **bar, lv_obj_t **info_lbl, int which)
+static void build_tile(lv_obj_t *parent, int x, const char *title, tile_ctx_t *tile, int which,
+                       bool is_gpu, lv_color_t bar_a, lv_color_t bar_b)
 {
-    lv_obj_t *card = make_card(parent, x, 40, 148, 150, accent);
+    lv_obj_t *card = make_card(parent, x, CARD_Y, 148, CARD_H, COL_CARD_BORDER);
     lv_obj_add_flag(card, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(card, tile_click_cb, LV_EVENT_CLICKED, (void *)(intptr_t)which);
 
-    lv_obj_t *t = make_label(card, title, &lv_font_montserrat_20, accent);
-    lv_obj_align(t, LV_ALIGN_TOP_MID, 0, 6);
+    lv_obj_t *chip = icon_chip(card, is_gpu ? COL_GPU : COL_ACCENT);
+    lv_obj_set_pos(chip, 8, 6);
 
-    *load_lbl = make_label(card, "--%", &lv_font_montserrat_48, COL_TEXT);
-    lv_obj_align(*load_lbl, LV_ALIGN_CENTER, 0, -6);
+    lv_obj_t *t = make_label(card, title, &lv_font_montserrat_16, COL_TEXT);
+    lv_obj_set_pos(t, 30, 7);
 
-    *bar = lv_bar_create(card);
-    lv_obj_set_size(*bar, 120, 8);
-    lv_obj_align(*bar, LV_ALIGN_BOTTOM_MID, 0, -26);
-    lv_bar_set_range(*bar, 0, 100);
-    lv_obj_set_style_bg_color(*bar, COL_BG, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(*bar, accent, LV_PART_INDICATOR);
+    if (is_gpu) {
+        lv_obj_t *badge = shape_rrect(card, 28, 16, 8, COL_BADGE_BG);
+        lv_obj_set_pos(badge, 148 - 34, 6);
+        lv_obj_t *bl = make_label(badge, "3D", &lv_font_montserrat_14, COL_BADGE_TEXT);
+        lv_obj_center(bl);
+    }
 
-    *info_lbl = make_label(card, "-- C  -- W", &lv_font_montserrat_14, COL_SUB);
-    lv_obj_align(*info_lbl, LV_ALIGN_BOTTOM_MID, 0, -6);
+    tile->load_lbl = make_label(card, "--", &lv_font_montserrat_48, COL_TEXT);
+    lv_obj_align(tile->load_lbl, LV_ALIGN_CENTER, 0, -8);
+
+    tile->bar = lv_bar_create(card);
+    lv_obj_set_size(tile->bar, 120, 8);
+    lv_obj_align(tile->bar, LV_ALIGN_BOTTOM_MID, 0, -30);
+    lv_bar_set_range(tile->bar, 0, 100);
+    lv_obj_set_style_radius(tile->bar, 4, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(tile->bar, COL_BG, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(tile->bar, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_radius(tile->bar, 4, LV_PART_INDICATOR);
+    lv_obj_set_style_bg_color(tile->bar, bar_a, LV_PART_INDICATOR);
+    lv_obj_set_style_bg_grad_color(tile->bar, bar_b, LV_PART_INDICATOR);
+    lv_obj_set_style_bg_grad_dir(tile->bar, LV_GRAD_DIR_HOR, LV_PART_INDICATOR);
+    lv_obj_set_style_bg_opa(tile->bar, LV_OPA_COVER, LV_PART_INDICATOR);
+
+    lv_obj_t *row = lv_obj_create(card);
+    lv_obj_set_size(row, 132, 18);
+    lv_obj_align(row, LV_ALIGN_BOTTOM_MID, 0, -6);
+    lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(row, 0, 0);
+    lv_obj_set_style_pad_all(row, 0, 0);
+    lv_obj_set_style_pad_column(row, 5, 0);
+    lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clear_flag(row, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+    icon_thermo(row, COL_THERMO);
+    tile->temp_lbl  = make_label(row, "--C", &lv_font_montserrat_14, COL_SUB);
+    tile->power_lbl = make_label(row, LV_SYMBOL_CHARGE " --W", &lv_font_montserrat_14, COL_SUB);
+    tile->trend_lbl = make_label(row, "-", &lv_font_montserrat_14, COL_SUB);
 }
 
 static void build_main(void)
@@ -257,10 +480,10 @@ static void build_main(void)
     scr_main = lv_obj_create(NULL);
     style_screen(scr_main);
 
-    // Top-Bar
+    // ---- Top-Bar ----
     lv_obj_t *bar = lv_obj_create(scr_main);
     lv_obj_set_pos(bar, 0, 0);
-    lv_obj_set_size(bar, 320, 32);
+    lv_obj_set_size(bar, 320, TOPBAR_H);
     lv_obj_set_style_bg_color(bar, COL_CARD, 0);
     lv_obj_set_style_bg_opa(bar, LV_OPA_COVER, 0);
     lv_obj_set_style_radius(bar, 0, 0);
@@ -268,34 +491,69 @@ static void build_main(void)
     lv_obj_set_style_pad_all(bar, 0, 0);
     lv_obj_clear_flag(bar, LV_OBJ_FLAG_SCROLLABLE);
 
-    lbl_time = make_label(bar, "--:--:--", &lv_font_montserrat_20, COL_TEXT);
-    lv_obj_align(lbl_time, LV_ALIGN_LEFT_MID, 8, 0);
-
+    lbl_time = make_label(bar, "--:--:--", &lv_font_montserrat_28, COL_TEXT);
+    lv_obj_set_pos(lbl_time, 8, 2);
     lbl_date = make_label(bar, "", &lv_font_montserrat_14, COL_SUB);
-    lv_obj_align(lbl_date, LV_ALIGN_LEFT_MID, 120, 0);
+    lv_obj_set_pos(lbl_date, 8, 36);
 
-    lbl_weather = make_label(bar, "", &lv_font_montserrat_20, COL_TEXT);
-    lv_obj_align(lbl_weather, LV_ALIGN_RIGHT_MID, -16, 0);
+    // Wetter-Block (Mitte)
+    lv_obj_t *sun = icon_sun(bar);
+    lv_obj_set_pos(sun, 106, 6);
+    lbl_weather = make_label(bar, "-- C", &lv_font_montserrat_16, COL_TEXT);
+    lv_obj_set_pos(lbl_weather, 128, 7);
+    lbl_weather_sub = make_label(bar, "", &lv_font_montserrat_14, COL_SUB);
+    lv_obj_set_pos(lbl_weather_sub, 106, 30);
+    lv_obj_set_width(lbl_weather_sub, 110);
+    lv_label_set_long_mode(lbl_weather_sub, LV_LABEL_LONG_WRAP);
 
-    dot_status = lv_obj_create(bar);
-    lv_obj_set_size(dot_status, 10, 10);
-    lv_obj_set_style_radius(dot_status, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_border_width(dot_status, 0, 0);
-    lv_obj_set_style_bg_color(dot_status, COL_WARN, 0);
-    lv_obj_align(dot_status, LV_ALIGN_RIGHT_MID, -2, 0);
+    // Wind/Regen-Block (rechts)
+    lv_obj_t *wi = icon_wind(bar, COL_SUB);
+    lv_obj_set_pos(wi, 214, 6);
+    lbl_wind = make_label(bar, "Wind: --", &lv_font_montserrat_14, COL_SUB);
+    lv_obj_set_pos(lbl_wind, 234, 7);
 
-    build_tile(scr_main, 6,   "CPU", COL_ACCENT, &cpu_load_lbl, &cpu_bar, &cpu_info_lbl, SCR_CPU);
-    build_tile(scr_main, 166, "GPU", COL_GPU,    &gpu_load_lbl, &gpu_bar, &gpu_info_lbl, SCR_GPU);
+    lv_obj_t *ri = icon_rain(bar, COL_RAIN);
+    lv_obj_set_pos(ri, 214, 28);
+    lbl_rain = make_label(bar, "Regen: --", &lv_font_montserrat_14, COL_SUB);
+    lv_obj_set_pos(lbl_rain, 234, 29);
 
-    lbl_waiting = make_label(scr_main, "Warte auf MQTT-Daten vom PC-Client...",
-                             &lv_font_montserrat_14, COL_SUB);
-    lv_obj_align(lbl_waiting, LV_ALIGN_BOTTOM_MID, 0, -6);
+    icon_wifi = make_label(bar, LV_SYMBOL_WIFI, &lv_font_montserrat_16, COL_WARN);
+    lv_obj_align(icon_wifi, LV_ALIGN_TOP_RIGHT, -4, 3);
+
+    // ---- Kacheln ----
+    build_tile(scr_main, 6,   "CPU", &cpu_tile, SCR_CPU, false, COL_CPU_BAR_A, COL_CPU_BAR_B);
+    build_tile(scr_main, 166, "GPU", &gpu_tile, SCR_GPU, true,  COL_GPU_BAR_A, COL_GPU_BAR_B);
+
+    // "Warte auf Daten"-Hinweis, ueberlagert die Kachel-Unterkante bis zur
+    // ersten MQTT-Nachricht (danach ausgeblendet).
+    lbl_waiting = make_label(scr_main, "Warte auf MQTT-Daten...", &lv_font_montserrat_14, COL_SUB);
+    lv_obj_set_width(lbl_waiting, 308);
+    lv_obj_set_style_text_align(lbl_waiting, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_bg_color(lbl_waiting, COL_BG, 0);
+    lv_obj_set_style_bg_opa(lbl_waiting, LV_OPA_80, 0);
+    lv_obj_set_style_pad_ver(lbl_waiting, 2, 0);
+    lv_obj_set_pos(lbl_waiting, 6, CARD_Y + CARD_H - 18);
+
+    // ---- Settings-Knopf (unten) ----
+    lv_obj_t *settings_btn = lv_obj_create(scr_main);
+    lv_obj_set_pos(settings_btn, 0, CARD_Y + CARD_H);
+    lv_obj_set_size(settings_btn, 320, 240 - (CARD_Y + CARD_H));
+    lv_obj_set_style_bg_opa(settings_btn, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(settings_btn, 0, 0);
+    lv_obj_clear_flag(settings_btn, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(settings_btn, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(settings_btn, settings_click_cb, LV_EVENT_CLICKED, NULL);
+
+    lv_obj_t *gear = make_label(settings_btn, LV_SYMBOL_SETTINGS, &lv_font_montserrat_20, COL_SUB);
+    lv_obj_align(gear, LV_ALIGN_TOP_MID, 0, 2);
+    lv_obj_t *set_lbl = make_label(settings_btn, "SETTINGS", &lv_font_montserrat_14, COL_SUB);
+    lv_obj_align(set_lbl, LV_ALIGN_TOP_MID, 0, 26);
 }
 
 // ------------------------------------------------------------------
 // Aufbau Detailschirm (CPU/GPU-Verlauf)
 // ------------------------------------------------------------------
-static lv_obj_t *make_chart(lv_obj_t *parent, int x, int y, int w, int h, int ymax,
+static lv_obj_t *make_chart(lv_obj_t *parent, int x, int y, int w, int h, int ymax, int major_cnt,
                             lv_color_t col, lv_chart_series_t **ser)
 {
     lv_obj_t *ch = lv_chart_create(parent);
@@ -306,11 +564,18 @@ static lv_obj_t *make_chart(lv_obj_t *parent, int x, int y, int w, int h, int ym
     lv_obj_set_style_border_color(ch, COL_SUB, 0);
     lv_obj_set_style_border_width(ch, 1, 0);
     lv_obj_set_style_pad_all(ch, 2, 0);
+    lv_obj_set_style_pad_left(ch, 26, 0); // Platz fuer Y-Achsen-Beschriftung
     lv_obj_set_style_size(ch, 0, 0, LV_PART_INDICATOR); // keine Punkt-Marker
+    lv_obj_set_style_text_font(ch, &lv_font_montserrat_14, LV_PART_TICKS);
+    lv_obj_set_style_text_color(ch, COL_SUB, LV_PART_TICKS);
+    lv_obj_set_style_line_color(ch, COL_SUB, LV_PART_TICKS);
     lv_chart_set_type(ch, LV_CHART_TYPE_LINE);
     lv_chart_set_point_count(ch, HIST_LEN);
     lv_chart_set_range(ch, LV_CHART_AXIS_PRIMARY_Y, 0, ymax);
-    lv_chart_set_div_line_count(ch, 3, 0);
+    // Kartenrand dient bereits als oberste/unterste Gitterlinie (0/ymax);
+    // nur die "inneren" major_cnt-2 Werte brauchen eine eigene Linie.
+    lv_chart_set_div_line_count(ch, major_cnt - 2, 0);
+    lv_chart_set_axis_tick(ch, LV_CHART_AXIS_PRIMARY_Y, 4, 2, major_cnt, 1, true, 34);
     *ser = lv_chart_add_series(ch, col, LV_CHART_AXIS_PRIMARY_Y);
     return ch;
 }
@@ -322,40 +587,110 @@ static void build_detail(void)
 
     lv_obj_t *back = lv_button_create(scr_detail);
     lv_obj_set_pos(back, 6, 4);
-    lv_obj_set_size(back, 92, 30);
+    lv_obj_set_size(back, 34, 28);
     lv_obj_set_style_bg_color(back, COL_CARD, 0);
     lv_obj_add_event_cb(back, back_click_cb, LV_EVENT_CLICKED, NULL);
-    lv_obj_t *bl = make_label(back, "< Zurueck", &lv_font_montserrat_14, COL_TEXT);
+    lv_obj_t *bl = make_label(back, LV_SYMBOL_LEFT, &lv_font_montserrat_16, COL_TEXT);
     lv_obj_center(bl);
+
+    lv_obj_t *gear = lv_button_create(scr_detail);
+    lv_obj_set_pos(gear, 44, 4);
+    lv_obj_set_size(gear, 34, 28);
+    lv_obj_set_style_bg_color(gear, COL_CARD, 0);
+    lv_obj_add_event_cb(gear, settings_click_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_t *gl = make_label(gear, LV_SYMBOL_SETTINGS, &lv_font_montserrat_16, COL_TEXT);
+    lv_obj_center(gl);
 
     det_title = make_label(scr_detail, "Verlauf", &lv_font_montserrat_20, COL_ACCENT);
     lv_obj_align(det_title, LV_ALIGN_TOP_RIGHT, -8, 6);
 
-    det_load  = make_label(scr_detail, "Auslastung: -- %", &lv_font_montserrat_14, COL_TEXT);
-    lv_obj_set_pos(det_load, 12, 42);
-    det_temp  = make_label(scr_detail, "Temperatur: -- C", &lv_font_montserrat_14, COL_TEXT);
-    lv_obj_set_pos(det_temp, 12, 60);
-    det_power = make_label(scr_detail, "Leistung:   -- W", &lv_font_montserrat_14, COL_TEXT);
-    lv_obj_set_pos(det_power, 12, 78);
+    // Kurzueberblick beider Metriken (unabhaengig davon, welcher Verlauf
+    // gerade angezeigt wird), mit Trend-Pfeil.
+    lbl_quick_cpu = make_label(scr_detail, "", &lv_font_montserrat_14, COL_ACCENT);
+    lv_obj_align(lbl_quick_cpu, LV_ALIGN_TOP_RIGHT, -8, 30);
+    lbl_quick_gpu = make_label(scr_detail, "", &lv_font_montserrat_14, COL_GPU);
+    lv_obj_align(lbl_quick_gpu, LV_ALIGN_TOP_RIGHT, -8, 46);
 
-    lv_obj_t *cap1 = make_label(scr_detail, "Auslastung (%)", &lv_font_montserrat_14, COL_SUB);
-    lv_obj_set_pos(cap1, 12, 100);
-    chart_load = make_chart(scr_detail, 12, 116, 296, 54, 100, COL_ACCENT, &ser_load);
+    det_load  = make_label(scr_detail, "Auslastung (Usage): -- %", &lv_font_montserrat_14, COL_TEXT);
+    lv_obj_set_pos(det_load, 12, 50);
+    det_temp  = make_label(scr_detail, "Temperatur (Temp): -- C", &lv_font_montserrat_14, COL_TEXT);
+    lv_obj_set_pos(det_temp, 12, 68);
+    det_power = make_label(scr_detail, "Leistung (Power): -- W", &lv_font_montserrat_14, COL_TEXT);
+    lv_obj_set_pos(det_power, 12, 86);
 
-    lv_obj_t *cap2 = make_label(scr_detail, "Temperatur (C)", &lv_font_montserrat_14, COL_SUB);
-    lv_obj_set_pos(cap2, 12, 176);
-    chart_temp = make_chart(scr_detail, 12, 192, 296, 42, 120, COL_GPU, &ser_temp);
+    lv_obj_t *cap1 = make_label(scr_detail, "Auslastung (%) - Verlauf", &lv_font_montserrat_14, COL_SUB);
+    lv_obj_set_pos(cap1, 12, 108);
+    chart_load = make_chart(scr_detail, 12, 124, 300, 50, 100, 5, COL_ACCENT, &ser_load);
+
+    lv_obj_t *cap2 = make_label(scr_detail, "Temperatur (C) - Verlauf", &lv_font_montserrat_14, COL_SUB);
+    lv_obj_set_pos(cap2, 12, 180);
+    chart_temp = make_chart(scr_detail, 12, 196, 300, 40, 120, 5, COL_GPU, &ser_temp);
+}
+
+// ------------------------------------------------------------------
+// Aufbau Settings-/Status-Screen
+// ------------------------------------------------------------------
+static void build_settings(void)
+{
+    scr_settings = lv_obj_create(NULL);
+    style_screen(scr_settings);
+
+    lv_obj_t *back = lv_button_create(scr_settings);
+    lv_obj_set_pos(back, 6, 6);
+    lv_obj_set_size(back, 40, 30);
+    lv_obj_set_style_bg_color(back, COL_CARD, 0);
+    lv_obj_add_event_cb(back, settings_back_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_t *bl = make_label(back, LV_SYMBOL_LEFT, &lv_font_montserrat_16, COL_TEXT);
+    lv_obj_center(bl);
+
+    lv_obj_t *title = make_label(scr_settings, "Einstellungen", &lv_font_montserrat_20, COL_ACCENT);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 10);
+
+    set_fw   = make_label(scr_settings, "", &lv_font_montserrat_14, COL_TEXT);
+    lv_obj_set_pos(set_fw, 16, 54);
+    set_ip   = make_label(scr_settings, "", &lv_font_montserrat_14, COL_TEXT);
+    lv_obj_set_pos(set_ip, 16, 74);
+    set_wifi = make_label(scr_settings, "", &lv_font_montserrat_14, COL_TEXT);
+    lv_obj_set_pos(set_wifi, 16, 94);
+    set_mqtt = make_label(scr_settings, "", &lv_font_montserrat_14, COL_TEXT);
+    lv_obj_set_pos(set_mqtt, 16, 114);
+    set_heap = make_label(scr_settings, "", &lv_font_montserrat_14, COL_SUB);
+    lv_obj_set_pos(set_heap, 16, 134);
+
+    lv_obj_t *hint = make_label(scr_settings,
+        "WLAN/MQTT/Wetter werden weiterhin ueber das Webportal konfiguriert.",
+        &lv_font_montserrat_14, COL_SUB);
+    lv_obj_set_pos(hint, 16, 158);
+    lv_obj_set_width(hint, 288);
+    lv_label_set_long_mode(hint, LV_LABEL_LONG_WRAP);
+
+    set_ap_btn = lv_button_create(scr_settings);
+    lv_obj_set_pos(set_ap_btn, 16, 198);
+    lv_obj_set_size(set_ap_btn, 288, 34);
+    lv_obj_set_style_bg_color(set_ap_btn, COL_CARD, 0);
+    lv_obj_add_event_cb(set_ap_btn, ap_btn_click_cb, LV_EVENT_CLICKED, NULL);
+    set_ap_btn_lbl = make_label(set_ap_btn, "Neustart in Setup-AP", &lv_font_montserrat_14, COL_TEXT);
+    lv_obj_center(set_ap_btn_lbl);
 }
 
 // ------------------------------------------------------------------
 // Dynamische Updates
 // ------------------------------------------------------------------
-static void update_tile(lv_obj_t *load_lbl, lv_obj_t *bar, lv_obj_t *info_lbl,
-                        float load, float temp, float power)
+static void update_tile(tile_ctx_t *tile, const history_t *hist, float load, float temp, float power)
 {
-    lv_label_set_text_fmt(load_lbl, "%d%%", (int)(load + 0.5f));
-    lv_bar_set_value(bar, (int)(load + 0.5f), LV_ANIM_OFF);
-    lv_label_set_text_fmt(info_lbl, "%d C  %d W", (int)(temp + 0.5f), (int)(power + 0.5f));
+    lv_label_set_text_fmt(tile->load_lbl, "%d", (int)(load + 0.5f));
+    lv_bar_set_value(tile->bar, (int)(load + 0.5f), LV_ANIM_OFF);
+
+    char buf[16];
+    snprintf(buf, sizeof(buf), "%dC", (int)(temp + 0.5f));
+    lv_label_set_text(tile->temp_lbl, buf);
+    snprintf(buf, sizeof(buf), LV_SYMBOL_CHARGE " %dW", (int)(power + 0.5f));
+    lv_label_set_text(tile->power_lbl, buf);
+
+    const char *sym; lv_color_t col;
+    compute_trend(hist, &sym, &col);
+    lv_label_set_text(tile->trend_lbl, sym);
+    lv_obj_set_style_text_color(tile->trend_lbl, col, 0);
 }
 
 static void update_chart(lv_obj_t *chart, lv_chart_series_t *ser, const float *data, uint8_t count)
@@ -370,11 +705,12 @@ static void update_chart(lv_obj_t *chart, lv_chart_series_t *ser, const float *d
 
 static void refresh_now(void)
 {
+    char buf[64];
+
     // --- Zeit / Datum ---
     time_t now = time(NULL);
     struct tm ti;
     localtime_r(&now, &ti);
-    char buf[24];
     if (ti.tm_year > 100) {
         strftime(buf, sizeof(buf), "%H:%M:%S", &ti);
         lv_label_set_text(lbl_time, buf);
@@ -385,28 +721,42 @@ static void refresh_now(void)
         lv_label_set_text(lbl_date, "");
     }
 
-    // --- Wetter ---
+    // --- Wetter-Block ---
     if (weather_info.valid) {
-        lv_label_set_text_fmt(lbl_weather, "%d C", (int)(weather_info.temp_c + 0.5f));
+        snprintf(buf, sizeof(buf), "%.0f C", weather_info.temp_c);
+        lv_label_set_text(lbl_weather, buf);
+        snprintf(buf, sizeof(buf), "Gefuehlt %.0fC, %d%% Feuchte",
+                 weather_info.feels_like_c, weather_info.humidity);
+        lv_label_set_text(lbl_weather_sub, buf);
+        snprintf(buf, sizeof(buf), "Wind: %.0f km/h %s",
+                 weather_info.wind_speed, weather_wind_compass(weather_info.wind_deg));
+        lv_label_set_text(lbl_wind, buf);
+        snprintf(buf, sizeof(buf), "Regen: %.1f mm", weather_info.rain_1h);
+        lv_label_set_text(lbl_rain, buf);
     } else if (app_config.weather_enabled) {
-        lv_label_set_text(lbl_weather, "-- ");
+        lv_label_set_text(lbl_weather, "-- C");
+        lv_label_set_text(lbl_weather_sub, "Warte auf Wetterdaten...");
+        lv_label_set_text(lbl_wind, "Wind: --");
+        lv_label_set_text(lbl_rain, "Regen: --");
     } else {
         lv_label_set_text(lbl_weather, "");
+        lv_label_set_text(lbl_weather_sub, "Wetter deaktiviert");
+        lv_label_set_text(lbl_wind, "");
+        lv_label_set_text(lbl_rain, "");
     }
 
-    // --- Status-Dot ---
+    // --- WLAN/MQTT-Statusicon ---
     lv_color_t sc = (wifi_connected && mqtt_connected) ? COL_GREEN
                     : (wifi_connected ? COL_YELLOW : COL_WARN);
-    lv_obj_set_style_bg_color(dot_status, sc, 0);
+    lv_obj_set_style_text_color(icon_wifi, sc, 0);
 
     if (s_screen == SCR_MAIN) {
-        update_tile(cpu_load_lbl, cpu_bar, cpu_info_lbl,
-                    hw_info.cpu_load, hw_info.cpu_temp, hw_info.cpu_power);
-        update_tile(gpu_load_lbl, gpu_bar, gpu_info_lbl,
-                    hw_info.gpu_load, hw_info.gpu_temp, hw_info.gpu_power);
+        update_tile(&cpu_tile, &cpu_history, hw_info.cpu_load, hw_info.cpu_temp, hw_info.cpu_power);
+        update_tile(&gpu_tile, &gpu_history, hw_info.gpu_load, hw_info.gpu_temp, hw_info.gpu_power);
         if (hw_info.ever_received) lv_obj_add_flag(lbl_waiting, LV_OBJ_FLAG_HIDDEN);
         else                       lv_obj_clear_flag(lbl_waiting, LV_OBJ_FLAG_HIDDEN);
-    } else {
+
+    } else if (s_screen == SCR_CPU || s_screen == SCR_GPU) {
         bool is_cpu = (s_screen == SCR_CPU);
         history_t *h = is_cpu ? &cpu_history : &gpu_history;
         float load  = is_cpu ? hw_info.cpu_load  : hw_info.gpu_load;
@@ -416,21 +766,41 @@ static void refresh_now(void)
         lv_label_set_text(det_title, is_cpu ? "CPU Verlauf" : "GPU Verlauf");
         lv_obj_set_style_text_color(det_title, is_cpu ? COL_ACCENT : COL_GPU, 0);
 
-        // lv_label_set_text_fmt() nutzt LVGLs eigenes lv_snprintf, das ohne
-        // LV_SPRINTF_USE_FLOAT keine %f-Konvertierung beherrscht (Ergebnis:
-        // nur das 'f' bleibt stehen). Daher hier mit der libc-snprintf
-        // (unterstuetzt Floats immer) vorformatieren und als fertigen String
-        // setzen.
-        char buf[32];
-        snprintf(buf, sizeof(buf), "Auslastung: %.1f %%", load);
+        snprintf(buf, sizeof(buf), "Auslastung (Usage): %.1f %%", load);
         lv_label_set_text(det_load, buf);
-        snprintf(buf, sizeof(buf), "Temperatur: %.1f C", temp);
+        snprintf(buf, sizeof(buf), "Temperatur (Temp): %.1f C", temp);
         lv_label_set_text(det_temp, buf);
-        snprintf(buf, sizeof(buf), "Leistung:   %.1f W", power);
+        snprintf(buf, sizeof(buf), "Leistung (Power): %.1f W", power);
         lv_label_set_text(det_power, buf);
+
+        // Trend-Farbe wird hier bewusst ignoriert: die Kurzuebersicht faerbt
+        // die gesamte Zeile in der CPU-/GPU-Datenfarbe, nicht nur den Pfeil.
+        const char *sym; lv_color_t unused_col;
+        compute_trend(&cpu_history, &sym, &unused_col);
+        snprintf(buf, sizeof(buf), "CPU: %.0fC %.0fW %s", hw_info.cpu_temp, hw_info.cpu_power, sym);
+        lv_label_set_text(lbl_quick_cpu, buf);
+
+        compute_trend(&gpu_history, &sym, &unused_col);
+        snprintf(buf, sizeof(buf), "GPU: %.0fC %.0fW %s", hw_info.gpu_temp, hw_info.gpu_power, sym);
+        lv_label_set_text(lbl_quick_gpu, buf);
+        (void)unused_col;
 
         update_chart(chart_load, ser_load, h->load, h->count);
         update_chart(chart_temp, ser_temp, h->temp, h->count);
+
+    } else if (s_screen == SCR_SETTINGS) {
+        snprintf(buf, sizeof(buf), "Firmware: %s", FW_VERSION);
+        lv_label_set_text(set_fw, buf);
+        snprintf(buf, sizeof(buf), "IP-Adresse: %s%s", web_portal_ip(),
+                 web_portal_ap_mode() ? " (Setup-AP)" : "");
+        lv_label_set_text(set_ip, buf);
+        snprintf(buf, sizeof(buf), "WLAN: %s",
+                 web_portal_ap_mode() ? "Setup-AP aktiv" : (wifi_connected ? "verbunden" : "getrennt"));
+        lv_label_set_text(set_wifi, buf);
+        snprintf(buf, sizeof(buf), "MQTT: %s", mqtt_connected ? "verbunden" : "getrennt");
+        lv_label_set_text(set_mqtt, buf);
+        snprintf(buf, sizeof(buf), "Freier Speicher: %u KB", (unsigned)(esp_get_free_heap_size() / 1024));
+        lv_label_set_text(set_heap, buf);
     }
 }
 
@@ -457,6 +827,7 @@ void display_ui_begin(void)
 
     build_main();
     build_detail();
+    build_settings();
     lv_screen_load(scr_main);
 
     lv_timer_create(tick_cb, 1000, NULL); // 1x/Sek aktualisieren

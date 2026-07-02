@@ -7,8 +7,10 @@ WLAN-Setup über offenen Access Point mit Config-Webportal und OTA-Update.
 
 > ⚠️ **Teilweise auf Hardware verifiziert.** Baut und flasht erfolgreich mit
 > ESP-IDF 6.0.x. Die Display-Orientierung für `rotation=1` (Default) wurde
-> auf echter Hardware korrigiert (siehe Punkt 2 unten). Die übrigen unten
-> markierten Kalibrier-/Board-Punkte sind noch nicht einzeln gegengeprüft.
+> auf echter Hardware korrigiert (siehe Punkt 2 unten). Das überarbeitete
+> Design (Punkt 5 unten) ist **noch nicht auf Hardware verifiziert** — Layout/
+> Icon-Feinheiten (v.a. Textumbruch im Wetter-Block, Chart-Achsenbeschriftung)
+> ggf. nach dem ersten Blick auf dem Geräte nachjustieren.
 
 ## Framework-Abbildung (Arduino → ESP-IDF)
 
@@ -66,6 +68,46 @@ Diese Punkte sind board-abhängig und ließen sich ohne Gerät nicht verifiziere
 4. **LVGL-Komponenten-Versionen** — `main/idf_component.yml`. Falls der
    Component Manager andere Versionen erwartet, dort die Ranges anpassen.
    Die UI ist gegen die LVGL-9-API geschrieben.
+5. **Design/Layout** — `display_ui.c` wurde auf ein Karten-Design mit
+   Farbverlauf-Balken, Wetter-/Wind-/Regen-Block, Trend-Pfeilen und einem
+   Settings-Screen umgestellt (siehe Abschnitt "Design" unten). Icons sind
+   bewusst einfache LVGL-Vektorformen (Kreise/Rechtecke, kein Bild-/SD-Karten-
+   Bedarf) und daher eine Annäherung an den gewünschten Look, keine
+   Pixelkopie. Feinjustage der Positionen (`lv_obj_set_pos`-Werte in
+   `build_main()`/`build_detail()`) ist nach dem ersten Blick auf dem Gerät
+   wahrscheinlich nötig — Text kann bei sehr langen Wetterbeschreibungen oder
+   extremen Werten (z.B. 3-stellige °C) knapp werden.
+
+## Design
+
+Angelehnt an ein vom Nutzer bereitgestelltes Referenz-Layout (Karten mit
+Farbverlauf-Balken, Wetter-/Wind-/Regen-Anzeige, Trend-Pfeile, Settings-Knopf):
+
+- **Icons**: einfache LVGL-Vektorformen (Kreise/abgerundete Rechtecke) für
+  Chip/Thermometer/Sonne/Wind/Regen sowie eingebaute LVGL-Symbole
+  (`LV_SYMBOL_SETTINGS`, `LV_SYMBOL_LEFT`, `LV_SYMBOL_WIFI`,
+  `LV_SYMBOL_CHARGE`, `LV_SYMBOL_UP`/`_DOWN`) für Zahnrad/Zurück/WLAN/Power/
+  Trend. Bewusste Entscheidung gegen Bitmap-Icons von SD-Karte, um ohne
+  zusätzliche Hardware (SD-Kartenslot-Verkabelung) und ohne Bild-Decoder-Code
+  auszukommen. Wer stattdessen echte Icon-Grafiken von SD-Karte laden möchte,
+  kann das nachrüsten (LVGL-Bilddecoder + SD/SPI-Treiber nötig).
+- **Wetter-Block**: nutzt weiterhin nur die bereits eingebundene
+  OpenWeatherMap-"Current Weather"-API, jetzt inkl. gefühlter Temperatur,
+  Luftfeuchte, Windgeschwindigkeit/-richtung (`weather_wind_compass()`,
+  8-Punkte-Kompass) und Regenmenge (`rain.1h`, 0 falls kein Regen gemeldet).
+  Keine neue Konfiguration nötig, alles über den bestehenden `weather_api_key`.
+- **Settings-Screen** (Zahnrad-Knopf auf Haupt- und Detailschirm): zeigt
+  Firmware-Version, IP-Adresse, WLAN-/MQTT-Status und freien Speicher. Der
+  Knopf "Neustart in Setup-AP" (`web_portal_force_ap()`) schaltet **zur
+  Laufzeit ohne Geräte-Neustart** vom WLAN auf den offenen Setup-AP um, ohne
+  die gespeicherten WLAN-Zugangsdaten zu löschen — nach dem nächsten normalen
+  Neustart verbindet sich das Gerät wieder regulär. Erfordert zur Bestätigung
+  zwei Taps (verhindert versehentliches Trennen). Volle WLAN-/MQTT-/Wetter-
+  Konfiguration bleibt bewusst im Webportal, nicht am Touchscreen (keine
+  Bildschirmtastatur nötig).
+- **Trend-Pfeile**: vergleichen den aktuellen Auslastungswert mit dem Wert
+  vor bis zu 10 Messungen (`compute_trend()` in `display_ui.c`); Schwelle
+  ±3 Prozentpunkte für steigend/fallend, sonst "stabil" (Strich).
 
 ## Struktur
 

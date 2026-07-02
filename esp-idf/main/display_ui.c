@@ -67,7 +67,7 @@ static tile_ctx_t cpu_tile, gpu_tile;
 
 // Hauptschirm-Widgets (Top-Bar)
 static lv_obj_t *lbl_time, *lbl_date;
-static lv_obj_t *lbl_weather, *lbl_weather_sub, *lbl_wind, *lbl_rain;
+static lv_obj_t *lbl_weather, *lbl_wind, *lbl_rain;
 static lv_obj_t *icon_wifi;
 static lv_obj_t *lbl_waiting;
 
@@ -143,9 +143,10 @@ static void lcd_init(lv_display_t **out_disp)
 
     ESP_ERROR_CHECK(esp_lcd_panel_reset(panel));
     ESP_ERROR_CHECK(esp_lcd_panel_init(panel));
-    // Viele CYD-Panels brauchen Farbinversion. Falls das Bild invertiert wirkt,
-    // hier auf false setzen.
-    ESP_ERROR_CHECK(esp_lcd_panel_invert_color(panel, true));
+    // Auf realer CYD-Hardware verifiziert: Farbinversion "true" ergab ein
+    // komplett invertiertes Bild (schwarzer Hintergrund -> weiss, cyan/orange
+    // Akzente -> rot/blau vertauscht). Fuer dieses Panel daher deaktiviert.
+    ESP_ERROR_CHECK(esp_lcd_panel_invert_color(panel, false));
     ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(panel, true));
 
     // Rotation -> swap/mirror + Aufloesung. UI ist auf Landscape (320x240)
@@ -496,26 +497,30 @@ static void build_main(void)
     lbl_date = make_label(bar, "", &lv_font_montserrat_14, COL_SUB);
     lv_obj_set_pos(lbl_date, 8, 36);
 
-    // Wetter-Block (Mitte)
+    // Info-Block rechts der Uhrzeit. "09:37:41" bei Font 28 ist ~130px breit
+    // (auf Hardware verifiziert) - alles hier startet daher erst ab x=138,
+    // mit fester Breite + CLIP je Label, damit nichts ueber den rechten
+    // Bildschirmrand bzw. ins WLAN-Icon hineinlaeuft (war vorher der Fall).
     lv_obj_t *sun = icon_sun(bar);
-    lv_obj_set_pos(sun, 106, 6);
-    lbl_weather = make_label(bar, "-- C", &lv_font_montserrat_16, COL_TEXT);
-    lv_obj_set_pos(lbl_weather, 128, 7);
-    lbl_weather_sub = make_label(bar, "", &lv_font_montserrat_14, COL_SUB);
-    lv_obj_set_pos(lbl_weather_sub, 106, 30);
-    lv_obj_set_width(lbl_weather_sub, 110);
-    lv_label_set_long_mode(lbl_weather_sub, LV_LABEL_LONG_WRAP);
+    lv_obj_set_pos(sun, 138, 6);
+    lbl_weather = make_label(bar, "--C", &lv_font_montserrat_16, COL_TEXT);
+    lv_obj_set_pos(lbl_weather, 158, 7);
+    lv_obj_set_width(lbl_weather, 130);
+    lv_label_set_long_mode(lbl_weather, LV_LABEL_LONG_MODE_CLIP);
 
-    // Wind/Regen-Block (rechts)
     lv_obj_t *wi = icon_wind(bar, COL_SUB);
-    lv_obj_set_pos(wi, 214, 6);
-    lbl_wind = make_label(bar, "Wind: --", &lv_font_montserrat_14, COL_SUB);
-    lv_obj_set_pos(lbl_wind, 234, 7);
+    lv_obj_set_pos(wi, 138, 38);
+    lbl_wind = make_label(bar, "--", &lv_font_montserrat_14, COL_SUB);
+    lv_obj_set_pos(lbl_wind, 154, 39);
+    lv_obj_set_width(lbl_wind, 70);
+    lv_label_set_long_mode(lbl_wind, LV_LABEL_LONG_MODE_CLIP);
 
     lv_obj_t *ri = icon_rain(bar, COL_RAIN);
-    lv_obj_set_pos(ri, 214, 28);
-    lbl_rain = make_label(bar, "Regen: --", &lv_font_montserrat_14, COL_SUB);
-    lv_obj_set_pos(lbl_rain, 234, 29);
+    lv_obj_set_pos(ri, 228, 38);
+    lbl_rain = make_label(bar, "--", &lv_font_montserrat_14, COL_SUB);
+    lv_obj_set_pos(lbl_rain, 244, 39);
+    lv_obj_set_width(lbl_rain, 48);
+    lv_label_set_long_mode(lbl_rain, LV_LABEL_LONG_MODE_CLIP);
 
     icon_wifi = make_label(bar, LV_SYMBOL_WIFI, &lv_font_montserrat_16, COL_WARN);
     lv_obj_align(icon_wifi, LV_ALIGN_TOP_RIGHT, -4, 3);
@@ -661,7 +666,7 @@ static void build_settings(void)
         &lv_font_montserrat_14, COL_SUB);
     lv_obj_set_pos(hint, 16, 158);
     lv_obj_set_width(hint, 288);
-    lv_label_set_long_mode(hint, LV_LABEL_LONG_WRAP);
+    lv_label_set_long_mode(hint, LV_LABEL_LONG_MODE_WRAP);
 
     set_ap_btn = lv_button_create(scr_settings);
     lv_obj_set_pos(set_ap_btn, 16, 198);
@@ -720,26 +725,21 @@ static void refresh_now(void)
         lv_label_set_text(lbl_date, "");
     }
 
-    // --- Wetter-Block ---
+    // --- Wetter-Block (kompakt: Temp+Feuchte / Wind / Regen, je 1 Zeile) ---
     if (weather_info.valid) {
-        snprintf(buf, sizeof(buf), "%.0f C", weather_info.temp_c);
+        snprintf(buf, sizeof(buf), "%.0fC %d%%", weather_info.temp_c, weather_info.humidity);
         lv_label_set_text(lbl_weather, buf);
-        snprintf(buf, sizeof(buf), "Gefuehlt %.0fC, %d%% Feuchte",
-                 weather_info.feels_like_c, weather_info.humidity);
-        lv_label_set_text(lbl_weather_sub, buf);
-        snprintf(buf, sizeof(buf), "Wind: %.0f km/h %s",
+        snprintf(buf, sizeof(buf), "%.0fkm/h %s",
                  weather_info.wind_speed, weather_wind_compass(weather_info.wind_deg));
         lv_label_set_text(lbl_wind, buf);
-        snprintf(buf, sizeof(buf), "Regen: %.1f mm", weather_info.rain_1h);
+        snprintf(buf, sizeof(buf), "%.1fmm", weather_info.rain_1h);
         lv_label_set_text(lbl_rain, buf);
     } else if (app_config.weather_enabled) {
-        lv_label_set_text(lbl_weather, "-- C");
-        lv_label_set_text(lbl_weather_sub, "Warte auf Wetterdaten...");
-        lv_label_set_text(lbl_wind, "Wind: --");
-        lv_label_set_text(lbl_rain, "Regen: --");
+        lv_label_set_text(lbl_weather, "--C --%");
+        lv_label_set_text(lbl_wind, "--");
+        lv_label_set_text(lbl_rain, "--");
     } else {
         lv_label_set_text(lbl_weather, "");
-        lv_label_set_text(lbl_weather_sub, "Wetter deaktiviert");
         lv_label_set_text(lbl_wind, "");
         lv_label_set_text(lbl_rain, "");
     }

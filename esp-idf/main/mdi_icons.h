@@ -13,13 +13,22 @@
 // UEBERHAUPT KEIN MDI-Icon, obwohl lv_font_conv anstandslos durchlief -
 // vermutlich verwandt mit einem bekannten lv_font_conv-Bug bei der "sparse
 // tiny" Cmap fuer hohe Codepoints (github.com/lvgl/lv_font_conv Issue #62).
-// Fix: alle 8 Codepoints per lv_font_conv-Remapping (-r 'quelle=>ziel') auf
-// U+E001-U+E008 (Basic Multilingual Plane, Private Use Area) verschoben -
-// selber 3-Byte-UTF-8-Bereich wie LVGLs eigene LV_SYMBOL_*-Makros (die
-// nachweislich funktionieren). Als angenehmer Nebeneffekt wechselt
-// lv_font_conv dadurch automatisch von der fehleranfaelligen "sparse tiny"
-// Cmap auf die simplere "format0 tiny" (zusammenhaengender Bereich, keine
-// Lookup-Tabelle noetig).
+// Fix Schritt 1: alle 8 Codepoints per lv_font_conv-Remapping
+// (-r 'quelle=>ziel') auf U+E001-U+E008 (Basic Multilingual Plane, Private
+// Use Area) verschoben - selber 3-Byte-UTF-8-Bereich wie LVGLs eigene
+// LV_SYMBOL_*-Makros. lv_font_conv wechselt dadurch automatisch von der
+// "sparse tiny" auf die "format0 tiny" Cmap (zusammenhaengender Bereich).
+// Per Diagnose-Log (lv_font_get_glyph_dsc) bestaetigt: der Codepoint-Lookup
+// findet danach alle 8 Glyphen korrekt (richtige box_w/box_h/adv_w) - auf
+// Hardware war trotzdem weiterhin KEIN Icon sichtbar. Die Cmap/Codepoints
+// waren also gar nicht das eigentliche Problem.
+//
+// Fix Schritt 2: Font zusaetzlich mit --no-compress --no-prefilter neu
+// generiert (bitmap_format 1 [RLE-komprimiert] -> 0 [unkomprimiert]).
+// lv_font_get_glyph_dsc() liest nur Metadaten und fand die Glyphen bereits
+// vorher korrekt - der eigentliche Fehler lag vermutlich beim Dekomprimieren
+// der Bitmap-Daten selbst (separater Codepfad, wird von der Diagnose nicht
+// abgedeckt).
 //
 // Verwendung: make_label(parent, MDI_CHIP, &mdi_icons_20, farbe);
 // ------------------------------------------------------------------

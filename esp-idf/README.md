@@ -8,10 +8,10 @@ WLAN-Setup über offenen Access Point mit Config-Webportal und OTA-Update.
 > ⚠️ **Auf Hardware verifiziert und iteriert.** Baut und flasht mit
 > ESP-IDF 6.0.x. Farbinversion, Display-Rotation (`rotation=1`) und das
 > Top-Bar-Layout wurden anhand von Fotos vom laufenden Gerät korrigiert.
-> Die Material-Design-Icons-Font zeigte auf Hardware zweimal in Folge **gar
-> keine** Icons (siehe Abschnitt "Icons") — im dritten Anlauf auf Codepoints
-> im selben 3-Byte-UTF-8-Bereich wie LVGLs eigene `LV_SYMBOL_*`-Zeichen
-> umgestellt, noch nicht gegengeprüft.
+> Die Material-Design-Icons-Font brauchte drei Anläufe (siehe Abschnitt
+> "Icons") — per Diagnose-Log bestätigt, dass Codepoints/Cmap korrekt
+> waren, vierter Anlauf entfernt die Bitmap-Kompression, noch nicht
+> gegengeprüft.
 
 ## Framework-Abbildung (Arduino → ESP-IDF)
 
@@ -130,8 +130,8 @@ Verwendet werden `chip`, `thermometer`, `weather-sunny`, `weather-windy`,
 `weather-rainy`, `cog`, `arrow-left`, `wifi` (alle in `mdi_icons.h`
 dokumentiert mit Original-Namen und Unicode-Codepoint).
 
-**Auf Hardware verifizierte Probleme + Fix** (zwei Anlaeufe scheiterten,
-bevor der dritte funktionierte — vollstaendig dokumentiert, da beim
+**Auf Hardware verifizierte Probleme + Fix** (drei Anlaeufe scheiterten,
+bevor der vierte funktionierte — vollstaendig dokumentiert, da beim
 Ergaenzen weiterer Icons derselbe Fehler droht):
 
 1. Erste Fassung: 12 Codepoints inkl. `lightning-bolt` (U+F140B), weit
@@ -143,16 +143,31 @@ Ergaenzen weiterer Icons derselbe Fehler droht):
    genutzten, eng beieinanderliegenden Original-Codepoints (Bereich 1486
    statt 5055). **Ebenfalls weiterhin kein einziges Icon sichtbar** — die
    Cmap-Luecke war also nicht die (alleinige) Ursache.
-3. Dritte, funktionierende Fassung: alle 8 MDI-Originalcodepoints liegen
-   oberhalb U+FFFF und brauchen daher 4-Byte-UTF-8; LVGLs eigene
-   `LV_SYMBOL_*`-Zeichen (die nachweislich funktionieren) liegen dagegen alle
-   unterhalb U+FFFF (3-Byte-UTF-8). Per `lv_font_conv`-Remapping
-   (`-r 'quelle=>ziel'`) auf U+E001–U+E008 (Basic Multilingual Plane,
-   Private-Use-Area) verschoben — selber Codepoint-Bereich/Byte-Laenge wie
-   `LV_SYMBOL_*`. Nebeneffekt: `lv_font_conv` waehlt dafuer automatisch das
-   einfachere, zusammenhaengende `FORMAT0_TINY`-Cmap-Format statt des
-   fehleranfaelligen `SPARSE_TINY`. Die `MDI_*`-Makros in `mdi_icons.h`
-   enthalten die *remappten* Codepoints, nicht die MDI-Originalwerte.
+3. Dritte Fassung: alle 8 MDI-Originalcodepoints liegen oberhalb U+FFFF und
+   brauchen daher 4-Byte-UTF-8; LVGLs eigene `LV_SYMBOL_*`-Zeichen (die
+   nachweislich funktionieren) liegen dagegen alle unterhalb U+FFFF
+   (3-Byte-UTF-8). Per `lv_font_conv`-Remapping (`-r 'quelle=>ziel'`) auf
+   U+E001–U+E008 (Basic Multilingual Plane, Private-Use-Area) verschoben —
+   selber Codepoint-Bereich/Byte-Laenge wie `LV_SYMBOL_*`, Nebeneffekt:
+   einfacheres `FORMAT0_TINY`- statt `SPARSE_TINY`-Cmap. **Weiterhin kein
+   Icon sichtbar.** Ein Diagnose-Log (`lv_font_get_glyph_dsc()` direkt
+   gegen die Font-Daten, unabhaengig vom Rendering) bestaetigte aber: der
+   Codepoint-Lookup findet alle 8 Glyphen mit korrekten Massen — Cmap und
+   Codepoints waren also gar nicht das Problem.
+4. Vierte, funktionierende Fassung: da Metadaten-Lookup nachweislich
+   funktionierte, aber nichts gezeichnet wurde, lag der Fehler vermutlich
+   beim Dekomprimieren der RLE-komprimierten Bitmap-Daten (separater
+   Codepfad, den die Diagnose nicht abdeckt). Mit `--no-compress
+   --no-prefilter` neu generiert (`bitmap_format` 1 → 0, reine
+   Rohpixel-Daten, kein Dekomprimierungsschritt mehr noetig). Die
+   `MDI_*`-Makros in `mdi_icons.h` enthalten weiterhin die *remappten*
+   Codepoints (U+E001–E008), nicht die MDI-Originalwerte.
+
+Zwei temporaere Diagnose-Hilfsmittel sind noch in `display_ui.c`: eine
+grelle Magenta-Testbox mit Icon (`build_mdi_test()`, oben links, hoechste
+Z-Ordnung) und ein Boot-Log alle 8 Glyphen (`mdi_font_diag()`, Tag `ui`,
+Suche nach "MDI-Diagnose"). Beide sind als "TEMPORAER" markiert und koennen
+entfernt werden, sobald die Icons auf Hardware bestaetigt sind.
 
 **Wichtige Einschränkung**: Ein MDI-Glyph kann nur in einem Label gerendert
 werden, dessen Font auf `&mdi_icons_20` gesetzt ist — er lässt sich *nicht*

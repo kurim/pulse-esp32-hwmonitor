@@ -50,6 +50,11 @@ typedef struct {
 typedef struct {
     bool    valid;
     float   temp_c;
+    float   feels_like_c;
+    int     humidity;      // %
+    float   wind_speed;    // km/h (metric) bzw. mph (imperial), s. app_config.weather_units
+    int     wind_deg;      // Windrichtung in Grad (0-360)
+    float   rain_1h;       // mm/h, 0 wenn kein Regen gemeldet
     char    description[48];
     char    icon[8];
     int64_t last_fetch_ms;

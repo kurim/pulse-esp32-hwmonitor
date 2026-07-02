@@ -8,6 +8,8 @@ dependencies:
   idf: ">=5.1"
   lvgl/lvgl: "^9"
   espressif/esp_lvgl_port: "^2"
-  espressif/esp_lcd_ili9341: "^1"
+  # esp_lcd_ili9341 >= 2.0.0 unterstuetzt ESP-IDF 6.0 (rgb_ele_order); die
+  # 1.x-Reihe nutzt noch das in v6 entfernte rgb_endian und bricht dort ab.
+  espressif/esp_lcd_ili9341: "^2"
   espressif/mqtt: "*"
   espressif/cjson: "*"

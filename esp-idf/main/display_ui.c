@@ -68,9 +68,10 @@ typedef struct {
 } tile_ctx_t;
 static tile_ctx_t cpu_tile, gpu_tile;
 
-// Hauptschirm-Widgets (Top-Bar)
+// Hauptschirm-Widgets (Top-Bar, 3-Spalten-Raster: Zeit/Datum |
+// Temperatur/Feuchte | Wind/Regen)
 static lv_obj_t *lbl_time, *lbl_date;
-static lv_obj_t *lbl_weather, *lbl_wind, *lbl_rain;
+static lv_obj_t *lbl_weather, *lbl_humidity, *lbl_wind, *lbl_rain;
 static lv_obj_t *icon_wifi;
 static lv_obj_t *lbl_waiting;
 
@@ -466,40 +467,45 @@ static void build_main(void)
     lv_obj_set_style_pad_all(bar, 0, 0);
     lv_obj_clear_flag(bar, LV_OBJ_FLAG_SCROLLABLE);
 
-    // Uhrzeit etwas kleiner (28->24) und Datum groesser (14->16) angeglichen
-    // an Wetter-Temp (ebenfalls 24) bzw. Wind/Regen-Zeile (Y-Position
-    // angeglichen), damit beide Zeilen der Top-Bar optisch zusammenpassen.
+    // Top-Bar als 3-Spalten-Raster (Wunsch des Nutzers):
+    //   Uhrzeit    | Temperatur       | Wind
+    //   Datum      | Luftfeuchtigkeit | Regen
+    // Spalten: Zeit/Datum x=8, Temp/Feuchte x=124, Wind/Regen x=204.
+    // MDI-Icons sind 20px breit (aus der generierten Font ausgelesen).
+
+    // -- Spalte 1: Zeit/Datum --
     lbl_time = make_label(bar, "--:--:--", &lv_font_montserrat_24, COL_TEXT);
     lv_obj_set_pos(lbl_time, 8, 4);
     lbl_date = make_label(bar, "", &lv_font_montserrat_16, COL_SUB);
     lv_obj_set_pos(lbl_date, 8, 38);
 
-    // Info-Block rechts der Uhrzeit. "09:37:41" bei Font 24 ist ~112px breit
-    // - alles hier startet daher erst ab x=138, mit fester Breite + CLIP je
-    // Label, damit nichts ueber den rechten Bildschirmrand bzw. ins
-    // WLAN-Icon hineinlaeuft. MDI-Icons haben eine feste Zeichenbreite von
-    // 20px (aus der generierten Font ausgelesen) - Abstaende entsprechend
-    // bemessen.
+    // -- Spalte 2: Temperatur/Luftfeuchtigkeit --
     lv_obj_t *sun = make_label(bar, MDI_SUN, &mdi_icons_20, COL_YELLOW);
-    lv_obj_set_pos(sun, 138, 8);
-    lbl_weather = make_label(bar, "--C", &lv_font_montserrat_24, COL_TEXT);
-    lv_obj_set_pos(lbl_weather, 162, 4);
-    lv_obj_set_width(lbl_weather, 130);
+    lv_obj_set_pos(sun, 124, 8);
+    lbl_weather = make_label(bar, "--C", &lv_font_montserrat_20, COL_TEXT);
+    lv_obj_set_pos(lbl_weather, 147, 6);
+    lv_obj_set_width(lbl_weather, 50);
     lv_label_set_long_mode(lbl_weather, LV_LABEL_LONG_MODE_CLIP);
 
+    lbl_humidity = make_label(bar, "--", &lv_font_montserrat_14, COL_SUB);
+    lv_obj_set_pos(lbl_humidity, 124, 39);
+    lv_obj_set_width(lbl_humidity, 60);
+    lv_label_set_long_mode(lbl_humidity, LV_LABEL_LONG_MODE_CLIP);
+
+    // -- Spalte 3: Wind/Regen (jetzt uebereinander statt nebeneinander -
+    // loest den vorherigen "zu wenig Abstand"-Punkt gleich mit). --
     lv_obj_t *wi = make_label(bar, MDI_WIND, &mdi_icons_20, COL_SUB);
-    lv_obj_set_pos(wi, 138, 37);
+    lv_obj_set_pos(wi, 204, 8);
     lbl_wind = make_label(bar, "--", &lv_font_montserrat_14, COL_SUB);
-    lv_obj_set_pos(lbl_wind, 160, 38);
-    lv_obj_set_width(lbl_wind, 62);
+    lv_obj_set_pos(lbl_wind, 227, 9);
+    lv_obj_set_width(lbl_wind, 64);
     lv_label_set_long_mode(lbl_wind, LV_LABEL_LONG_MODE_CLIP);
 
-    // Groesserer Abstand zum Regen-Block (vorher nur 4px Luecke).
     lv_obj_t *ri = make_label(bar, MDI_RAIN, &mdi_icons_20, COL_RAIN);
-    lv_obj_set_pos(ri, 244, 37);
+    lv_obj_set_pos(ri, 204, 37);
     lbl_rain = make_label(bar, "--", &lv_font_montserrat_14, COL_SUB);
-    lv_obj_set_pos(lbl_rain, 266, 38);
-    lv_obj_set_width(lbl_rain, 28);
+    lv_obj_set_pos(lbl_rain, 227, 39);
+    lv_obj_set_width(lbl_rain, 36);
     lv_label_set_long_mode(lbl_rain, LV_LABEL_LONG_MODE_CLIP);
 
     icon_wifi = make_label(bar, MDI_WIFI, &mdi_icons_20, COL_WARN);
@@ -708,10 +714,12 @@ static void refresh_now(void)
         lv_label_set_text(lbl_date, "");
     }
 
-    // --- Wetter-Block (kompakt: Temp+Feuchte / Wind / Regen, je 1 Zeile) ---
+    // --- Wetter-Block (3-Spalten-Raster: Temp / Feuchte / Wind / Regen) ---
     if (weather_info.valid) {
-        snprintf(buf, sizeof(buf), "%.0fC %d%%", weather_info.temp_c, weather_info.humidity);
+        snprintf(buf, sizeof(buf), "%.0fC", weather_info.temp_c);
         lv_label_set_text(lbl_weather, buf);
+        snprintf(buf, sizeof(buf), "%d%%", weather_info.humidity);
+        lv_label_set_text(lbl_humidity, buf);
         snprintf(buf, sizeof(buf), "%.0fkm/h %s",
                  weather_info.wind_speed, weather_wind_compass(weather_info.wind_deg));
         lv_label_set_text(lbl_wind, buf);
@@ -721,11 +729,13 @@ static void refresh_now(void)
         snprintf(buf, sizeof(buf), "%.1f", weather_info.rain_1h);
         lv_label_set_text(lbl_rain, buf);
     } else if (app_config.weather_enabled) {
-        lv_label_set_text(lbl_weather, "--C --%");
+        lv_label_set_text(lbl_weather, "--C");
+        lv_label_set_text(lbl_humidity, "--%");
         lv_label_set_text(lbl_wind, "--");
         lv_label_set_text(lbl_rain, "--");
     } else {
         lv_label_set_text(lbl_weather, "");
+        lv_label_set_text(lbl_humidity, "");
         lv_label_set_text(lbl_wind, "");
         lv_label_set_text(lbl_rain, "");
     }

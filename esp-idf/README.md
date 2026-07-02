@@ -6,12 +6,12 @@ Core). Gleiche Funktion: Uhrzeit/Datum, optional Wetter, CPU/GPU-Auslastung,
 WLAN-Setup über offenen Access Point mit Config-Webportal und OTA-Update.
 
 > ✅ **Auf Hardware verifiziert.** Baut und flasht mit ESP-IDF 6.0.x.
-> Farbinversion, Display-Rotation (`rotation=1`), Top-Bar-Layout und die
-> Material-Design-Icons-Font (siehe Abschnitt "Icons" — brauchte vier
-> Anläufe) wurden anhand von Fotos/Log-Ausgaben vom laufenden Gerät
-> korrigiert und bestätigt. Top-Bar-Feinschliff (Schriftgrößen, Abstände),
-> Kachel-Feinjustage und Standby-Modus (siehe unten) sind neu und noch
-> nicht gegengeprüft.
+> Farbinversion, Display-Rotation (`rotation=1`) und die Material-Design-
+> Icons-Font (siehe Abschnitt "Icons" — brauchte vier Anläufe) wurden
+> anhand von Fotos/Log-Ausgaben vom laufenden Gerät korrigiert und
+> bestätigt. Top-Bar ist als 3-Spalten-Raster (Zeit/Datum | Temperatur/
+> Feuchte | Wind/Regen) umgebaut, Kachel-Feinjustage und Standby-Modus
+> sind neu — noch nicht gegengeprüft.
 
 ## Framework-Abbildung (Arduino → ESP-IDF)
 

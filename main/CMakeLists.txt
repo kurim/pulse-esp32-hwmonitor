@@ -30,8 +30,9 @@ idf_component_register(
         esp_driver_spi
         esp_driver_gpio
         esp_driver_ledc
-        # "driver" statt esp_driver_i2c: touch_xpt2046.c/display_ui.c nutzen
-        # bewusst die alte driver/i2c.h-API (i2c_param_config/i2c_driver_install),
-        # die "driver" als Kompatibilitaets-Wrapper um esp_driver_i2c bereitstellt.
-        driver
+        # display_ui.c (SSD1309-Profil) nutzt den neuen i2c_master-Treiber
+        # (driver/i2c_master.h) statt der alten driver/i2c.h-API - letztere
+        # liefert auf ESP-IDF 6.0.2 nicht mehr den von esp_lcd_new_panel_io_i2c
+        # erwarteten i2c_master_bus_handle_t.
+        esp_driver_i2c
 )

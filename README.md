@@ -149,8 +149,11 @@ Diese Punkte sind board-abhängig und ließen sich ohne Gerät nicht verifiziere
    "Version solving failed" abbrach - das ist behoben.
 3. **SSD1309 ueber I2C** — `display_ui.c: lcd_init_mono_i2c()` nutzt den
    Core-SSD1306-Treiber (SSD1309 spricht dasselbe Protokoll, aber ggf. mit
-   abweichenden Kontrast-/Multiplex-Defaults). Noch nicht auf Hardware
-   verifiziert.
+   abweichenden Kontrast-/Multiplex-Defaults) ueber den neuen `i2c_master`-
+   Treiber (`driver/i2c_master.h`, `i2c_new_master_bus()` +
+   `esp_lcd_new_panel_io_i2c(i2c_master_bus_handle_t, ...)`) - die alte
+   `driver/i2c.h`-API liefert auf ESP-IDF ≥5.2/6.x nicht mehr den dafuer
+   erwarteten Bus-Handle-Typ. Noch nicht auf Hardware verifiziert.
 4. **GC9A01-Rundlayout** — `display_ui.c: build_round_ui()` ist bewusst ein
    einfacher Platzhalter (zwei `lv_arc`s + Text), kein ausgearbeitetes rundes
    Design. Layout/Positionierung noch nicht auf Hardware geprueft.

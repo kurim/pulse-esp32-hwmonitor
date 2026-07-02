@@ -5,12 +5,11 @@ Core). Gleiche Funktion: Uhrzeit/Datum, optional Wetter, CPU/GPU-Auslastung,
 -Temperatur und -Leistung per MQTT, Verlaufsdiagramme per Antippen der Kacheln,
 WLAN-Setup über offenen Access Point mit Config-Webportal und OTA-Update.
 
-> ⚠️ **Teilweise auf Hardware verifiziert.** Baut und flasht erfolgreich mit
-> ESP-IDF 6.0.x. Die Display-Orientierung für `rotation=1` (Default) wurde
-> auf echter Hardware korrigiert (siehe Punkt 2 unten). Das überarbeitete
-> Design (Punkt 5 unten) ist **noch nicht auf Hardware verifiziert** — Layout/
-> Icon-Feinheiten (v.a. Textumbruch im Wetter-Block, Chart-Achsenbeschriftung)
-> ggf. nach dem ersten Blick auf dem Geräte nachjustieren.
+> ⚠️ **Auf Hardware verifiziert und iteriert.** Baut und flasht mit
+> ESP-IDF 6.0.x. Farbinversion, Display-Rotation (`rotation=1`) und das
+> Top-Bar-Layout wurden anhand von Fotos vom laufenden Gerät korrigiert.
+> Die Umstellung der Icons auf eine Material-Design-Icons-Font (Punkt 5
+> unten) ist die letzte noch nicht gegengeprüfte Änderung.
 
 ## Framework-Abbildung (Arduino → ESP-IDF)
 
@@ -51,9 +50,10 @@ Ersteinrichtung wie beim Arduino-Port: offener AP **`CYD-Setup-XXXX`** →
 
 Diese Punkte sind board-abhängig und ließen sich ohne Gerät nicht verifizieren:
 
-1. **Display-Farben** — `display_ui.c`, `esp_lcd_panel_invert_color(panel, true)`.
-   Wirkt das Bild farbverfälscht/negativ, auf `false` setzen. Bei falscher
-   Rot/Blau-Vertauschung `LCD_RGB_ELEMENT_ORDER_BGR` ↔ `_RGB` tauschen.
+1. **Display-Farben** — `display_ui.c`, `esp_lcd_panel_invert_color(panel, false)`.
+   Auf Hardware verifiziert: `true` ergab ein komplett invertiertes Bild.
+   Bei falscher Rot/Blau-Vertauschung `LCD_RGB_ELEMENT_ORDER_BGR` ↔ `_RGB`
+   tauschen (noch nicht beobachtet, aber board-abhängig möglich).
 2. **Display-Rotation / Spiegelung** — `lcd_init()` setzt `swap_xy/mirror_x/
    mirror_y` je `rotation`. Für `rotation=1` (Default) auf Hardware
    verifiziert und korrigiert (war horizontal gespiegelt, jetzt behoben);
@@ -68,29 +68,28 @@ Diese Punkte sind board-abhängig und ließen sich ohne Gerät nicht verifiziere
 4. **LVGL-Komponenten-Versionen** — `main/idf_component.yml`. Falls der
    Component Manager andere Versionen erwartet, dort die Ranges anpassen.
    Die UI ist gegen die LVGL-9-API geschrieben.
-5. **Design/Layout** — `display_ui.c` wurde auf ein Karten-Design mit
-   Farbverlauf-Balken, Wetter-/Wind-/Regen-Block, Trend-Pfeilen und einem
-   Settings-Screen umgestellt (siehe Abschnitt "Design" unten). Icons sind
-   bewusst einfache LVGL-Vektorformen (Kreise/Rechtecke, kein Bild-/SD-Karten-
-   Bedarf) und daher eine Annäherung an den gewünschten Look, keine
-   Pixelkopie. Feinjustage der Positionen (`lv_obj_set_pos`-Werte in
-   `build_main()`/`build_detail()`) ist nach dem ersten Blick auf dem Gerät
-   wahrscheinlich nötig — Text kann bei sehr langen Wetterbeschreibungen oder
-   extremen Werten (z.B. 3-stellige °C) knapp werden.
+5. **Icons (Material Design Icons)** — `main/font_mdi_icons_20.c` +
+   `main/mdi_icons.h`. Chip/Thermometer/Sonne/Wind/Regen/Zahnrad/Zurück-
+   Pfeil/WLAN kommen jetzt aus einer echten Material-Design-Icons-Schrift
+   statt aus handgezeichneten Formen (siehe Abschnitt "Icons" unten) — noch
+   nicht auf Hardware gegengeprüft. Power-/Trend-Symbole nutzen weiterhin
+   LVGLs eingebaute `LV_SYMBOL_*`-Glyphen (bereits verifiziert), da sie mit
+   Fließtext in einem Label gemischt werden und Font-Wechsel mitten im String
+   nicht ohne Weiteres möglich sind.
+6. **Layout-Feinjustage** — Text kann bei sehr langen Wetterbeschreibungen
+   oder extremen Werten (z.B. 3-stellige °C) knapp werden; Positionen sind
+   mit Sicherheitsabständen (feste Breiten + `CLIP`) versehen, aber nicht
+   jede Kombination wurde getestet.
 
 ## Design
 
 Angelehnt an ein vom Nutzer bereitgestelltes Referenz-Layout (Karten mit
 Farbverlauf-Balken, Wetter-/Wind-/Regen-Anzeige, Trend-Pfeile, Settings-Knopf):
 
-- **Icons**: einfache LVGL-Vektorformen (Kreise/abgerundete Rechtecke) für
-  Chip/Thermometer/Sonne/Wind/Regen sowie eingebaute LVGL-Symbole
-  (`LV_SYMBOL_SETTINGS`, `LV_SYMBOL_LEFT`, `LV_SYMBOL_WIFI`,
-  `LV_SYMBOL_CHARGE`, `LV_SYMBOL_UP`/`_DOWN`) für Zahnrad/Zurück/WLAN/Power/
-  Trend. Bewusste Entscheidung gegen Bitmap-Icons von SD-Karte, um ohne
-  zusätzliche Hardware (SD-Kartenslot-Verkabelung) und ohne Bild-Decoder-Code
-  auszukommen. Wer stattdessen echte Icon-Grafiken von SD-Karte laden möchte,
-  kann das nachrüsten (LVGL-Bilddecoder + SD/SPI-Treiber nötig).
+- **Icons**: Material Design Icons (siehe eigener Abschnitt unten) für
+  Chip/Thermometer/Sonne/Wind/Regen/Zahnrad/Zurück-Pfeil/WLAN; eingebaute
+  LVGL-Symbole (`LV_SYMBOL_CHARGE`, `LV_SYMBOL_UP`/`_DOWN`) für Power/Trend,
+  da diese mit Fließtext in einem Label gemischt sind.
 - **Wetter-Block**: nutzt weiterhin nur die bereits eingebundene
   OpenWeatherMap-"Current Weather"-API, jetzt inkl. gefühlter Temperatur,
   Luftfeuchte, Windgeschwindigkeit/-richtung (`weather_wind_compass()`,
@@ -113,6 +112,47 @@ Farbverlauf-Balken, Wetter-/Wind-/Regen-Anzeige, Trend-Pfeile, Settings-Knopf):
   `lv_scale`-Widget neben dem Chart). Die Verlaufsdiagramme zeigen daher nur
   Gitterlinien ohne Zahlenbeschriftung (wie in der zuvor bestätigten Version).
 
+## Icons (Material Design Icons)
+
+`main/font_mdi_icons_20.c` ist eine mit
+[`lv_font_conv`](https://github.com/lvgl/lv_font_conv) aus dem npm-Paket
+`@mdi/font` (Material Design Icons, Pictogrammers, Apache-2.0-Lizenz)
+generierte LVGL-Font — **nur die 12 tatsächlich genutzten Glyphen** bei 20px/
+4bpp, nicht der komplette Icon-Satz (der hätte mehrere MB). `main/mdi_icons.h`
+deklariert die Font (`extern const lv_font_t mdi_icons_20;`) sowie ein
+`#define MDI_<NAME>` je Icon (UTF-8-codierter Codepoint als C-String), analog
+zu LVGLs eigenen `LV_SYMBOL_*`-Makros nutzbar: `make_label(parent, MDI_COG,
+&mdi_icons_20, farbe)`.
+
+Verwendet werden `chip`, `thermometer`, `weather-sunny`, `weather-windy`,
+`weather-rainy`, `cog`, `arrow-left`, `wifi` (alle in `mdi_icons.h`
+dokumentiert mit Original-Namen und Unicode-Codepoint). Die generierte Font
+enthält zusätzlich `lightning-bolt` und `trending-up`/`_down`/`_neutral` als
+Reserve für eine spätere vollständige Umstellung von Power-/Trend-Anzeige
+(aktuell noch `LV_SYMBOL_CHARGE`/`_UP`/`_DOWN`, s.o.) — im Code bislang
+ungenutzt, aber bereits als `MDI_LIGHTNING`/`MDI_TREND_*` verfügbar.
+
+**Wichtige Einschränkung**: Ein MDI-Glyph kann nur in einem Label gerendert
+werden, dessen Font auf `&mdi_icons_20` gesetzt ist — er lässt sich *nicht*
+mitten in einen mit `&lv_font_montserrat_*` gerenderten Text einbetten (im
+Gegensatz zu LVGLs `LV_SYMBOL_*`, die Teil jeder Montserrat-Font-Größe sind).
+Deshalb sind MDI-Icons im Code immer eigene, separate Label-Objekte neben dem
+Text, nie in einen gemeinsamen String eingebettet.
+
+**Weitere Icons ergänzen**: Icon-Name in `.../package/css/materialdesignicons.css`
+nachschlagen (Codepoint hinter `content: "\FXXXXX"`), dann neu generieren:
+
+```bash
+npm pack @mdi/font@7.4.47 && tar xzf mdi-font-7.4.47.tgz
+npx lv_font_conv --font package/fonts/materialdesignicons-webfont.ttf \
+  -r 0xF061A,0xF050F,<weitere Codepoints...> \
+  --size 20 --bpp 4 --format lvgl --lv-font-name mdi_icons_20 \
+  -o font_mdi_icons_20.c
+```
+
+Den `#ifdef LV_LVGL_H_INCLUDE_SIMPLE`-Include-Block danach durch ein einfaches
+`#include "lvgl.h"` ersetzen (passend zum Rest des Projekts).
+
 ## Struktur
 
 ```
@@ -127,6 +167,8 @@ esp-idf/
     time_service.[ch]    SNTP + Zeitzone
     weather_service.[ch] OpenWeatherMap-Abruf
     display_ui.[ch]      esp_lcd + LVGL-Oberfläche
+    font_mdi_icons_20.c  generierte Material-Design-Icons-Font (12 Glyphen)
+    mdi_icons.h           Font-Deklaration + MDI_*-Zeichen-Makros
     touch_xpt2046.[ch]   XPT2046-SPI-Treiber
     bsp_pins.h           CYD-Pinbelegung
 ```

@@ -4,6 +4,7 @@
 #include "touch_xpt2046.h"
 #include "web_portal.h"
 #include "weather_service.h"
+#include "mdi_icons.h"
 
 #include "driver/spi_master.h"
 #include "driver/gpio.h"
@@ -47,7 +48,9 @@ static const char *TAG = "ui";
 // ---- Layout-Konstanten (320x240 Landscape) ----
 #define TOPBAR_H 62
 #define CARD_Y   66
-#define CARD_H   128
+#define CARD_H   116   // war 128; kleiner Karten, damit die Settings-Zeile
+                        // darunter mehr Luft hat (wurde an der physischen
+                        // Bildschirmunterkante abgeschnitten)
 
 // ---- Bildschirmzustand ----
 enum { SCR_MAIN = 0, SCR_CPU = 1, SCR_GPU = 2, SCR_SETTINGS = 3 };
@@ -243,35 +246,10 @@ static lv_obj_t *make_label(lv_obj_t *parent, const char *txt, const lv_font_t *
 }
 
 // ------------------------------------------------------------------
-// Einfache Vektor-Icons (nur lv_obj-Rechtecke/-Kreise, keine Bild-/SD-Karten-
-// Assets noetig). Bewusst simpel gehalten, da ungetestet auf Hardware -
-// als Annaeherung an den gewuenschten Look gedacht, nicht als Pixelkopie.
+// shape_rrect: einziges verbliebenes Vektor-Element (fuer das "3D"-Badge
+// auf der GPU-Kachel). Alle uebrigen Icons kommen jetzt aus der Material-
+// Design-Icons-Font (mdi_icons.h) statt aus handgezeichneten Formen.
 // ------------------------------------------------------------------
-static lv_obj_t *icon_box(lv_obj_t *parent, int size)
-{
-    lv_obj_t *box = lv_obj_create(parent);
-    lv_obj_set_size(box, size, size);
-    lv_obj_set_style_bg_opa(box, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(box, 0, 0);
-    lv_obj_set_style_pad_all(box, 0, 0);
-    lv_obj_clear_flag(box, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_clear_flag(box, LV_OBJ_FLAG_CLICKABLE);
-    return box;
-}
-
-static lv_obj_t *shape_dot(lv_obj_t *parent, int size, lv_color_t col)
-{
-    lv_obj_t *d = lv_obj_create(parent);
-    lv_obj_set_size(d, size, size);
-    lv_obj_set_style_radius(d, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_bg_color(d, col, 0);
-    lv_obj_set_style_bg_opa(d, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(d, 0, 0);
-    lv_obj_clear_flag(d, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_clear_flag(d, LV_OBJ_FLAG_CLICKABLE);
-    return d;
-}
-
 static lv_obj_t *shape_rrect(lv_obj_t *parent, int w, int h, int radius, lv_color_t col)
 {
     lv_obj_t *r = lv_obj_create(parent);
@@ -283,57 +261,6 @@ static lv_obj_t *shape_rrect(lv_obj_t *parent, int w, int h, int radius, lv_colo
     lv_obj_clear_flag(r, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_clear_flag(r, LV_OBJ_FLAG_CLICKABLE);
     return r;
-}
-
-static lv_obj_t *icon_chip(lv_obj_t *parent, lv_color_t col)
-{
-    lv_obj_t *box = icon_box(parent, 18);
-    lv_obj_t *outer = shape_rrect(box, 18, 18, 4, COL_CARD);
-    lv_obj_set_style_border_width(outer, 2, 0);
-    lv_obj_set_style_border_color(outer, col, 0);
-    lv_obj_set_pos(outer, 0, 0);
-    lv_obj_t *inner = shape_rrect(box, 8, 8, 2, col);
-    lv_obj_center(inner);
-    return box;
-}
-
-static lv_obj_t *icon_thermo(lv_obj_t *parent, lv_color_t col)
-{
-    lv_obj_t *box = icon_box(parent, 14);
-    lv_obj_t *stem = shape_rrect(box, 6, 10, 3, col);
-    lv_obj_align(stem, LV_ALIGN_TOP_MID, 0, 0);
-    lv_obj_t *bulb = shape_dot(box, 10, col);
-    lv_obj_align(bulb, LV_ALIGN_BOTTOM_MID, 0, 0);
-    return box;
-}
-
-static lv_obj_t *icon_sun(lv_obj_t *parent)
-{
-    lv_obj_t *box = icon_box(parent, 18);
-    lv_obj_t *core = shape_dot(box, 10, COL_YELLOW);
-    lv_obj_center(core);
-    lv_obj_t *r1 = shape_dot(box, 3, COL_YELLOW); lv_obj_align(r1, LV_ALIGN_TOP_MID, 0, 0);
-    lv_obj_t *r2 = shape_dot(box, 3, COL_YELLOW); lv_obj_align(r2, LV_ALIGN_BOTTOM_MID, 0, 0);
-    lv_obj_t *r3 = shape_dot(box, 3, COL_YELLOW); lv_obj_align(r3, LV_ALIGN_LEFT_MID, 0, 0);
-    lv_obj_t *r4 = shape_dot(box, 3, COL_YELLOW); lv_obj_align(r4, LV_ALIGN_RIGHT_MID, 0, 0);
-    return box;
-}
-
-static lv_obj_t *icon_wind(lv_obj_t *parent, lv_color_t col)
-{
-    lv_obj_t *box = icon_box(parent, 18);
-    lv_obj_t *l1 = shape_rrect(box, 10, 2, 1, col); lv_obj_align(l1, LV_ALIGN_TOP_LEFT, 0, 3);
-    lv_obj_t *l2 = shape_rrect(box, 15, 2, 1, col); lv_obj_align(l2, LV_ALIGN_LEFT_MID, 0, 0);
-    lv_obj_t *l3 = shape_rrect(box, 8,  2, 1, col); lv_obj_align(l3, LV_ALIGN_BOTTOM_LEFT, 0, -3);
-    return box;
-}
-
-static lv_obj_t *icon_rain(lv_obj_t *parent, lv_color_t col)
-{
-    lv_obj_t *box = icon_box(parent, 14);
-    lv_obj_t *d = shape_dot(box, 10, col);
-    lv_obj_center(d);
-    return box;
 }
 
 // ------------------------------------------------------------------
@@ -429,11 +356,11 @@ static void build_tile(lv_obj_t *parent, int x, const char *title, tile_ctx_t *t
     lv_obj_add_flag(card, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(card, tile_click_cb, LV_EVENT_CLICKED, (void *)(intptr_t)which);
 
-    lv_obj_t *chip = icon_chip(card, is_gpu ? COL_GPU : COL_ACCENT);
-    lv_obj_set_pos(chip, 8, 6);
+    lv_obj_t *chip = make_label(card, MDI_CHIP, &mdi_icons_20, is_gpu ? COL_GPU : COL_ACCENT);
+    lv_obj_set_pos(chip, 8, 4);
 
     lv_obj_t *t = make_label(card, title, &lv_font_montserrat_16, COL_TEXT);
-    lv_obj_set_pos(t, 30, 7);
+    lv_obj_set_pos(t, 32, 7);
 
     if (is_gpu) {
         lv_obj_t *badge = shape_rrect(card, 28, 16, 8, COL_BADGE_BG);
@@ -470,7 +397,7 @@ static void build_tile(lv_obj_t *parent, int x, const char *title, tile_ctx_t *t
     lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
-    icon_thermo(row, COL_THERMO);
+    make_label(row, MDI_THERMOMETER, &mdi_icons_20, COL_THERMO);
     tile->temp_lbl  = make_label(row, "--C", &lv_font_montserrat_14, COL_SUB);
     tile->power_lbl = make_label(row, LV_SYMBOL_CHARGE " --W", &lv_font_montserrat_14, COL_SUB);
     tile->trend_lbl = make_label(row, "-", &lv_font_montserrat_14, COL_SUB);
@@ -501,28 +428,30 @@ static void build_main(void)
     // (auf Hardware verifiziert) - alles hier startet daher erst ab x=138,
     // mit fester Breite + CLIP je Label, damit nichts ueber den rechten
     // Bildschirmrand bzw. ins WLAN-Icon hineinlaeuft (war vorher der Fall).
-    lv_obj_t *sun = icon_sun(bar);
-    lv_obj_set_pos(sun, 138, 6);
+    // MDI-Icons haben eine feste Zeichenbreite von 20px (aus der generierten
+    // Font ausgelesen) - Abstaende entsprechend bemessen.
+    lv_obj_t *sun = make_label(bar, MDI_SUN, &mdi_icons_20, COL_YELLOW);
+    lv_obj_set_pos(sun, 138, 4);
     lbl_weather = make_label(bar, "--C", &lv_font_montserrat_16, COL_TEXT);
-    lv_obj_set_pos(lbl_weather, 158, 7);
-    lv_obj_set_width(lbl_weather, 130);
+    lv_obj_set_pos(lbl_weather, 162, 6);
+    lv_obj_set_width(lbl_weather, 90);
     lv_label_set_long_mode(lbl_weather, LV_LABEL_LONG_MODE_CLIP);
 
-    lv_obj_t *wi = icon_wind(bar, COL_SUB);
-    lv_obj_set_pos(wi, 138, 38);
+    lv_obj_t *wi = make_label(bar, MDI_WIND, &mdi_icons_20, COL_SUB);
+    lv_obj_set_pos(wi, 138, 37);
     lbl_wind = make_label(bar, "--", &lv_font_montserrat_14, COL_SUB);
-    lv_obj_set_pos(lbl_wind, 154, 39);
-    lv_obj_set_width(lbl_wind, 70);
+    lv_obj_set_pos(lbl_wind, 162, 38);
+    lv_obj_set_width(lbl_wind, 68);
     lv_label_set_long_mode(lbl_wind, LV_LABEL_LONG_MODE_CLIP);
 
-    lv_obj_t *ri = icon_rain(bar, COL_RAIN);
-    lv_obj_set_pos(ri, 228, 38);
+    lv_obj_t *ri = make_label(bar, MDI_RAIN, &mdi_icons_20, COL_RAIN);
+    lv_obj_set_pos(ri, 234, 37);
     lbl_rain = make_label(bar, "--", &lv_font_montserrat_14, COL_SUB);
-    lv_obj_set_pos(lbl_rain, 244, 39);
-    lv_obj_set_width(lbl_rain, 48);
+    lv_obj_set_pos(lbl_rain, 258, 38);
+    lv_obj_set_width(lbl_rain, 32);
     lv_label_set_long_mode(lbl_rain, LV_LABEL_LONG_MODE_CLIP);
 
-    icon_wifi = make_label(bar, LV_SYMBOL_WIFI, &lv_font_montserrat_16, COL_WARN);
+    icon_wifi = make_label(bar, MDI_WIFI, &mdi_icons_20, COL_WARN);
     lv_obj_align(icon_wifi, LV_ALIGN_TOP_RIGHT, -4, 3);
 
     // ---- Kacheln ----
@@ -552,10 +481,10 @@ static void build_main(void)
     // War zuvor bis an die physische Bildschirmunterkante (y=240) positioniert
     // und wurde dort abgeschnitten - jetzt mit Sicherheitsabstand nach oben
     // gerueckt.
-    lv_obj_t *gear = make_label(settings_btn, LV_SYMBOL_SETTINGS, &lv_font_montserrat_20, COL_SUB);
-    lv_obj_align(gear, LV_ALIGN_TOP_MID, 0, 0);
+    lv_obj_t *gear = make_label(settings_btn, MDI_COG, &mdi_icons_20, COL_SUB);
+    lv_obj_align(gear, LV_ALIGN_TOP_MID, 0, 2);
     lv_obj_t *set_lbl = make_label(settings_btn, "SETTINGS", &lv_font_montserrat_14, COL_SUB);
-    lv_obj_align(set_lbl, LV_ALIGN_TOP_MID, 0, 22);
+    lv_obj_align(set_lbl, LV_ALIGN_TOP_MID, 0, 26);
 }
 
 // ------------------------------------------------------------------
@@ -597,7 +526,7 @@ static void build_detail(void)
     lv_obj_set_size(back, 34, 28);
     lv_obj_set_style_bg_color(back, COL_CARD, 0);
     lv_obj_add_event_cb(back, back_click_cb, LV_EVENT_CLICKED, NULL);
-    lv_obj_t *bl = make_label(back, LV_SYMBOL_LEFT, &lv_font_montserrat_16, COL_TEXT);
+    lv_obj_t *bl = make_label(back, MDI_ARROW_LEFT, &mdi_icons_20, COL_TEXT);
     lv_obj_center(bl);
 
     lv_obj_t *gear = lv_button_create(scr_detail);
@@ -605,7 +534,7 @@ static void build_detail(void)
     lv_obj_set_size(gear, 34, 28);
     lv_obj_set_style_bg_color(gear, COL_CARD, 0);
     lv_obj_add_event_cb(gear, settings_click_cb, LV_EVENT_CLICKED, NULL);
-    lv_obj_t *gl = make_label(gear, LV_SYMBOL_SETTINGS, &lv_font_montserrat_16, COL_TEXT);
+    lv_obj_t *gl = make_label(gear, MDI_COG, &mdi_icons_20, COL_TEXT);
     lv_obj_center(gl);
 
     det_title = make_label(scr_detail, "Verlauf", &lv_font_montserrat_20, COL_ACCENT);
@@ -647,7 +576,7 @@ static void build_settings(void)
     lv_obj_set_size(back, 40, 30);
     lv_obj_set_style_bg_color(back, COL_CARD, 0);
     lv_obj_add_event_cb(back, settings_back_cb, LV_EVENT_CLICKED, NULL);
-    lv_obj_t *bl = make_label(back, LV_SYMBOL_LEFT, &lv_font_montserrat_16, COL_TEXT);
+    lv_obj_t *bl = make_label(back, MDI_ARROW_LEFT, &mdi_icons_20, COL_TEXT);
     lv_obj_center(bl);
 
     lv_obj_t *title = make_label(scr_settings, "Einstellungen", &lv_font_montserrat_20, COL_ACCENT);

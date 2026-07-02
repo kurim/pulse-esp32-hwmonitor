@@ -4,6 +4,7 @@ idf_component_register(
         "config_store.c"
         "shared_state.c"
         "display_ui.c"
+        "font_mdi_icons_20.c"
         "touch_xpt2046.c"
         "web_portal.c"
         "mqtt_handler.c"

@@ -134,9 +134,25 @@ WLAN/MQTT/Zeitzone/Displaytyp eintragen → speichern → Neustart.
 
 > **Hinweis bei bereits vorhandener lokaler `sdkconfig`**: `sdkconfig.defaults`
 > wird nur bei einer *neuen* `sdkconfig` angewendet, nicht bei einem
-> bestehenden Build-Verzeichnis. Bei Fehlern zu fehlenden LVGL-Features
-> (`lv_font_montserrat_24`, `lv_arc_create`, ...) die lokale `sdkconfig`
-> loeschen oder die Optionen per `idf.py menuconfig` nachtragen.
+> bestehenden Build-Verzeichnis. Betrifft nicht nur fehlende LVGL-Features
+> (`lv_font_montserrat_24`, `lv_arc_create`, ...), sondern auch die
+> **Partitionstabelle**: ohne `CONFIG_PARTITION_TABLE_CUSTOM=y` aus einer
+> aktuellen `sdkconfig` landet der Build auf dem ESP-IDF-Standardlayout
+> ("factory", 1 MB) statt auf den beiden 1.75-MB-OTA-Slots aus
+> `partitions.csv` - der Build bricht dann mit "app partition is too small"
+> ab, obwohl das Image eigentlich passt. Bei Problemen dieser Art immer
+> zuerst die lokale `sdkconfig` loeschen und neu bauen lassen, statt einzelne
+> Optionen von Hand zu suchen.
+
+> **Image-Groesse**: Ein Image mit allen 5 Displaytreibern kommt je nach
+> Zielchip auf bis zu ~1.6 MB. Die OTA-Partitionen sind daher auf 1.75 MB
+> je Slot ausgelegt (`partitions.csv`) und der Build ist auf Groesse statt
+> Geschwindigkeit optimiert (`CONFIG_COMPILER_OPTIMIZATION_SIZE=y`). Falls
+> "app partition is too small" trotz aktueller `sdkconfig` weiterhin
+> auftritt, in `partitions.csv` die `ota_0`/`ota_1`-Groessen weiter erhoehen
+> (4 MB Flash abzueglich `nvs`/`otadata`/`phy_init` erlauben rechnerisch bis
+> knapp unter 2 MB je Slot) oder ungenutzte Displaytreiber testweise aus
+> `main/idf_component.yml`/`display_ui.c` entfernen.
 
 ## Auf Hardware zu pruefen / ggf. anzupassen
 

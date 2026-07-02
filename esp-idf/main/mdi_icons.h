@@ -6,13 +6,20 @@
 // dem npm-Paket "@mdi/font"). Ersetzt die vorherigen handgezeichneten
 // Vektor-Icons durch echte, wiedererkennbare Symbole.
 //
-// Bewusst NUR diese 8 eng beieinanderliegenden Codepoints (0xF004D-
-// 0xF061A) - ein frueherer Versuch mit zusaetzlichen, weit entfernten
-// Codepoints (unter anderem 0xF140B "lightning-bolt") loeste einen
-// bekannten lv_font_conv-Bug aus (github.com/lvgl/lv_font_conv Issue #62:
-// "Codepoint delta out of range" / kaputte sparse-cmap bei grossen Luecken
-// zwischen den Codepoints), wodurch auf dem Geraet KEIN einziges MDI-Icon
-// sichtbar war (leerer Platz statt Glyph).
+// WICHTIG: Die MDI-Originalcodepoints liegen alle oberhalb U+FFFF (z.B.
+// "chip" = U+F061A, im "Supplementary Private Use Area-A"), brauchen also
+// 4-Byte-UTF-8. Zwei Anlaeufe mit den Original-Codepoints direkt (erst 12,
+// dann auf 8 eng beieinanderliegende reduziert) zeigten auf echter Hardware
+// UEBERHAUPT KEIN MDI-Icon, obwohl lv_font_conv anstandslos durchlief -
+// vermutlich verwandt mit einem bekannten lv_font_conv-Bug bei der "sparse
+// tiny" Cmap fuer hohe Codepoints (github.com/lvgl/lv_font_conv Issue #62).
+// Fix: alle 8 Codepoints per lv_font_conv-Remapping (-r 'quelle=>ziel') auf
+// U+E001-U+E008 (Basic Multilingual Plane, Private Use Area) verschoben -
+// selber 3-Byte-UTF-8-Bereich wie LVGLs eigene LV_SYMBOL_*-Makros (die
+// nachweislich funktionieren). Als angenehmer Nebeneffekt wechselt
+// lv_font_conv dadurch automatisch von der fehleranfaelligen "sparse tiny"
+// Cmap auf die simplere "format0 tiny" (zusammenhaengender Bereich, keine
+// Lookup-Tabelle noetig).
 //
 // Verwendung: make_label(parent, MDI_CHIP, &mdi_icons_20, farbe);
 // ------------------------------------------------------------------
@@ -24,14 +31,16 @@ extern "C" {
 
 extern const lv_font_t mdi_icons_20;
 
-#define MDI_CHIP           "\xF3\xB0\x98\x9A"   // mdi-chip             U+F061A
-#define MDI_THERMOMETER    "\xF3\xB0\x94\x8F"   // mdi-thermometer      U+F050F
-#define MDI_SUN             "\xF3\xB0\x96\x99"   // mdi-weather-sunny    U+F0599
-#define MDI_WIND            "\xF3\xB0\x96\x9D"   // mdi-weather-windy    U+F059D
-#define MDI_RAIN            "\xF3\xB0\x96\x97"   // mdi-weather-rainy    U+F0597
-#define MDI_COG             "\xF3\xB0\x92\x93"   // mdi-cog              U+F0493
-#define MDI_ARROW_LEFT      "\xF3\xB0\x81\x8D"   // mdi-arrow-left       U+F004D
-#define MDI_WIFI            "\xF3\xB0\x96\xA9"   // mdi-wifi             U+F05A9
+// Zeichen-Codes sind die remappten Font-internen Codepoints (U+E001-E008),
+// nicht die MDI-Originalcodepoints - siehe Kommentar oben.
+#define MDI_ARROW_LEFT     "\xEE\x80\x81"   // mdi-arrow-left       (Original U+F004D, remapped U+E001)
+#define MDI_COG            "\xEE\x80\x82"   // mdi-cog              (Original U+F0493, remapped U+E002)
+#define MDI_THERMOMETER    "\xEE\x80\x83"   // mdi-thermometer      (Original U+F050F, remapped U+E003)
+#define MDI_RAIN           "\xEE\x80\x84"   // mdi-weather-rainy    (Original U+F0597, remapped U+E004)
+#define MDI_SUN            "\xEE\x80\x85"   // mdi-weather-sunny    (Original U+F0599, remapped U+E005)
+#define MDI_WIND           "\xEE\x80\x86"   // mdi-weather-windy    (Original U+F059D, remapped U+E006)
+#define MDI_WIFI           "\xEE\x80\x87"   // mdi-wifi             (Original U+F05A9, remapped U+E007)
+#define MDI_CHIP           "\xEE\x80\x88"   // mdi-chip             (Original U+F061A, remapped U+E008)
 
 #ifdef __cplusplus
 }

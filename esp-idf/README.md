@@ -7,10 +7,11 @@ WLAN-Setup über offenen Access Point mit Config-Webportal und OTA-Update.
 
 > ⚠️ **Auf Hardware verifiziert und iteriert.** Baut und flasht mit
 > ESP-IDF 6.0.x. Farbinversion, Display-Rotation (`rotation=1`) und das
-> Top-Bar-Layout wurden anhand von Fotos vom laufenden Gerät korrigiert. Die
-> erste Fassung der Material-Design-Icons-Font zeigte auf Hardware **gar
-> keine** Icons (bekannter `lv_font_conv`-Bug, siehe Abschnitt "Icons") —
-> mit reduziertem Codepoint-Satz behoben, aber noch nicht gegengeprüft.
+> Top-Bar-Layout wurden anhand von Fotos vom laufenden Gerät korrigiert.
+> Die Material-Design-Icons-Font zeigte auf Hardware zweimal in Folge **gar
+> keine** Icons (siehe Abschnitt "Icons") — im dritten Anlauf auf Codepoints
+> im selben 3-Byte-UTF-8-Bereich wie LVGLs eigene `LV_SYMBOL_*`-Zeichen
+> umgestellt, noch nicht gegengeprüft.
 
 ## Framework-Abbildung (Arduino → ESP-IDF)
 
@@ -129,18 +130,29 @@ Verwendet werden `chip`, `thermometer`, `weather-sunny`, `weather-windy`,
 `weather-rainy`, `cog`, `arrow-left`, `wifi` (alle in `mdi_icons.h`
 dokumentiert mit Original-Namen und Unicode-Codepoint).
 
-**Auf Hardware verifizierter Bug + Fix**: Eine erste Fassung enthielt
-zusätzlich `lightning-bolt` (U+F140B) — ein Codepoint weit entfernt von den
-übrigen acht (U+F004D–U+F061A). Das löste einen bekannten `lv_font_conv`-Bug
-aus ([Issue #62](https://github.com/lvgl/lv_font_conv/issues/62): fehlerhafte
-"sparse tiny" Cmap-Tabelle bei grossen Codepoint-Lücken), wodurch auf dem
-Gerät **kein einziges** MDI-Icon sichtbar war — nicht nur `lightning-bolt`,
-sondern alle acht, obwohl die Konvertierung ohne Fehlermeldung durchlief.
-Fix: `lightning-bolt` (und die ebenfalls entfernten `trending-*`-Icons, die
-nur als Reserve gedacht waren) aus dem Codepoint-Satz entfernt, sodass alle
-verbleibenden Glyphen eng beieinander liegen (Bereich nur noch 1486 statt
-5055). Power-/Trend-Symbole bleiben bei `LV_SYMBOL_CHARGE`/`_UP`/`_DOWN`
-(s.o.), nicht bei MDI.
+**Auf Hardware verifizierte Probleme + Fix** (zwei Anlaeufe scheiterten,
+bevor der dritte funktionierte — vollstaendig dokumentiert, da beim
+Ergaenzen weiterer Icons derselbe Fehler droht):
+
+1. Erste Fassung: 12 Codepoints inkl. `lightning-bolt` (U+F140B), weit
+   entfernt von den uebrigen 11 (U+F004D–U+F061A). Zeigte auf dem Geraet
+   **kein einziges** MDI-Icon, obwohl `lv_font_conv` fehlerfrei durchlief.
+   Vermutung: bekannter `lv_font_conv`-Bug bei der "sparse tiny"-Cmap mit
+   grossen Codepoint-Luecken ([Issue #62](https://github.com/lvgl/lv_font_conv/issues/62)).
+2. Zweite Fassung: `lightning-bolt` entfernt, nur noch die 8 tatsaechlich
+   genutzten, eng beieinanderliegenden Original-Codepoints (Bereich 1486
+   statt 5055). **Ebenfalls weiterhin kein einziges Icon sichtbar** — die
+   Cmap-Luecke war also nicht die (alleinige) Ursache.
+3. Dritte, funktionierende Fassung: alle 8 MDI-Originalcodepoints liegen
+   oberhalb U+FFFF und brauchen daher 4-Byte-UTF-8; LVGLs eigene
+   `LV_SYMBOL_*`-Zeichen (die nachweislich funktionieren) liegen dagegen alle
+   unterhalb U+FFFF (3-Byte-UTF-8). Per `lv_font_conv`-Remapping
+   (`-r 'quelle=>ziel'`) auf U+E001–U+E008 (Basic Multilingual Plane,
+   Private-Use-Area) verschoben — selber Codepoint-Bereich/Byte-Laenge wie
+   `LV_SYMBOL_*`. Nebeneffekt: `lv_font_conv` waehlt dafuer automatisch das
+   einfachere, zusammenhaengende `FORMAT0_TINY`-Cmap-Format statt des
+   fehleranfaelligen `SPARSE_TINY`. Die `MDI_*`-Makros in `mdi_icons.h`
+   enthalten die *remappten* Codepoints, nicht die MDI-Originalwerte.
 
 **Wichtige Einschränkung**: Ein MDI-Glyph kann nur in einem Label gerendert
 werden, dessen Font auf `&mdi_icons_20` gesetzt ist — er lässt sich *nicht*
@@ -150,17 +162,17 @@ Deshalb sind MDI-Icons im Code immer eigene, separate Label-Objekte neben dem
 Text, nie in einen gemeinsamen String eingebettet.
 
 **Weitere Icons ergänzen**: Icon-Name in `.../package/css/materialdesignicons.css`
-nachschlagen (Codepoint hinter `content: "\FXXXXX"`), dann neu generieren.
-**Wichtig**: alle Codepoints im `-r`-Bereich sollten nahe beieinander liegen
-(grosse Lücken lösen den oben beschriebenen `lv_font_conv`-Bug aus) — nach
-dem Generieren `range_length` im erzeugten `.c`-File pruefen (sollte nicht
-in die Zehntausende gehen) und im Zweifel mit `python3 -c "print(hex(0x...))"`
-die tatsächlichen Ziel-Codepoints aus `range_start` + Delta gegenrechnen:
+nachschlagen (Codepoint hinter `content: "\FXXXXX"`), dann mit Remapping auf
+einen freien Codepoint ab `0xE009` aufwaerts (Basic Multilingual Plane,
+**nicht** den MDI-Originalcodepoint direkt verwenden!) neu generieren. Danach
+im erzeugten `.c`-File pruefen, dass `.type` `FORMAT0_TINY` oder
+`FORMAT0_FULL` ist (nicht `SPARSE_*`) und `range_start`/`range_length`
+plausibel sind:
 
 ```bash
 npm pack @mdi/font@7.4.47 && tar xzf mdi-font-7.4.47.tgz
 npx lv_font_conv --font package/fonts/materialdesignicons-webfont.ttf \
-  -r 0xF061A,0xF050F,<weitere Codepoints...> \
+  -r '0xF004D=>0xE001,0xF0493=>0xE002,0xF050F=>0xE003,0xF0597=>0xE004,0xF0599=>0xE005,0xF059D=>0xE006,0xF05A9=>0xE007,0xF061A=>0xE008,<original>=>0xE009' \
   --size 20 --bpp 4 --format lvgl --lv-font-name mdi_icons_20 \
   -o font_mdi_icons_20.c
 ```

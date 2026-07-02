@@ -7,7 +7,7 @@
 #include "mdi_icons.h"
 
 #include "driver/spi_master.h"
-#include "driver/i2c.h"
+#include "driver/i2c_master.h"
 #include "driver/gpio.h"
 #include "driver/ledc.h"
 #include "esp_lcd_panel_io.h"
@@ -281,26 +281,31 @@ static lv_display_t *lcd_init_mono_i2c(const board_profile_t *p)
 {
     s_has_backlight = false; // OLED ist selbstleuchtend, kein Backlight-Pin
 
-    i2c_config_t i2c_cfg = {
-        .mode             = I2C_MODE_MASTER,
-        .sda_io_num       = p->i2c_sda,
-        .scl_io_num       = p->i2c_scl,
-        .sda_pullup_en    = GPIO_PULLUP_ENABLE,
-        .scl_pullup_en    = GPIO_PULLUP_ENABLE,
-        .master.clk_speed = p->i2c_hz,
+    // ESP-IDF >=5.2/6.x: esp_lcd_new_panel_io_i2c erwartet einen
+    // i2c_master_bus_handle_t aus dem neuen i2c_master-Treiber, nicht mehr
+    // den legacy i2c_port_t (driver/i2c.h). Legacy-API brach auf IDF 6.0.2
+    // mit "esp_lcd_i2c_bus_handle_t undeclared" / falscher Parameteranzahl.
+    i2c_master_bus_config_t bus_cfg = {
+        .i2c_port = I2C_NUM_0,
+        .sda_io_num = p->i2c_sda,
+        .scl_io_num = p->i2c_scl,
+        .clk_source = I2C_CLK_SRC_DEFAULT,
+        .glitch_ignore_cnt = 7,
+        .flags.enable_internal_pullup = true,
     };
-    ESP_ERROR_CHECK(i2c_param_config(I2C_NUM_0, &i2c_cfg));
-    ESP_ERROR_CHECK(i2c_driver_install(I2C_NUM_0, i2c_cfg.mode, 0, 0, 0));
+    i2c_master_bus_handle_t bus = NULL;
+    ESP_ERROR_CHECK(i2c_new_master_bus(&bus_cfg, &bus));
 
     esp_lcd_panel_io_handle_t io = NULL;
     esp_lcd_panel_io_i2c_config_t io_cfg = {
         .dev_addr          = p->i2c_addr,
+        .scl_speed_hz      = p->i2c_hz,
         .control_phase_bytes = 1,
         .lcd_cmd_bits      = 8,
         .lcd_param_bits    = 8,
         .dc_bit_offset     = 6,
     };
-    ESP_ERROR_CHECK(esp_lcd_new_panel_io_i2c((esp_lcd_i2c_bus_handle_t)I2C_NUM_0, &io_cfg, &io));
+    ESP_ERROR_CHECK(esp_lcd_new_panel_io_i2c(bus, &io_cfg, &io));
 
     esp_lcd_panel_ssd1306_config_t ssd_cfg = { .height = p->v_res };
     esp_lcd_panel_dev_config_t panel_cfg = {

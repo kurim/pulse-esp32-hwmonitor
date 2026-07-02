@@ -1,6 +1,22 @@
 #include "board_profiles.h"
 #include "sdkconfig.h"
+#include "soc/soc_caps.h"
 #include <string.h>
+
+// Das CYD-Profil nutzt fuer den XPT2046-Touch einen zweiten, vom Display
+// getrennten SPI-Bus (SPI3_HOST). SPI3_HOST existiert aber nur auf Chips mit
+// mindestens 3 SPI-Peripherien (SOC_SPI_PERIPH_NUM, klassischer ESP32/S2/S3);
+// auf dem C3 (nur 2, SOC_SPI_PERIPH_NUM==2) ist die Konstante gar nicht
+// deklariert und der Build bricht mit "SPI3_HOST undeclared" ab - obwohl das
+// CYD-Profil auf dem C3 zur Laufzeit nie ausgewaehlt wird (siehe
+// board_profile_is_available()). Die Tabelle unten muss trotzdem auf jedem
+// Zielchip kompilieren, daher hier ein fuer den C3 unschaedlicher Platzhalter
+// (SPI2_HOST) statt SPI3_HOST.
+#if SOC_SPI_PERIPH_NUM > 2
+#define CYD_TOUCH_SPI_HOST SPI3_HOST
+#else
+#define CYD_TOUCH_SPI_HOST SPI2_HOST
+#endif
 
 // ------------------------------------------------------------------
 // Generische SPI-Farbdisplay-Verdrahtung (ILI9488/ST7796S/GC9A01): dieselben
@@ -23,7 +39,7 @@ static const board_profile_t s_profiles[DISPLAY_TYPE_COUNT] = {
         .mosi = 13, .miso = 12, .sclk = 14, .cs = 15, .dc = 2, .rst = -1, .bl = 21,
         .spi_hz = 40 * 1000 * 1000, .spi_host = SPI2_HOST,
         .touch_cs = 33, .touch_irq = 36, .touch_mosi = 32, .touch_miso = 39, .touch_clk = 25,
-        .touch_spi_host = SPI3_HOST, .touch_spi_hz = 2 * 1000 * 1000,
+        .touch_spi_host = CYD_TOUCH_SPI_HOST, .touch_spi_hz = 2 * 1000 * 1000,
         .h_res = 320, .v_res = 240, .bgr = true, .color_16bit = true,
     },
     [DISPLAY_ILI9488] = {

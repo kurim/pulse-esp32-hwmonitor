@@ -131,6 +131,10 @@ WLAN/MQTT/Zeitzone/Displaytyp eintragen → speichern → Neustart.
 > ESP32-C3 hat weniger SRAM und kein PSRAM; ein 480x320-Framebuffer
 > (ILI9488/ST7796S) kann dort eng werden (siehe
 > `lvgl_port_display_cfg_t.buffer_size` in `display_ui.c`, ggf. reduzieren).
+> Der C3 hat ausserdem nur einen General-Purpose-SPI-Controller (`SPI2_HOST`,
+> kein `SPI3_HOST`) - betrifft nur den (dort ohnehin nicht waehlbaren)
+> CYD-Touch-Bus, `board_profiles.c` waehlt dafuer automatisch per
+> `SOC_SPI_PERIPH_NUM` einen kompilierbaren Platzhalter.
 
 > **Hinweis bei bereits vorhandener lokaler `sdkconfig`**: `sdkconfig.defaults`
 > wird nur bei einer *neuen* `sdkconfig` angewendet, nicht bei einem

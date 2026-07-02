@@ -138,15 +138,18 @@ Diese Punkte sind board-abhängig und ließen sich ohne Gerät nicht verifiziere
    verifiziert; die anderen vier Panels noch nicht - bei falschen/invertierten
    Farben `bgr`-Flag in `board_profiles.c` bzw. `invert_color` in
    `display_ui.c` anpassen.
-2. **Neue Panel-Treiber-Komponenten** — `main/idf_component.yml` listet
-   `espressif/esp_lcd_ili9488`, `esp_lcd_st7796`, `esp_lcd_gc9a01` und
-   `esp_lcd_panel_ssd1306` mit den ueblichen Espressif-Namenskonventionen.
-   **Noch nicht gegen den echten ESP Component Registry-Eintrag verifiziert**
-   - falls `idf.py build` eine dieser Abhaengigkeiten nicht aufloesen kann,
-     den exakten Namen unter https://components.espressif.com nachschlagen.
+2. **Neue Panel-Treiber-Komponenten** — `main/idf_component.yml` referenziert
+   `atanisoft/esp_lcd_ili9488` (Community-Komponente, kein offizieller
+   `espressif/`-Namespace-Eintrag existiert dafuer) sowie `espressif/esp_lcd_st7796`
+   und `espressif/esp_lcd_gc9a01` (beide offiziell, gegen die Registry-Eintraege
+   geprueft). SSD1306/SSD1309 brauchen **keinen** Registry-Eintrag - der Treiber
+   ist bereits Teil des Core-`esp_lcd`-Components (`esp_lcd_panel_vendor.h`).
+   Ein frueherer Stand dieses Branches hatte faelschlich einen nicht
+   existierenden `espressif/esp_lcd_panel_ssd1306`-Eintrag, der den Build mit
+   "Version solving failed" abbrach - das ist behoben.
 3. **SSD1309 ueber I2C** — `display_ui.c: lcd_init_mono_i2c()` nutzt den
-   SSD1306-kompatiblen Treiber (SSD1309 spricht dasselbe Protokoll, aber ggf.
-   mit abweichenden Kontrast-/Multiplex-Defaults). Noch nicht auf Hardware
+   Core-SSD1306-Treiber (SSD1309 spricht dasselbe Protokoll, aber ggf. mit
+   abweichenden Kontrast-/Multiplex-Defaults). Noch nicht auf Hardware
    verifiziert.
 4. **GC9A01-Rundlayout** — `display_ui.c: build_round_ui()` ist bewusst ein
    einfacher Platzhalter (zwei `lv_arc`s + Text), kein ausgearbeitetes rundes

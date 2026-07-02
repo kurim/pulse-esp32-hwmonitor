@@ -12,14 +12,19 @@ dependencies:
   # 1.x-Reihe nutzt noch das in v6 entfernte rgb_endian und bricht dort ab.
   espressif/esp_lcd_ili9341: "^2"
   # Weitere Panel-Treiber fuer die Displayauswahl im Webportal (siehe
-  # board_profiles.h). Komponentennamen folgen der ueblichen Espressif-
-  # Konvention, sind aber NOCH NICHT auf Hardware verifiziert - falls
-  # `idf.py build` eine dieser Abhaengigkeiten nicht auflösen kann, den
-  # exakten Namen im ESP Component Registry (https://components.espressif.com)
-  # nachschlagen und hier korrigieren.
-  espressif/esp_lcd_ili9488: "*"
+  # board_profiles.h).
+  #
+  # ILI9488: kein offizieller espressif/-Namespace-Eintrag im Registry -
+  # atanisoft/esp_lcd_ili9488 ist der gaengige Community-Treiber (Header
+  # esp_lcd_ili9488.h, Funktion esp_lcd_new_panel_ili9488() mit zusaetzlichem
+  # buffer_size-Parameter fuer die interne RGB565->RGB666-Konvertierung).
+  atanisoft/esp_lcd_ili9488: "~1.0.0"
   espressif/esp_lcd_st7796: "^1"
   espressif/esp_lcd_gc9a01: "^2"
-  espressif/esp_lcd_panel_ssd1306: "^1" # SSD1309 nutzt dasselbe Protokoll wie SSD1306
+  # SSD1306/SSD1309 sind bereits Teil des Core-esp_lcd-Components
+  # (esp_lcd_panel_vendor.h -> esp_lcd_panel_ssd1306.h, esp_lcd_new_panel_ssd1306()),
+  # brauchen daher KEINEN separaten Registry-Eintrag - anders als hier zuvor
+  # angenommen ("espressif/esp_lcd_panel_ssd1306" existiert nicht und liess
+  # den Build mit "Version solving failed" abbrechen).
   espressif/mqtt: "*"
   espressif/cjson: "*"

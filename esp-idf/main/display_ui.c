@@ -110,6 +110,42 @@ static void backlight_init(void)
     ledc_channel_config(&c);
 }
 
+// ------------------------------------------------------------------
+// Standby: Backlight aus, wenn laenger keine MQTT-Hardwaredaten ankommen
+// (weder je empfangen noch seit STANDBY_TIMEOUT_MS aktualisiert - deckt
+// beide Faelle über denselben Zeitvergleich ab, da last_update_ms beim
+// Boot bei 0 startet). Aufwecken per Touch (erster Touch weckt nur, loest
+// keine Aktion aus) oder automatisch, sobald wieder Daten eintreffen.
+// ------------------------------------------------------------------
+#define STANDBY_TIMEOUT_MS (2 * 60 * 1000) // 2 Minuten ohne Daten -> Standby
+static bool s_standby = false;
+
+static void enter_standby(void)
+{
+    if (s_standby) return;
+    s_standby = true;
+    ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, 0);
+    ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
+}
+
+static void exit_standby(void)
+{
+    if (!s_standby) return;
+    s_standby = false;
+    ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, app_config.brightness);
+    ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
+}
+
+static void check_standby(void)
+{
+    bool no_data = (now_ms() - hw_info.last_update_ms) > STANDBY_TIMEOUT_MS;
+    if (no_data) {
+        enter_standby();
+    } else {
+        exit_standby(); // Daten wieder da -> automatisch aufwecken
+    }
+}
+
 static void lcd_init(lv_display_t **out_disp)
 {
     backlight_init();
@@ -202,7 +238,18 @@ static void touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
 {
     (void)indev;
     uint16_t x, y;
-    if (touch_xpt2046_read(&x, &y)) {
+    bool touched = touch_xpt2046_read(&x, &y);
+
+    if (touched && s_standby) {
+        // Erster Touch nach dem Standby weckt nur das Display auf und loest
+        // keine Aktion aus (verhindert versehentliches Navigieren/Antippen
+        // von Kacheln beim Aufwecken).
+        exit_standby();
+        data->state = LV_INDEV_STATE_RELEASED;
+        return;
+    }
+
+    if (touched) {
         data->point.x = x;
         data->point.y = y;
         data->state   = LV_INDEV_STATE_PRESSED;
@@ -357,10 +404,10 @@ static void build_tile(lv_obj_t *parent, int x, const char *title, tile_ctx_t *t
     lv_obj_add_event_cb(card, tile_click_cb, LV_EVENT_CLICKED, (void *)(intptr_t)which);
 
     lv_obj_t *chip = make_label(card, MDI_CHIP, &mdi_icons_20, is_gpu ? COL_GPU : COL_ACCENT);
-    lv_obj_set_pos(chip, 8, 4);
+    lv_obj_set_pos(chip, 8, 2);
 
     lv_obj_t *t = make_label(card, title, &lv_font_montserrat_16, COL_TEXT);
-    lv_obj_set_pos(t, 32, 7);
+    lv_obj_set_pos(t, 32, 5);
 
     if (is_gpu) {
         lv_obj_t *badge = shape_rrect(card, 28, 16, 8, COL_BADGE_BG);
@@ -370,7 +417,7 @@ static void build_tile(lv_obj_t *parent, int x, const char *title, tile_ctx_t *t
     }
 
     tile->load_lbl = make_label(card, "--", &lv_font_montserrat_48, COL_TEXT);
-    lv_obj_align(tile->load_lbl, LV_ALIGN_CENTER, 0, -8);
+    lv_obj_align(tile->load_lbl, LV_ALIGN_CENTER, 0, -14);
 
     tile->bar = lv_bar_create(card);
     lv_obj_set_size(tile->bar, 120, 8);
@@ -419,36 +466,40 @@ static void build_main(void)
     lv_obj_set_style_pad_all(bar, 0, 0);
     lv_obj_clear_flag(bar, LV_OBJ_FLAG_SCROLLABLE);
 
-    lbl_time = make_label(bar, "--:--:--", &lv_font_montserrat_28, COL_TEXT);
-    lv_obj_set_pos(lbl_time, 8, 2);
-    lbl_date = make_label(bar, "", &lv_font_montserrat_14, COL_SUB);
-    lv_obj_set_pos(lbl_date, 8, 36);
+    // Uhrzeit etwas kleiner (28->24) und Datum groesser (14->16) angeglichen
+    // an Wetter-Temp (ebenfalls 24) bzw. Wind/Regen-Zeile (Y-Position
+    // angeglichen), damit beide Zeilen der Top-Bar optisch zusammenpassen.
+    lbl_time = make_label(bar, "--:--:--", &lv_font_montserrat_24, COL_TEXT);
+    lv_obj_set_pos(lbl_time, 8, 4);
+    lbl_date = make_label(bar, "", &lv_font_montserrat_16, COL_SUB);
+    lv_obj_set_pos(lbl_date, 8, 38);
 
-    // Info-Block rechts der Uhrzeit. "09:37:41" bei Font 28 ist ~130px breit
-    // (auf Hardware verifiziert) - alles hier startet daher erst ab x=138,
-    // mit fester Breite + CLIP je Label, damit nichts ueber den rechten
-    // Bildschirmrand bzw. ins WLAN-Icon hineinlaeuft (war vorher der Fall).
-    // MDI-Icons haben eine feste Zeichenbreite von 20px (aus der generierten
-    // Font ausgelesen) - Abstaende entsprechend bemessen.
+    // Info-Block rechts der Uhrzeit. "09:37:41" bei Font 24 ist ~112px breit
+    // - alles hier startet daher erst ab x=138, mit fester Breite + CLIP je
+    // Label, damit nichts ueber den rechten Bildschirmrand bzw. ins
+    // WLAN-Icon hineinlaeuft. MDI-Icons haben eine feste Zeichenbreite von
+    // 20px (aus der generierten Font ausgelesen) - Abstaende entsprechend
+    // bemessen.
     lv_obj_t *sun = make_label(bar, MDI_SUN, &mdi_icons_20, COL_YELLOW);
-    lv_obj_set_pos(sun, 138, 4);
-    lbl_weather = make_label(bar, "--C", &lv_font_montserrat_16, COL_TEXT);
-    lv_obj_set_pos(lbl_weather, 162, 6);
-    lv_obj_set_width(lbl_weather, 90);
+    lv_obj_set_pos(sun, 138, 8);
+    lbl_weather = make_label(bar, "--C", &lv_font_montserrat_24, COL_TEXT);
+    lv_obj_set_pos(lbl_weather, 162, 4);
+    lv_obj_set_width(lbl_weather, 130);
     lv_label_set_long_mode(lbl_weather, LV_LABEL_LONG_MODE_CLIP);
 
     lv_obj_t *wi = make_label(bar, MDI_WIND, &mdi_icons_20, COL_SUB);
     lv_obj_set_pos(wi, 138, 37);
     lbl_wind = make_label(bar, "--", &lv_font_montserrat_14, COL_SUB);
-    lv_obj_set_pos(lbl_wind, 162, 38);
-    lv_obj_set_width(lbl_wind, 68);
+    lv_obj_set_pos(lbl_wind, 160, 38);
+    lv_obj_set_width(lbl_wind, 62);
     lv_label_set_long_mode(lbl_wind, LV_LABEL_LONG_MODE_CLIP);
 
+    // Groesserer Abstand zum Regen-Block (vorher nur 4px Luecke).
     lv_obj_t *ri = make_label(bar, MDI_RAIN, &mdi_icons_20, COL_RAIN);
-    lv_obj_set_pos(ri, 234, 37);
+    lv_obj_set_pos(ri, 244, 37);
     lbl_rain = make_label(bar, "--", &lv_font_montserrat_14, COL_SUB);
-    lv_obj_set_pos(lbl_rain, 258, 38);
-    lv_obj_set_width(lbl_rain, 32);
+    lv_obj_set_pos(lbl_rain, 266, 38);
+    lv_obj_set_width(lbl_rain, 28);
     lv_label_set_long_mode(lbl_rain, LV_LABEL_LONG_MODE_CLIP);
 
     icon_wifi = make_label(bar, MDI_WIFI, &mdi_icons_20, COL_WARN);
@@ -741,6 +792,7 @@ static void refresh_now(void)
 static void tick_cb(lv_timer_t *t)
 {
     (void)t;
+    check_standby();
     refresh_now();
 }
 

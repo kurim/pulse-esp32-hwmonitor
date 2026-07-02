@@ -9,7 +9,9 @@ WLAN-Setup über offenen Access Point mit Config-Webportal und OTA-Update.
 > Farbinversion, Display-Rotation (`rotation=1`), Top-Bar-Layout und die
 > Material-Design-Icons-Font (siehe Abschnitt "Icons" — brauchte vier
 > Anläufe) wurden anhand von Fotos/Log-Ausgaben vom laufenden Gerät
-> korrigiert und bestätigt.
+> korrigiert und bestätigt. Top-Bar-Feinschliff (Schriftgrößen, Abstände),
+> Kachel-Feinjustage und Standby-Modus (siehe unten) sind neu und noch
+> nicht gegengeprüft.
 
 ## Framework-Abbildung (Arduino → ESP-IDF)
 
@@ -45,6 +47,14 @@ idf.py -p /dev/ttyUSB0 flash monitor
 
 Ersteinrichtung wie beim Arduino-Port: offener AP **`CYD-Setup-XXXX`** →
 `http://192.168.4.1` → WLAN/MQTT/Zeitzone eintragen → speichern → Neustart.
+
+> **Hinweis bei bereits vorhandener lokaler `sdkconfig`**: `sdkconfig.defaults`
+> wird nur bei einer *neuen* `sdkconfig` angewendet, nicht bei einem
+> bestehenden Build-Verzeichnis. Wurde `CONFIG_LV_FONT_MONTSERRAT_24`
+> ergänzt (für die Uhrzeit-Schriftgröße) und der Build meldet einen Fehler
+> zu `lv_font_montserrat_24`, die lokale `sdkconfig`-Datei löschen (oder
+> `idf.py menuconfig` → Component config → LVGL → Montserrat 24px aktivieren)
+> und neu bauen.
 
 ## Auf Hardware zu prüfen / ggf. anzupassen
 
@@ -111,6 +121,15 @@ Farbverlauf-Balken, Wetter-/Wind-/Regen-Anzeige, Trend-Pfeile, Settings-Knopf):
   gibt es in LVGL 9 nicht mehr (in 9.0 entfernt; Ersatz wäre ein separates
   `lv_scale`-Widget neben dem Chart). Die Verlaufsdiagramme zeigen daher nur
   Gitterlinien ohne Zahlenbeschriftung (wie in der zuvor bestätigten Version).
+- **Standby** (`display_ui.c`, `check_standby()`/`enter_standby()`/
+  `exit_standby()`): Backlight geht per LEDC auf Duty 0, wenn seit
+  `STANDBY_TIMEOUT_MS` (Default 2 Minuten) keine neuen MQTT-Hardwaredaten
+  eingetroffen sind — `hw_info.last_update_ms` startet beim Boot bei 0, der
+  Timeout greift also auch, falls nie Daten ankommen, nicht nur bei
+  Abbruch eines vorher laufenden Datenstroms. Aufwecken automatisch, sobald
+  wieder Daten eintreffen, oder per Touch (`touch_read_cb`): der erste Touch
+  nach dem Standby weckt nur auf und wird nicht als Klick an LVGL
+  durchgereicht (verhindert versehentliches Navigieren beim Aufwecken).
 
 ## Icons (Material Design Icons)
 

@@ -111,11 +111,12 @@ Das runde Minimal-UI hat zwei per Taste umschaltbare Screens (`display_ui.c`:
 Ein Druck auf die BOOT-Taste schaltet zwischen beiden um. Da dieses Panel
 keinen Backlight-Pin hat (`bl = -1`), laesst sich der Standby nicht per
 Software abdunkeln - stattdessen wird der Bildschirminhalt reduziert: im
-Standby werden **immer nur eine groessere, weiter oben stehende Uhrzeit +
-eine kompakte Wetterzeile** angezeigt, unabhaengig vom zuletzt gewaehlten
-Screen. Ein Tastendruck im Standby weckt nur auf (zeigt wieder den zuletzt
-gewaehlten Screen), loest aber keinen Screen-Wechsel aus - analog zum
-Touch-Wakeup beim CYD-Profil.
+Standby werden **immer eine groessere, weiter oben stehende Uhrzeit + der
+komplette Wetterblock** (dieselben vier Zeilen wie auf dem Wetter-Screen)
+angezeigt, unabhaengig vom zuletzt gewaehlten Screen (Overview/CPU-GPU-Arcs
+sind im Standby immer ausgeblendet). Ein Tastendruck im Standby weckt nur
+auf (zeigt wieder den zuletzt gewaehlten Screen), loest aber keinen
+Screen-Wechsel aus - analog zum Touch-Wakeup beim CYD-Profil.
 
 Die Arc-Widgets sind eigentlich Schieberegler und zeichnen ohne
 `lv_obj_remove_style(..., LV_PART_KNOB)` einen dicken Knob an der aktuellen
@@ -331,7 +332,7 @@ Farbverlauf-Balken, Wetter-/Wind-/Regen-Anzeige, Trend-Pfeile, Settings-Knopf):
 `main/font_mdi_icons_20.c` ist eine mit
 [`lv_font_conv`](https://github.com/lvgl/lv_font_conv) aus dem npm-Paket
 `@mdi/font` (Material Design Icons, Pictogrammers, Apache-2.0-Lizenz)
-generierte LVGL-Font — **nur die 8 tatsächlich genutzten Glyphen** bei 20px/
+generierte LVGL-Font — **nur die 9 tatsächlich genutzten Glyphen** bei 20px/
 4bpp, nicht der komplette Icon-Satz (der hätte mehrere MB). `main/mdi_icons.h`
 deklariert die Font (`extern const lv_font_t mdi_icons_20;`) sowie ein
 `#define MDI_<NAME>` je Icon (UTF-8-codierter Codepoint als C-String), analog
@@ -339,8 +340,12 @@ zu LVGLs eigenen `LV_SYMBOL_*`-Makros nutzbar: `make_label(parent, MDI_COG,
 &mdi_icons_20, farbe)`.
 
 Verwendet werden `chip`, `thermometer`, `weather-sunny`, `weather-windy`,
-`weather-rainy`, `cog`, `arrow-left`, `wifi` (alle in `mdi_icons.h`
-dokumentiert mit Original-Namen und Unicode-Codepoint).
+`weather-rainy`, `water-percent`, `cog`, `arrow-left`, `wifi` (alle in
+`mdi_icons.h` dokumentiert mit Original-Namen und Unicode-Codepoint).
+`water-percent` (Tropfen mit Prozent) wurde nachtraeglich fuer die
+Luftfeuchte-Anzeige im runden GC9A01-UI ergaenzt (Codepoint U+F058E,
+remapped auf U+E009) - Regenerierungsbefehl siehe unten, inklusive dieses
+neunten Eintrags im `-r`-Remapping.
 
 **Wichtige Einschränkung**: Ein MDI-Glyph kann nur in einem Label gerendert
 werden, dessen Font auf `&mdi_icons_20` gesetzt ist — er lässt sich *nicht*
@@ -351,20 +356,21 @@ Text, nie in einen gemeinsamen String eingebettet.
 
 **Weitere Icons ergänzen**: Icon-Name in `.../package/css/materialdesignicons.css`
 nachschlagen (Codepoint hinter `content: "\FXXXXX"`), dann mit Remapping auf
-einen freien Codepoint ab `0xE009` aufwaerts (Basic Multilingual Plane,
-**nicht** den MDI-Originalcodepoint direkt verwenden!) neu generieren:
+einen freien Codepoint ab `0xE00A` aufwaerts (Basic Multilingual Plane,
+**nicht** den MDI-Originalcodepoint direkt verwenden!) neu generieren - dabei
+immer **alle bisherigen Remaps mit angeben**, sonst verschieben sich die
+bestehenden Icons:
 
 ```bash
 npm pack @mdi/font@7.4.47 && tar xzf mdi-font-7.4.47.tgz
 npx lv_font_conv --font package/fonts/materialdesignicons-webfont.ttf \
-  -r '0xF004D=>0xE001,0xF0493=>0xE002,0xF050F=>0xE003,0xF0597=>0xE004,0xF0599=>0xE005,0xF059D=>0xE006,0xF05A9=>0xE007,0xF061A=>0xE008,<original>=>0xE009' \
-  --size 20 --bpp 4 --format lvgl --lv-font-name mdi_icons_20 \
+  -r '0xF004D=>0xE001,0xF0493=>0xE002,0xF050F=>0xE003,0xF0597=>0xE004,0xF0599=>0xE005,0xF059D=>0xE006,0xF05A9=>0xE007,0xF061A=>0xE008,0xF058E=>0xE009,<original>=>0xE00A' \
+  --size 20 --bpp 4 --format lvgl --lv-font-name mdi_icons_20 --no-compress --no-prefilter \
   -o font_mdi_icons_20.c
 ```
 
 Den `#ifdef LV_LVGL_H_INCLUDE_SIMPLE`-Include-Block danach durch ein einfaches
-`#include "lvgl.h"` ersetzen (passend zum Rest des Projekts). Bitmap-Format
-ohne Kompression generieren (`--no-compress --no-prefilter`).
+`#include "lvgl.h"` ersetzen (passend zum Rest des Projekts).
 
 ## MQTT-Datenformat
 

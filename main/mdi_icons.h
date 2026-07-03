@@ -1,7 +1,7 @@
 #pragma once
 // ------------------------------------------------------------------
 // Material Design Icons (https://materialdesignicons.com/, Pictogrammers,
-// Apache-2.0-Lizenz) als schlanke LVGL-Font-Teilmenge (die 8 hier
+// Apache-2.0-Lizenz) als schlanke LVGL-Font-Teilmenge (die 9 hier
 // tatsaechlich genutzten Glyphen, 20px, generiert mit lv_font_conv aus
 // dem npm-Paket "@mdi/font"). Ersetzt die vorherigen handgezeichneten
 // Vektor-Icons durch echte, wiedererkennbare Symbole.
@@ -40,7 +40,7 @@ extern "C" {
 
 extern const lv_font_t mdi_icons_20;
 
-// Zeichen-Codes sind die remappten Font-internen Codepoints (U+E001-E008),
+// Zeichen-Codes sind die remappten Font-internen Codepoints (U+E001-E009),
 // nicht die MDI-Originalcodepoints - siehe Kommentar oben.
 #define MDI_ARROW_LEFT     "\xEE\x80\x81"   // mdi-arrow-left       (Original U+F004D, remapped U+E001)
 #define MDI_COG            "\xEE\x80\x82"   // mdi-cog              (Original U+F0493, remapped U+E002)
@@ -50,6 +50,7 @@ extern const lv_font_t mdi_icons_20;
 #define MDI_WIND           "\xEE\x80\x86"   // mdi-weather-windy    (Original U+F059D, remapped U+E006)
 #define MDI_WIFI           "\xEE\x80\x87"   // mdi-wifi             (Original U+F05A9, remapped U+E007)
 #define MDI_CHIP           "\xEE\x80\x88"   // mdi-chip             (Original U+F061A, remapped U+E008)
+#define MDI_HUMIDITY       "\xEE\x80\x89"   // mdi-water-percent    (Original U+F058E, remapped U+E009)
 
 #ifdef __cplusplus
 }

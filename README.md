@@ -35,14 +35,15 @@ dort gar nicht erst auf.
 | ESP32-2432S028, ILI9341 | 320x240 | SPI | XPT2046 | volle Kachel-UI (Verlauf, Settings) |
 | ILI9488 | 480x320 | SPI | nein | Kachel-UI, skaliert auf die Aufloesung |
 | ST7796S | 480x320 | SPI | nein | Kachel-UI, skaliert auf die Aufloesung |
-| GC9A01 (rund) | 240x240 | SPI | nein | **Platzhalter**-UI (Arcs + Text, noch nicht final) |
+| GC9A01 (rund) | 240x240 | SPI | nein (BOOT-Taste als Navigation) | **Platzhalter**-UI (Arcs/Wetter + Text, noch nicht final) |
 | SSD1309 | 128x64, monochrom | I2C | nein | **Platzhalter**-UI (nur Text, kein Farbverlauf) |
 
 **Wichtige Einschraenkungen dieser ersten Umsetzung:**
 
-- Nur das erste Profil (ESP32-2432S028) hat Touch. Bei den anderen vier
-  Profilen gibt es keine Navigation am Geraet (Verlaufs-/Settings-Screen);
-  Konfiguration laeuft vollstaendig ueber das Webportal.
+- Nur das erste Profil (ESP32-2432S028) hat Touch. GC9A01 hat stattdessen die
+  BOOT-Taste des Devboards als einfache Navigation (Screen wechseln,
+  siehe unten); ILI9488/ST7796S/SSD1309 haben gar keine Navigation am Geraet.
+  Konfiguration laeuft in jedem Fall vollstaendig ueber das Webportal.
 - Rotation (`app_config.rotation`) wirkt nur auf die rechteckige Kachel-UI
   (ESP32-2432S028/ILI9488/ST7796S). GC9A01 und SSD1309 ignorieren die
   Einstellung.
@@ -92,6 +93,30 @@ gueltigen Pins an - hier beide Varianten zum Nachschlagen:
 | DC | 10 |
 | RST | 0 |
 | Backlight | kein separater Pin (fest verdrahtet/immer an) |
+| Navigationstaste | BOOT-Taste des Devboards: GPIO9 (C3/C6/H2) bzw. GPIO0 (ESP32/S3) - auf ESP32/S3 identisch mit RST, dort daher deaktiviert (`board_profiles.c`) |
+
+### GC9A01: Screens, Standby, Navigationstaste
+
+Das runde Minimal-UI hat zwei per Taste umschaltbare Screens (`display_ui.c`:
+`s_round_screen`, `ROUND_SCR_*`):
+
+- **Overview** (Default): Uhrzeit + zwei Arcs fuer CPU-/GPU-Auslastung.
+- **Wetter**: Uhrzeit + Temperatur/gefuehlte Temperatur/Luftfeuchte/Wind/Regen
+  (erfordert `weather_enabled` im Webportal).
+
+Ein Druck auf die BOOT-Taste schaltet zwischen beiden um. Da dieses Panel
+keinen Backlight-Pin hat (`bl = -1`), laesst sich der Standby nicht per
+Software abdunkeln - stattdessen wird der Bildschirminhalt reduziert: im
+Standby werden **immer nur Uhrzeit + eine kompakte Wetterzeile** angezeigt,
+unabhaengig vom zuletzt gewaehlten Screen. Ein Tastendruck im Standby weckt
+nur auf (zeigt wieder den zuletzt gewaehlten Screen), loest aber keinen
+Screen-Wechsel aus - analog zum Touch-Wakeup beim CYD-Profil.
+
+**Standby-Timeout ist im Webportal einstellbar** (Karte "Display" →
+"Standby nach ... Sekunden", `app_config.standby_timeout_s`, 0 = deaktiviert,
+Default 120s). Gilt fuer alle Displaytypen: bei Panels mit Backlight-Pin
+wirkt er wie bisher (Backlight aus), bei GC9A01 wie oben beschrieben
+(Inhalt reduzieren statt Helligkeit).
 
 **SSD1309 (I2C, monochrom, kein Touch):**
 
@@ -221,13 +246,20 @@ Diese Punkte sind board-abhängig und ließen sich ohne Gerät nicht verifiziere
    `driver/i2c.h`-API liefert auf ESP-IDF ≥5.2/6.x nicht mehr den dafuer
    erwarteten Bus-Handle-Typ. Noch nicht auf Hardware verifiziert.
 4. **GC9A01-Rundlayout** — `display_ui.c: build_round_ui()` ist bewusst ein
-   einfacher Platzhalter (zwei `lv_arc`s + Text), kein ausgearbeitetes rundes
-   Design. Layout/Positionierung noch nicht auf Hardware geprueft.
-5. **Display-Rotation / Spiegelung** — nur fuer die rechteckige Kachel-UI
-   relevant (ESP32-2432S028/ILI9488/ST7796S). Fuer ILI9341 rotation=1
-   (Default) auf Hardware verifiziert; die anderen Panels/Rotationen nicht
-   einzeln getestet. Portrait (rotation 0/2) ist zusaetzlich unlayoutet, da
-   die Kachel-UI fest auf Landscape ausgelegt ist.
+   einfacher Platzhalter (Arcs/Text, zwei Screens, siehe Abschnitt oben), kein
+   ausgearbeitetes rundes Design. Auf einem ersten Testaufbau bestaetigt
+   (180°-Korrektur noetig, siehe Punkt 5, sowie Layout/Screens/Boot-Taste
+   grundsaetzlich funktionsfaehig) - Feinschliff (Schriftgroessen, Icons im
+   Wetter-Screen, ggf. weitere Screens) noch offen.
+5. **Display-Rotation / Spiegelung** — die 4-Wege-Rotation (`app_config.rotation`)
+   gilt nur fuer die rechteckige Kachel-UI (ESP32-2432S028/ILI9488/ST7796S).
+   Fuer ILI9341 rotation=1 (Default) auf Hardware verifiziert; die anderen
+   Panels/Rotationen nicht einzeln getestet. Portrait (rotation 0/2) ist
+   zusaetzlich unlayoutet, da die Kachel-UI fest auf Landscape ausgelegt ist.
+   GC9A01 bekommt stattdessen fest `mirror_x=mirror_y=true` (180°-Korrektur,
+   `lcd_init_color_spi()` in `display_ui.c`) - auf dem ersten Testaufbau war
+   das Modul kopfueber verbaut. Falls bei anderer Verbauung wieder verkehrt
+   herum: die beiden `mirror_*`-Werte im `LCD_SHAPE_ROUND`-Zweig anpassen.
 6. **Touch-Kalibrierung** — `touch_xpt2046.c`: `TOUCH_RAW_*`-Grenzen und die
    Achsen-Zuordnung pro `rotation`, nur fuer das ESP32-2432S028-Profil
    relevant.
@@ -263,11 +295,15 @@ Farbverlauf-Balken, Wetter-/Wind-/Regen-Anzeige, Trend-Pfeile, Settings-Knopf):
   vor bis zu 10 Messungen (`compute_trend()` in `display_ui.c`); Schwelle
   ±3 Prozentpunkte für steigend/fallend, sonst "stabil" (Strich).
 - **Standby** (`display_ui.c`, `check_standby()`/`enter_standby()`/
-  `exit_standby()`): Backlight geht per LEDC auf Duty 0, wenn seit
-  `STANDBY_TIMEOUT_MS` (Default 2 Minuten) keine neuen MQTT-Hardwaredaten
-  eingetroffen sind. Nur fuer Panels mit Backlight-Pin relevant (OLED
-  entfaellt, da selbstleuchtend). Aufwecken automatisch, sobald wieder Daten
-  eintreffen, oder per Touch (nur ESP32-2432S028-Profil).
+  `exit_standby()`): greift, wenn seit `app_config.standby_timeout_s`
+  (im Webportal einstellbar, Default 120s, 0 = deaktiviert) keine neuen
+  MQTT-Hardwaredaten eingetroffen sind. Bei Panels mit Backlight-Pin geht
+  die Beleuchtung per LEDC auf Duty 0; bei Panels ohne Backlight-Pin
+  (GC9A01, SSD1309) bleibt die Beleuchtung unveraendert (OLED ist
+  selbstleuchtend, GC9A01 haengt bei diesem Board fest an VCC) - beim
+  GC9A01 wird stattdessen der Inhalt auf Uhrzeit+Wetter reduziert (siehe
+  GC9A01-Abschnitt oben). Aufwecken automatisch, sobald wieder Daten
+  eintreffen, oder per Touch (ESP32-2432S028) bzw. Boot-Taste (GC9A01).
 
 ## Icons (Material Design Icons)
 

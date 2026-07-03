@@ -62,6 +62,27 @@
 #define GC9A01_RST 0
 #define GC9A01_BL  (-1)
 
+// BOOT-Taste des Devboards als Navigationstaste fuer Profile ohne Touch
+// (aktuell nur GC9A01). Welche GPIO das ist, ist chipabhaengig: bei
+// RISC-V-Chips (C3/C6/H2) liegt die Boot-Strap-Taste auf GPIO9, bei
+// Xtensa-Chips (klassischer ESP32/S2/S3) auf GPIO0.
+#if CONFIG_IDF_TARGET_ESP32C3 || CONFIG_IDF_TARGET_ESP32C6 || CONFIG_IDF_TARGET_ESP32H2
+#define BOOT_BUTTON_GPIO 9
+#else
+#define BOOT_BUTTON_GPIO 0
+#endif
+
+// Auf klassischem ESP32/S3 waere BOOT_BUTTON_GPIO (0) identisch mit
+// GC9A01_RST (ebenfalls 0, feste Nutzervorgabe oben) - ein Tastendruck
+// wuerde dort also gleichzeitig das Display resetten. In diesem Fall die
+// Taste lieber ganz deaktivieren (-1), statt eine kaputte Kombination
+// anzubieten; auf C3/C6/H2 (BOOT auf GPIO9) besteht die Kollision nicht.
+#if BOOT_BUTTON_GPIO == GC9A01_RST
+#define GC9A01_NAV_BUTTON (-1)
+#else
+#define GC9A01_NAV_BUTTON BOOT_BUTTON_GPIO
+#endif
+
 static const board_profile_t s_profiles[DISPLAY_TYPE_COUNT] = {
     [DISPLAY_CYD_ILI9341] = {
         .name = "ESP32-2432S028 - ILI9341 320x240, SPI + XPT2046-Touch",
@@ -70,6 +91,7 @@ static const board_profile_t s_profiles[DISPLAY_TYPE_COUNT] = {
         .spi_hz = 40 * 1000 * 1000, .spi_host = SPI2_HOST,
         .touch_cs = 33, .touch_irq = 36, .touch_mosi = 32, .touch_miso = 39, .touch_clk = 25,
         .touch_spi_host = CYD_TOUCH_SPI_HOST, .touch_spi_hz = 2 * 1000 * 1000,
+        .nav_button = -1,
         .h_res = 320, .v_res = 240, .bgr = true, .color_16bit = true,
     },
     [DISPLAY_ILI9488] = {
@@ -78,6 +100,7 @@ static const board_profile_t s_profiles[DISPLAY_TYPE_COUNT] = {
         .mosi = GENERIC_SPI_MOSI, .miso = GENERIC_SPI_MISO, .sclk = GENERIC_SPI_SCLK,
         .cs = GENERIC_SPI_CS, .dc = GENERIC_SPI_DC, .rst = GENERIC_SPI_RST, .bl = GENERIC_SPI_BL,
         .spi_hz = 40 * 1000 * 1000, .spi_host = SPI2_HOST,
+        .nav_button = -1,
         .h_res = 480, .v_res = 320, .bgr = false, .color_16bit = true,
     },
     [DISPLAY_ST7796S] = {
@@ -86,6 +109,7 @@ static const board_profile_t s_profiles[DISPLAY_TYPE_COUNT] = {
         .mosi = GENERIC_SPI_MOSI, .miso = GENERIC_SPI_MISO, .sclk = GENERIC_SPI_SCLK,
         .cs = GENERIC_SPI_CS, .dc = GENERIC_SPI_DC, .rst = GENERIC_SPI_RST, .bl = GENERIC_SPI_BL,
         .spi_hz = 40 * 1000 * 1000, .spi_host = SPI2_HOST,
+        .nav_button = -1,
         .h_res = 480, .v_res = 320, .bgr = false, .color_16bit = true,
     },
     [DISPLAY_GC9A01] = {
@@ -94,12 +118,14 @@ static const board_profile_t s_profiles[DISPLAY_TYPE_COUNT] = {
         .mosi = GC9A01_SDA, .miso = -1, .sclk = GC9A01_SCL,
         .cs = GC9A01_CS, .dc = GC9A01_DC, .rst = GC9A01_RST, .bl = GC9A01_BL,
         .spi_hz = 40 * 1000 * 1000, .spi_host = SPI2_HOST,
+        .nav_button = GC9A01_NAV_BUTTON, // BOOT-Taste des Devboards: Screen wechseln / aus Standby wecken
         .h_res = 240, .v_res = 240, .bgr = true, .color_16bit = true,
     },
     [DISPLAY_SSD1309_I2C] = {
         .name = "SSD1309 (128x64, monochrom, I2C, kein Touch)",
         .bus = LCD_BUS_I2C, .shape = LCD_SHAPE_MONO, .has_touch = false,
         .i2c_sda = 8, .i2c_scl = 9, .i2c_addr = 0x3C, .i2c_hz = 400 * 1000,
+        .nav_button = -1,
         .h_res = 128, .v_res = 64, .bgr = false, .color_16bit = false,
     },
 };

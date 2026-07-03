@@ -28,6 +28,7 @@ void config_set_defaults(app_config_t *cfg)
     cfg->brightness = 255;
     cfg->rotation   = 1;
     cfg->display_type = board_profile_default();
+    cfg->standby_timeout_s = 120; // 2 Minuten, entspricht dem bisherigen fixen Wert
 }
 
 void history_push(history_t *h, float load, float temp, float power)

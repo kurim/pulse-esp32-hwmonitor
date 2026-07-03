@@ -89,7 +89,7 @@ static const char INDEX_HTML[] =
 "(board_profiles.c) angepasst werden.</div>"
 "<div class=\"row\" style=\"margin-top:10px\">"
 "<div><label>Helligkeit (0-255)</label><input type=\"number\" id=\"brightness\" min=\"0\" max=\"255\"></div>"
-"<div><label>Rotation (0-3, nur rechteckige Displays)</label><input type=\"number\" id=\"rotation\" min=\"0\" max=\"3\"></div></div>"
+"<div><label>Rotation/Spiegelung (0-3, je nach Displaytyp durchprobieren)</label><input type=\"number\" id=\"rotation\" min=\"0\" max=\"3\"></div></div>"
 "<label>Standby nach (Sekunden ohne MQTT-Daten, 0 = deaktiviert)</label>"
 "<input type=\"number\" id=\"standby_timeout_s\" min=\"0\" max=\"65535\"></div>"
 "<button type=\"submit\">Speichern &amp; Neustart</button><div id=\"status\"></div></form>"

@@ -251,15 +251,23 @@ Diese Punkte sind board-abhängig und ließen sich ohne Gerät nicht verifiziere
    (180°-Korrektur noetig, siehe Punkt 5, sowie Layout/Screens/Boot-Taste
    grundsaetzlich funktionsfaehig) - Feinschliff (Schriftgroessen, Icons im
    Wetter-Screen, ggf. weitere Screens) noch offen.
-5. **Display-Rotation / Spiegelung** — die 4-Wege-Rotation (`app_config.rotation`)
-   gilt nur fuer die rechteckige Kachel-UI (ESP32-2432S028/ILI9488/ST7796S).
-   Fuer ILI9341 rotation=1 (Default) auf Hardware verifiziert; die anderen
-   Panels/Rotationen nicht einzeln getestet. Portrait (rotation 0/2) ist
-   zusaetzlich unlayoutet, da die Kachel-UI fest auf Landscape ausgelegt ist.
-   GC9A01 bekommt stattdessen fest `mirror_x=mirror_y=true` (180°-Korrektur,
-   `lcd_init_color_spi()` in `display_ui.c`) - auf dem ersten Testaufbau war
-   das Modul kopfueber verbaut. Falls bei anderer Verbauung wieder verkehrt
-   herum: die beiden `mirror_*`-Werte im `LCD_SHAPE_ROUND`-Zweig anpassen.
+5. **Display-Rotation / Spiegelung** — `app_config.rotation` (0-3, im Webportal
+   einstellbar) hat je nach Panelform eine andere Bedeutung:
+   - LCD_SHAPE_RECT (ESP32-2432S028/ILI9488/ST7796S): waehlt zwischen den vier
+     Landscape/Portrait-Faellen. Fuer ILI9341 rotation=1 (Default) auf
+     Hardware verifiziert; die anderen Panels/Rotationen nicht einzeln
+     getestet. Portrait (0/2) ist zusaetzlich unlayoutet, da die Kachel-UI
+     fest auf Landscape ausgelegt ist.
+   - LCD_SHAPE_ROUND (GC9A01): waehlt direkt zwischen den vier moeglichen
+     `mirror_x`/`mirror_y`-Kombinationen (`lcd_init_color_spi()` in
+     `display_ui.c`), da nicht vorhersagbar ist, welche Kombination bei
+     gegebener Verbauung/Panel-Charge Text weder kopfueber noch
+     seitenverkehrt darstellt - **auf dem ersten Testaufbau reichte die
+     180°-Kombination (`rotation=3`) nicht aus, das Bild blieb
+     seitenverkehrt** (mirror_x/mirror_y zusammen entspricht nicht
+     zwangslaeufig "richtig herum", sondern haengt von der Scan-Richtung
+     des jeweiligen Panels ab). Einfach 0-3 durchprobieren, kein Neuflashen
+     noetig (nur Neustart nach dem Speichern).
 6. **Touch-Kalibrierung** — `touch_xpt2046.c`: `TOUCH_RAW_*`-Grenzen und die
    Achsen-Zuordnung pro `rotation`, nur fuer das ESP32-2432S028-Profil
    relevant.

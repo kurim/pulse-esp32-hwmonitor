@@ -420,6 +420,8 @@ static void touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
     }
 }
 
+static void refresh_round_ui(void); // fwd (Definition erst weiter unten, wird aber schon in nav_button_cb() gebraucht)
+
 // ------------------------------------------------------------------
 // Navigationstaste (nur Profile ohne Touch mit nav_button>=0, aktuell nur
 // GC9A01: BOOT-Taste des Devboards). Taste zieht beim Druecken gegen GND
@@ -526,11 +528,10 @@ static void compute_trend(const history_t *h, const char **sym, lv_color_t *col)
 
 // ------------------------------------------------------------------
 // Navigation (LCD_SHAPE_RECT: Touch; LCD_SHAPE_ROUND: Boot-Taste zwischen
-// Overview/Wetter, siehe nav_button_cb() weiter unten. LCD_SHAPE_MONO hat
+// Overview/Wetter, siehe nav_button_cb() weiter oben. LCD_SHAPE_MONO hat
 // weiterhin keine Navigation und zeigt alles auf einem einzigen Screen.)
 // ------------------------------------------------------------------
-static void refresh_now(void);      // fwd
-static void refresh_round_ui(void); // fwd
+static void refresh_now(void); // fwd
 
 static void tile_click_cb(lv_event_t *e)
 {

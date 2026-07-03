@@ -500,7 +500,7 @@ static esp_err_t h_update(httpd_req_t *req)
 }
 
 // Captive-Portal: alle unbekannten Pfade auf die Startseite umleiten (nur AP).
-static esp_err_t h_404(httpd_req_t *req, httpd_err_code_t err)
+static esp_err_t h_captive_redirect(httpd_req_t *req)
 {
     if (s_ap_mode) {
         httpd_resp_set_status(req, "302 Found");
@@ -512,12 +512,28 @@ static esp_err_t h_404(httpd_req_t *req, httpd_err_code_t err)
     return ESP_FAIL;
 }
 
+static esp_err_t h_404(httpd_req_t *req, httpd_err_code_t err)
+{
+    return h_captive_redirect(req);
+}
+
 static void start_http(void)
 {
     httpd_config_t cfg = HTTPD_DEFAULT_CONFIG();
     cfg.stack_size      = 8192;
-    cfg.max_uri_handlers = 9;
+    cfg.max_uri_handlers = 16;
     cfg.lru_purge_enable = true;
+    // Handys pruefen die Internetverbindung ueber mehrere parallele Anfragen
+    // (iOS/macOS: hotspot-detect.html, Android: generate_204, Windows:
+    // connecttest.txt, ...). Mit dem esp_http_server-Default (abgeleitet aus
+    // CONFIG_LWIP_MAX_SOCKETS, siehe sdkconfig.defaults) gingen dabei die
+    // Sockets aus ("error in accept (23)"/"error in recv: 104" im Log) - das
+    // Config-Formular blieb dann haengen bzw. das Handy hat die Captive-
+    // Portal-Seite neu geladen (dadurch sprang der Fokus zurueck aufs erste
+    // Feld). Zusammen mit CONFIG_LWIP_MAX_SOCKETS=16 jetzt mehr Luft.
+    cfg.max_open_sockets = 13;
+    cfg.recv_wait_timeout = 3;
+    cfg.send_wait_timeout = 3;
     if (httpd_start(&s_httpd, &cfg) != ESP_OK) {
         ESP_LOGE(TAG, "httpd_start fehlgeschlagen");
         return;
@@ -530,6 +546,17 @@ static void start_http(void)
         { .uri = "/api/config",   .method = HTTP_POST, .handler = h_config_post },
         { .uri = "/api/displays", .method = HTTP_GET,  .handler = h_displays },
         { .uri = "/update",       .method = HTTP_POST, .handler = h_update },
+        // Bekannte Captive-Portal-Erkennungspfade der wichtigsten Betriebs-
+        // systeme direkt registrieren (statt nur ueber den generischen
+        // 404-Handler laufen zu lassen) - vermeidet die "URI not found"-
+        // Warnung im Log und beantwortet die Anfrage etwas schneller/mit
+        // weniger Overhead pro Verbindung.
+        { .uri = "/hotspot-detect.html",     .method = HTTP_GET, .handler = h_captive_redirect }, // iOS/macOS
+        { .uri = "/library/test/success.html", .method = HTTP_GET, .handler = h_captive_redirect }, // iOS/macOS (alt)
+        { .uri = "/generate_204",            .method = HTTP_GET, .handler = h_captive_redirect }, // Android
+        { .uri = "/gen_204",                 .method = HTTP_GET, .handler = h_captive_redirect }, // Android (alt)
+        { .uri = "/connecttest.txt",         .method = HTTP_GET, .handler = h_captive_redirect }, // Windows
+        { .uri = "/ncsi.txt",                .method = HTTP_GET, .handler = h_captive_redirect }, // Windows (alt)
     };
     for (size_t i = 0; i < sizeof(routes) / sizeof(routes[0]); i++) {
         httpd_register_uri_handler(s_httpd, &routes[i]);

@@ -269,11 +269,20 @@ static lv_display_t *lcd_init_color_spi(const board_profile_t *p)
     LCD_CHECK(esp_lcd_panel_invert_color(panel, false));
     LCD_CHECK(esp_lcd_panel_disp_on_off(panel, true));
 
-    // Rotation -> swap/mirror + Aufloesung. Die 4-Wege-Rotation gilt nur fuer
-    // LCD_SHAPE_RECT (Landscape-Kachel-UI). Runde Panels (GC9A01) haben keine
-    // "Landscape/Portrait"-Unterscheidung, sondern nur eine 180°-Korrektur,
-    // falls das Modul kopfueber verbaut ist (auf dem ersten Testaufbau war
-    // das der Fall - Text erschien seitenverkehrt/kopfueber).
+    // Rotation -> swap/mirror + Aufloesung. Fuer LCD_SHAPE_RECT (Landscape-
+    // Kachel-UI) waehlt rotation die vier Landscape/Portrait-Faelle.
+    //
+    // LCD_SHAPE_ROUND hat keine Landscape/Portrait-Unterscheidung (Panel ist
+    // quadratisch/rund) - rotation waehlt hier stattdessen direkt zwischen den
+    // vier moeglichen Spiegel-Kombinationen (mirror_x/mirror_y einzeln bzw.
+    // zusammen), da nicht vorhersagbar ist, welche Kombination bei einer
+    // gegebenen Verbauung/Panel-Charge die richtige ist (mirror_x+mirror_y
+    // zusammen ist KEIN garantiertes "richtig herum", sondern nur 180°
+    // gegenueber mirror_x/mirror_y einzeln - je nach Scan-Richtung des
+    // jeweiligen Panels kann das Ergebnis seitenverkehrt statt kopfueber
+    // sein). Im Webportal einfach "Rotation" durchprobieren (0-3), bis
+    // Text weder seitenverkehrt noch kopfueber erscheint - kein Neuflashen
+    // noetig, die Auswahl greift nach dem naechsten Neustart.
     bool swap_xy = false, mirror_x = false, mirror_y = false;
     int hres = p->h_res, vres = p->v_res;
     if (p->shape == LCD_SHAPE_RECT) {
@@ -285,8 +294,13 @@ static lv_display_t *lcd_init_color_spi(const board_profile_t *p)
             default: swap_xy = true; mirror_x = false; mirror_y = false; hres = p->h_res; vres = p->v_res; break;
         }
     } else if (p->shape == LCD_SHAPE_ROUND) {
-        mirror_x = true;
-        mirror_y = true;
+        switch (app_config.rotation) {
+            case 1:  mirror_x = true;  mirror_y = false; break;
+            case 2:  mirror_x = false; mirror_y = true;  break;
+            case 3:  mirror_x = true;  mirror_y = true;  break;
+            case 0:
+            default: mirror_x = false; mirror_y = false; break;
+        }
     }
     s_hres = hres;
     s_vres = vres;

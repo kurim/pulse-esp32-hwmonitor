@@ -43,6 +43,13 @@ typedef struct {
     // reduzierter Inhalt, siehe display_ui.c: check_standby()). 0 = Standby
     // deaktiviert.
     uint16_t standby_timeout_s;
+
+    // Panel-Farbinversion (esp_lcd_panel_invert_color) - manche Panels
+    // zeigen ohne Inversion einen hellen statt dunklen Hintergrund. Frueher
+    // fest auf false verdrahtet (fuer ILI9341/CYD korrekt), jetzt im
+    // Webportal umschaltbar, da andere Panels (z.B. GC9A01) das anders
+    // brauchen koennen.
+    bool color_invert;
 } app_config_t;
 
 // ----------------------------------------------------------------

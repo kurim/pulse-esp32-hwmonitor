@@ -91,7 +91,8 @@ static const char INDEX_HTML[] =
 "<div><label>Helligkeit (0-255)</label><input type=\"number\" id=\"brightness\" min=\"0\" max=\"255\"></div>"
 "<div><label>Rotation/Spiegelung (0-3, je nach Displaytyp durchprobieren)</label><input type=\"number\" id=\"rotation\" min=\"0\" max=\"3\"></div></div>"
 "<label>Standby nach (Sekunden ohne MQTT-Daten, 0 = deaktiviert)</label>"
-"<input type=\"number\" id=\"standby_timeout_s\" min=\"0\" max=\"65535\"></div>"
+"<input type=\"number\" id=\"standby_timeout_s\" min=\"0\" max=\"65535\">"
+"<div class=\"toggle\"><input type=\"checkbox\" id=\"color_invert\"><label style=\"margin:0\">Farben invertieren (Dark Mode, falls Hintergrund hell statt dunkel ist)</label></div></div>"
 "<button type=\"submit\">Speichern &amp; Neustart</button><div id=\"status\"></div></form>"
 "<div class=\"card\"><h2>Firmware-Update (OTA)</h2>"
 "<div class=\"sub\" style=\"margin-bottom:10px\">Aktuelle Version: <span id=\"fwVersion\">-</span></div>"
@@ -136,7 +137,7 @@ static const char INDEX_HTML[] =
 "'<span><span class=\"dot\" style=\"background:'+(s.mqtt?'#3fd0e0':'#e05a5a')+'\"></span>MQTT</span>'+"
 "'<span>CPU '+s.cpu_load.toFixed(0)+'%</span><span>GPU '+s.gpu_load.toFixed(0)+'%</span><span>IP '+s.ip+'</span>';}catch(e){}}"
 "document.getElementById('cfgForm').addEventListener('submit',async(e)=>{e.preventDefault();"
-"const ids=['wifi_ssid','wifi_pass','mqtt_host','mqtt_port','mqtt_user','mqtt_pass','mqtt_topic','ntp_server','tz','weather_enabled','weather_api_key','weather_city','weather_units','brightness','rotation','display_type','standby_timeout_s'];"
+"const ids=['wifi_ssid','wifi_pass','mqtt_host','mqtt_port','mqtt_user','mqtt_pass','mqtt_topic','ntp_server','tz','weather_enabled','weather_api_key','weather_city','weather_units','brightness','rotation','display_type','standby_timeout_s','color_invert'];"
 "const payload={};ids.forEach(id=>{const el=document.getElementById(id);payload[id]=el.type==='checkbox'?el.checked:(el.type==='number'?Number(el.value):el.value);});"
 "document.getElementById('status').innerText='Speichere...';"
 "await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});"
@@ -332,6 +333,7 @@ static esp_err_t h_config_get(httpd_req_t *req)
     cJSON_AddNumberToObject(d, "rotation", app_config.rotation);
     cJSON_AddStringToObject(d, "display_type", board_profile_key(app_config.display_type));
     cJSON_AddNumberToObject(d, "standby_timeout_s", app_config.standby_timeout_s);
+    cJSON_AddBoolToObject(  d, "color_invert", app_config.color_invert);
 
     char *out = cJSON_PrintUnformatted(d);
     httpd_resp_set_type(req, "application/json");
@@ -455,6 +457,8 @@ static esp_err_t h_config_post(httpd_req_t *req)
     if (cJSON_IsString(dt)) app_config.display_type = board_profile_from_key(dt->valuestring);
     cJSON *sb = cJSON_GetObjectItem(root, "standby_timeout_s");
     if (cJSON_IsNumber(sb)) app_config.standby_timeout_s = (uint16_t)sb->valuedouble;
+    cJSON *inv = cJSON_GetObjectItem(root, "color_invert");
+    if (cJSON_IsBool(inv)) app_config.color_invert = cJSON_IsTrue(inv);
     cJSON_Delete(root);
 
     config_store_save(&app_config);

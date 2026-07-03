@@ -27,6 +27,20 @@
 
 static const char *TAG = "ui";
 
+// Wie ESP_ERROR_CHECK, aber statt abort() nur eine Fehlermeldung + Rueckgabe
+// NULL aus der umschliessenden Funktion. Eine falsche Pin-/Displaywahl (z.B.
+// nach dem Wechsel auf einen anderen Zielchip, bei dem ein generisches Profil
+// eine dort nicht existierende GPIO-Nummer nutzt) darf das Geraet nicht in
+// eine Boot-Schleife schicken, in der das Webportal nie erreichbar wird, um
+// die Auswahl zu korrigieren - siehe display_ui_begin().
+#define LCD_CHECK(x) do { \
+        esp_err_t __err_rc = (x); \
+        if (__err_rc != ESP_OK) { \
+            ESP_LOGE(TAG, "Display-Init fehlgeschlagen (%s): %s", #x, esp_err_to_name(__err_rc)); \
+            return NULL; \
+        } \
+    } while (0)
+
 // ---- Farben ----
 #define COL_BG       lv_color_hex(0x000000)
 #define COL_CARD     lv_color_hex(0x171C28)
@@ -183,7 +197,7 @@ static lv_display_t *lcd_init_color_spi(const board_profile_t *p)
         .quadhd_io_num   = -1,
         .max_transfer_sz = p->h_res * 80 * sizeof(uint16_t),
     };
-    ESP_ERROR_CHECK(spi_bus_initialize(p->spi_host, &bus, SPI_DMA_CH_AUTO));
+    LCD_CHECK(spi_bus_initialize(p->spi_host, &bus, SPI_DMA_CH_AUTO));
 
     esp_lcd_panel_io_handle_t io = NULL;
     esp_lcd_panel_io_spi_config_t io_cfg = {
@@ -195,7 +209,7 @@ static lv_display_t *lcd_init_color_spi(const board_profile_t *p)
         .spi_mode      = 0,
         .trans_queue_depth = 10,
     };
-    ESP_ERROR_CHECK(esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)p->spi_host, &io_cfg, &io));
+    LCD_CHECK(esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)p->spi_host, &io_cfg, &io));
 
     esp_lcd_panel_handle_t panel = NULL;
     esp_lcd_panel_dev_config_t panel_cfg = {
@@ -210,27 +224,27 @@ static lv_display_t *lcd_init_color_spi(const board_profile_t *p)
             // internen RGB565->RGB666-Konvertierungspuffers (in Pixeln) -
             // an die groesste zu erwartende draw_bitmap()-Flaeche angelehnt,
             // hier eine LVGL-Flush-Kachel (Breite x 40 Zeilen, s. dcfg unten).
-            ESP_ERROR_CHECK(esp_lcd_new_panel_ili9488(io, &panel_cfg, p->h_res * 40, &panel));
+            LCD_CHECK(esp_lcd_new_panel_ili9488(io, &panel_cfg, p->h_res * 40, &panel));
             break;
         case DISPLAY_ST7796S:
-            ESP_ERROR_CHECK(esp_lcd_new_panel_st7796(io, &panel_cfg, &panel));
+            LCD_CHECK(esp_lcd_new_panel_st7796(io, &panel_cfg, &panel));
             break;
         case DISPLAY_GC9A01:
-            ESP_ERROR_CHECK(esp_lcd_new_panel_gc9a01(io, &panel_cfg, &panel));
+            LCD_CHECK(esp_lcd_new_panel_gc9a01(io, &panel_cfg, &panel));
             break;
         case DISPLAY_CYD_ILI9341:
         default:
-            ESP_ERROR_CHECK(esp_lcd_new_panel_ili9341(io, &panel_cfg, &panel));
+            LCD_CHECK(esp_lcd_new_panel_ili9341(io, &panel_cfg, &panel));
             break;
     }
 
-    ESP_ERROR_CHECK(esp_lcd_panel_reset(panel));
-    ESP_ERROR_CHECK(esp_lcd_panel_init(panel));
+    LCD_CHECK(esp_lcd_panel_reset(panel));
+    LCD_CHECK(esp_lcd_panel_init(panel));
     // Auf realer CYD-Hardware (ILI9341) verifiziert: Farbinversion "true" ergab
     // ein komplett invertiertes Bild. Fuer die anderen Panels noch nicht
     // gegengeprueft - bei falschen Farben hier pro Displaytyp anpassen.
-    ESP_ERROR_CHECK(esp_lcd_panel_invert_color(panel, false));
-    ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(panel, true));
+    LCD_CHECK(esp_lcd_panel_invert_color(panel, false));
+    LCD_CHECK(esp_lcd_panel_disp_on_off(panel, true));
 
     // Rotation -> swap/mirror + Aufloesung. Nur fuer LCD_SHAPE_RECT relevant;
     // das runde GC9A01 bleibt immer in nativer Aufloesung (kein Rotationsfall
@@ -250,7 +264,7 @@ static lv_display_t *lcd_init_color_spi(const board_profile_t *p)
     s_vres = vres;
 
     lvgl_port_cfg_t pcfg = ESP_LVGL_PORT_INIT_CONFIG();
-    ESP_ERROR_CHECK(lvgl_port_init(&pcfg));
+    LCD_CHECK(lvgl_port_init(&pcfg));
 
     lvgl_port_display_cfg_t dcfg = {
         .io_handle     = io,
@@ -294,7 +308,7 @@ static lv_display_t *lcd_init_mono_i2c(const board_profile_t *p)
         .flags.enable_internal_pullup = true,
     };
     i2c_master_bus_handle_t bus = NULL;
-    ESP_ERROR_CHECK(i2c_new_master_bus(&bus_cfg, &bus));
+    LCD_CHECK(i2c_new_master_bus(&bus_cfg, &bus));
 
     esp_lcd_panel_io_handle_t io = NULL;
     esp_lcd_panel_io_i2c_config_t io_cfg = {
@@ -305,7 +319,7 @@ static lv_display_t *lcd_init_mono_i2c(const board_profile_t *p)
         .lcd_param_bits    = 8,
         .dc_bit_offset     = 6,
     };
-    ESP_ERROR_CHECK(esp_lcd_new_panel_io_i2c(bus, &io_cfg, &io));
+    LCD_CHECK(esp_lcd_new_panel_io_i2c(bus, &io_cfg, &io));
 
     esp_lcd_panel_ssd1306_config_t ssd_cfg = { .height = p->v_res };
     esp_lcd_panel_dev_config_t panel_cfg = {
@@ -314,16 +328,16 @@ static lv_display_t *lcd_init_mono_i2c(const board_profile_t *p)
         .vendor_config  = &ssd_cfg,
     };
     esp_lcd_panel_handle_t panel = NULL;
-    ESP_ERROR_CHECK(esp_lcd_new_panel_ssd1306(io, &panel_cfg, &panel));
-    ESP_ERROR_CHECK(esp_lcd_panel_reset(panel));
-    ESP_ERROR_CHECK(esp_lcd_panel_init(panel));
-    ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(panel, true));
+    LCD_CHECK(esp_lcd_new_panel_ssd1306(io, &panel_cfg, &panel));
+    LCD_CHECK(esp_lcd_panel_reset(panel));
+    LCD_CHECK(esp_lcd_panel_init(panel));
+    LCD_CHECK(esp_lcd_panel_disp_on_off(panel, true));
 
     s_hres = p->h_res;
     s_vres = p->v_res;
 
     lvgl_port_cfg_t pcfg = ESP_LVGL_PORT_INIT_CONFIG();
-    ESP_ERROR_CHECK(lvgl_port_init(&pcfg));
+    LCD_CHECK(lvgl_port_init(&pcfg));
 
     lvgl_port_display_cfg_t dcfg = {
         .io_handle     = io,
@@ -1023,6 +1037,16 @@ static void tick_cb(lv_timer_t *t)
 void display_ui_begin(void)
 {
     lv_display_t *disp = lcd_init();
+    if (!disp) {
+        // Panel-Init fehlgeschlagen (z.B. Profil mit auf diesem Chip nicht
+        // existierender GPIO-Nummer, siehe LCD_CHECK oben). Bewusst NICHT
+        // abbrechen: das Geraet soll trotzdem WLAN/Webportal starten, damit
+        // sich der Displaytyp dort korrigieren laesst, statt in einer
+        // Boot-Schleife ohne jede Erreichbarkeit haengen zu bleiben.
+        ESP_LOGE(TAG, "Kein Display initialisiert - Webportal bleibt trotzdem erreichbar, "
+                      "Displaytyp dort korrigieren und neu starten.");
+        return;
+    }
 
     if (s_profile->has_touch) {
         touch_xpt2046_init(s_profile);

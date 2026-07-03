@@ -264,9 +264,10 @@ static lv_display_t *lcd_init_color_spi(const board_profile_t *p)
     LCD_CHECK(esp_lcd_panel_reset(panel));
     LCD_CHECK(esp_lcd_panel_init(panel));
     // Auf realer CYD-Hardware (ILI9341) verifiziert: Farbinversion "true" ergab
-    // ein komplett invertiertes Bild. Fuer die anderen Panels noch nicht
-    // gegengeprueft - bei falschen Farben hier pro Displaytyp anpassen.
-    LCD_CHECK(esp_lcd_panel_invert_color(panel, false));
+    // ein komplett invertiertes Bild, also dort "aus" (Default) richtig. Bei
+    // GC9A01 war ohne Inversion der Hintergrund hell statt dunkel - deshalb
+    // im Webportal umschaltbar statt fest verdrahtet (app_config.color_invert).
+    LCD_CHECK(esp_lcd_panel_invert_color(panel, app_config.color_invert));
     LCD_CHECK(esp_lcd_panel_disp_on_off(panel, true));
 
     // Rotation -> swap/mirror + Aufloesung. Fuer LCD_SHAPE_RECT (Landscape-
@@ -932,9 +933,15 @@ static void build_round_ui(void)
     style_screen(scr_main);
 
     int d = s_hres < s_vres ? s_hres : s_vres; // Durchmesser = kleinere Kante
+    // Beide Arcs auf demselben Radius (vorher d-8 vs. d-28 - dadurch wirkten
+    // sie als zwei ineinander verschachtelte Halbkreise statt als ein
+    // gemeinsamer, in CPU/GPU-Haelften geteilter Ring). Rechte Haelfte (CPU,
+    // rotation=270) und linke Haelfte (GPU, rotation=90) grenzen exakt
+    // aneinander (0/180° Uebergang), ueberschneiden sich also nicht.
+    int arc_d = d - 16;
 
     round_arc_cpu = lv_arc_create(scr_main);
-    lv_obj_set_size(round_arc_cpu, d - 8, d - 8);
+    lv_obj_set_size(round_arc_cpu, arc_d, arc_d);
     lv_obj_center(round_arc_cpu);
     lv_arc_set_rotation(round_arc_cpu, 270);
     lv_arc_set_bg_angles(round_arc_cpu, 0, 180);
@@ -943,7 +950,7 @@ static void build_round_ui(void)
     lv_obj_remove_flag(round_arc_cpu, LV_OBJ_FLAG_CLICKABLE);
 
     round_arc_gpu = lv_arc_create(scr_main);
-    lv_obj_set_size(round_arc_gpu, d - 28, d - 28);
+    lv_obj_set_size(round_arc_gpu, arc_d, arc_d);
     lv_obj_center(round_arc_gpu);
     lv_arc_set_rotation(round_arc_gpu, 90);
     lv_arc_set_bg_angles(round_arc_gpu, 0, 180);

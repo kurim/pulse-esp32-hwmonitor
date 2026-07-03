@@ -62,6 +62,10 @@ void config_store_load(app_config_t *cfg)
 
     nvs_get_u16(h, "standby_s", &cfg->standby_timeout_s);
 
+    uint8_t inv = cfg->color_invert ? 1 : 0;
+    nvs_get_u8(h, "inv", &inv);
+    cfg->color_invert = (inv != 0);
+
     nvs_close(h);
 }
 
@@ -91,6 +95,7 @@ void config_store_save(const app_config_t *cfg)
     nvs_set_u8 (h, "rot",        cfg->rotation);
     nvs_set_u8 (h, "disp_type",  (uint8_t)cfg->display_type);
     nvs_set_u16(h, "standby_s",  cfg->standby_timeout_s);
+    nvs_set_u8 (h, "inv",        cfg->color_invert ? 1 : 0);
 
     err = nvs_commit(h);
     if (err != ESP_OK) ESP_LOGE(TAG, "nvs_commit: %s", esp_err_to_name(err));

@@ -100,7 +100,9 @@ gueltigen Pins an - hier beide Varianten zum Nachschlagen:
 Das runde Minimal-UI hat zwei per Taste umschaltbare Screens (`display_ui.c`:
 `s_round_screen`, `ROUND_SCR_*`):
 
-- **Overview** (Default): Uhrzeit + zwei Arcs fuer CPU-/GPU-Auslastung.
+- **Overview** (Default): Uhrzeit + zwei Arcs fuer CPU-/GPU-Auslastung,
+  gleicher Radius, rechte Haelfte CPU / linke Haelfte GPU (ein gemeinsamer,
+  geteilter Ring statt zwei ineinander verschachtelter Kreise).
 - **Wetter**: Uhrzeit + Temperatur/gefuehlte Temperatur/Luftfeuchte/Wind/Regen
   (erfordert `weather_enabled` im Webportal).
 
@@ -224,11 +226,14 @@ WLAN/MQTT/Zeitzone/Displaytyp eintragen → speichern → Neustart.
 
 Diese Punkte sind board-abhängig und ließen sich ohne Gerät nicht verifizieren:
 
-1. **Display-Farben** — `display_ui.c`, `esp_lcd_panel_invert_color(panel, false)`
-   und `board_profile_t.bgr`. Fuer ILI9341 (ESP32-2432S028) auf Hardware
-   verifiziert; die anderen vier Panels noch nicht - bei falschen/invertierten
-   Farben `bgr`-Flag in `board_profiles.c` bzw. `invert_color` in
-   `display_ui.c` anpassen.
+1. **Display-Farben** — Farbinversion ist jetzt im Webportal umschaltbar
+   (Karte "Display" → "Farben invertieren (Dark Mode)", `app_config.color_invert`,
+   Default aus/false) statt fest in `display_ui.c` verdrahtet. Fuer ILI9341
+   (ESP32-2432S028) ist "aus" (Default) auf Hardware verifiziert korrekt; beim
+   GC9A01 war der Hintergrund ohne Inversion hell statt dunkel - dort "an"
+   waehlen. Falls stattdessen Rot/Blau vertauscht sind (anderes Symptom als
+   heller/dunkler Hintergrund): das hilft `color_invert` nicht, dafuer
+   `board_profile_t.bgr` in `board_profiles.c` anpassen.
 2. **Neue Panel-Treiber-Komponenten** — `main/idf_component.yml` referenziert
    `atanisoft/esp_lcd_ili9488` (Community-Komponente, kein offizieller
    `espressif/`-Namespace-Eintrag existiert dafuer) sowie `espressif/esp_lcd_st7796`

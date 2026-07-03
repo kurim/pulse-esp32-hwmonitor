@@ -68,7 +68,7 @@ dort gar nicht erst auf.
 | Touch CS/IRQ | 33 / 36 |
 | Touch MOSI/MISO/CLK | 32 / 39 / 25 |
 
-**ILI9488 / ST7796S / GC9A01 (generische SPI-Verdrahtung, kein Touch):**
+**ILI9488 / ST7796S (generische SPI-Verdrahtung, kein Touch):**
 
 Unterschiedlich je Zielchip (`board_profiles.c`, `#if CONFIG_IDF_TARGET_ESP32C3`),
 da der C3 nur GPIO0-21 hat und GPIO23 dort nicht existiert. Das Webportal
@@ -81,6 +81,17 @@ gueltigen Pins an - hier beide Varianten zum Nachschlagen:
 | CS/DC | 5 / 17 | 7 / 10 |
 | RESET | 16 | 3 |
 | Backlight | 4 | 1 |
+
+**GC9A01 (fest, chipunabhaengig, kein MISO/Touch):**
+
+| Funktion | GPIO |
+|---|---|
+| SDA (MOSI) | 3 |
+| SCL (SCLK) | 4 |
+| CS | 1 |
+| DC | 10 |
+| RST | 0 |
+| Backlight | kein separater Pin (fest verdrahtet/immer an) |
 
 **SSD1309 (I2C, monochrom, kein Touch):**
 

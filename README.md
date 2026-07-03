@@ -70,12 +70,17 @@ dort gar nicht erst auf.
 
 **ILI9488 / ST7796S / GC9A01 (generische SPI-Verdrahtung, kein Touch):**
 
-| Funktion | GPIO |
-|---|---|
-| MOSI/MISO/SCLK | 23 / 19 / 18 |
-| CS/DC | 5 / 17 |
-| RESET | 16 |
-| Backlight | 4 |
+Unterschiedlich je Zielchip (`board_profiles.c`, `#if CONFIG_IDF_TARGET_ESP32C3`),
+da der C3 nur GPIO0-21 hat und GPIO23 dort nicht existiert. Das Webportal
+(`/api/displays`) zeigt immer die fuer den tatsaechlich geflashten Build
+gueltigen Pins an - hier beide Varianten zum Nachschlagen:
+
+| Funktion | ESP32 / ESP32-S3 | ESP32-C3 |
+|---|---|---|
+| MOSI/MISO/SCLK | 23 / 19 / 18 | 4 / 5 / 6 |
+| CS/DC | 5 / 17 | 7 / 10 |
+| RESET | 16 | 3 |
+| Backlight | 4 | 1 |
 
 **SSD1309 (I2C, monochrom, kein Touch):**
 
@@ -134,7 +139,18 @@ WLAN/MQTT/Zeitzone/Displaytyp eintragen → speichern → Neustart.
 > Der C3 hat ausserdem nur einen General-Purpose-SPI-Controller (`SPI2_HOST`,
 > kein `SPI3_HOST`) - betrifft nur den (dort ohnehin nicht waehlbaren)
 > CYD-Touch-Bus, `board_profiles.c` waehlt dafuer automatisch per
-> `SOC_SPI_PERIPH_NUM` einen kompilierbaren Platzhalter.
+> `SOC_SPI_PERIPH_NUM` einen kompilierbaren Platzhalter. Der C3 hat zudem nur
+> GPIO0-21 (22 Pins statt bis zu 39/48 bei ESP32/S3) - der generische
+> SPI-Pinsatz ist deshalb chipabhaengig definiert (siehe Pin-Tabelle oben).
+
+> **Falsche/unpassende Displaywahl fuehrt nicht mehr zur Boot-Schleife**:
+> Panel-Init-Fehler (z.B. eine auf dem Zielchip nicht existierende GPIO-Nummer)
+> loesen seit `LCD_CHECK` in `display_ui.c` keinen `ESP_ERROR_CHECK`-Abort mehr
+> aus, sondern werden geloggt; das Geraet startet trotzdem WLAN/Webportal, nur
+> ohne Bildschirmausgabe. So bleibt die Displayauswahl im Webportal immer
+> erreichbar, um einen Fehlgriff zu korrigieren - auch nach einem
+> Chip-/Profilwechsel, bei dem die in NVS gespeicherte alte Auswahl auf dem
+> neuen Chip nicht mehr passt.
 
 > **Hinweis bei bereits vorhandener lokaler `sdkconfig`**: `sdkconfig.defaults`
 > wird nur bei einer *neuen* `sdkconfig` angewendet, nicht bei einem

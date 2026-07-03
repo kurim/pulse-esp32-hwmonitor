@@ -23,7 +23,22 @@
 // Pins fuer alle drei, da es sich um denselben "Display an generischem
 // ESP32/S3/C3-Devboard verdrahten"-Anwendungsfall handelt. Bei eigener
 // Verdrahtung hier anpassen.
+//
+// WICHTIG: Der ESP32-C3 hat nur GPIO0-21 (22 Pins) - GPIO23 (im ESP32/S3-Satz
+// unten) existiert dort schlicht nicht und liess spi_bus_initialize() zur
+// Laufzeit mit "mosi not valid" abbrechen. Eigener, auf dem C3 gueltiger
+// Pinsatz unterhalb GPIO21, der die Strapping-Pins (2/8/9) und die
+// USB-JTAG-Pins (18/19) meidet.
 // ------------------------------------------------------------------
+#if CONFIG_IDF_TARGET_ESP32C3
+#define GENERIC_SPI_MOSI 4
+#define GENERIC_SPI_MISO 5
+#define GENERIC_SPI_SCLK 6
+#define GENERIC_SPI_CS   7
+#define GENERIC_SPI_DC   10
+#define GENERIC_SPI_RST  3
+#define GENERIC_SPI_BL   1
+#else
 #define GENERIC_SPI_MOSI 23
 #define GENERIC_SPI_MISO 19
 #define GENERIC_SPI_SCLK 18
@@ -31,6 +46,7 @@
 #define GENERIC_SPI_DC   17
 #define GENERIC_SPI_RST  16
 #define GENERIC_SPI_BL   4
+#endif
 
 static const board_profile_t s_profiles[DISPLAY_TYPE_COUNT] = {
     [DISPLAY_CYD_ILI9341] = {

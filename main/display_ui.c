@@ -116,8 +116,10 @@ static lv_timer_t *s_ap_confirm_timer = NULL;
 static lv_obj_t *mono_lbl_cpu, *mono_lbl_gpu, *mono_lbl_time;
 static lv_obj_t *round_arc_cpu, *round_arc_gpu, *round_lbl_time;
 static lv_obj_t *round_row_cpu, *round_lbl_cpu, *round_row_gpu, *round_lbl_gpu;
-static lv_obj_t *round_row_weather[4], *round_lbl_weather[4]; // Wetter-Screen: Temp, Feuchte, Wind, Regen
-static lv_obj_t *round_row_standby, *round_lbl_standby_weather; // Standby: kompakte Wetterzeile
+// Wetterzeilen (Temp, Feuchte, Wind, Regen) - werden sowohl auf dem
+// Wetter-Screen als auch im Standby gezeigt (dort zusaetzlich zur groesseren
+// Uhrzeit, siehe refresh_round_ui()), daher kein separates Standby-Widget-Set.
+static lv_obj_t *round_row_weather[4], *round_lbl_weather[4];
 
 // Screens des runden Minimal-UIs, per Boot-Taste umschaltbar (nav_button in
 // board_profiles.h). Standby ueberlagert beide Screens mit einer eigenen,
@@ -997,12 +999,12 @@ static void build_round_ui(void)
     round_row_gpu = make_round_line(scr_main, MDI_CHIP, COL_GPU, &lv_font_montserrat_20, COL_GPU, &round_lbl_gpu);
     lv_obj_align(round_row_gpu, LV_ALIGN_CENTER, 0, 34);
 
-    // Wetter-Screen: eigene Zeilen unterhalb der Uhrzeit, ersetzen die
-    // Arcs/CPU/GPU-Zeilen (alle drei Bloecke schliessen sich gegenseitig
-    // aus, siehe refresh_round_ui()). Icon nur, wo mdi_icons.h einen
-    // passenden Glyph hat (keiner fuer Luftfeuchte).
-    static const char *wicons[4] = { MDI_THERMOMETER, NULL, MDI_WIND, MDI_RAIN };
-    const lv_color_t wcolors[4] = { COL_THERMO, COL_TEXT, COL_SUB, COL_RAIN }; // lv_color_hex() ist kein Compile-Time-Konstantenausdruck -> kein "static"
+    // Wetterzeilen: unterhalb der Uhrzeit, ersetzen die Arcs/CPU/GPU-Zeilen
+    // (schliessen sich gegenseitig aus, siehe refresh_round_ui()). Werden
+    // sowohl auf dem Wetter-Screen als auch im Standby gezeigt - im Standby
+    // steht die (dann groessere) Uhrzeit weiter oben, siehe refresh_round_ui().
+    static const char *wicons[4] = { MDI_THERMOMETER, MDI_HUMIDITY, MDI_WIND, MDI_RAIN };
+    const lv_color_t wcolors[4] = { COL_THERMO, COL_RAIN, COL_SUB, COL_RAIN }; // lv_color_hex() ist kein Compile-Time-Konstantenausdruck -> kein "static"
     static const int wy[4] = { 10, 36, 62, 88 };
     for (int i = 0; i < 4; i++) {
         round_row_weather[i] = make_round_line(scr_main, wicons[i], wcolors[i],
@@ -1010,13 +1012,6 @@ static void build_round_ui(void)
         lv_obj_align(round_row_weather[i], LV_ALIGN_CENTER, 0, wy[i]);
         lv_obj_add_flag(round_row_weather[i], LV_OBJ_FLAG_HIDDEN);
     }
-
-    // Standby: kompakte Wetterzeile statt Arcs/Wetter-Detail. Uhrzeit rueckt
-    // dafuer in refresh_round_ui() weiter nach oben und wird groesser.
-    round_row_standby = make_round_line(scr_main, MDI_THERMOMETER, COL_THERMO,
-                                         &lv_font_montserrat_20, COL_SUB, &round_lbl_standby_weather);
-    lv_obj_align(round_row_standby, LV_ALIGN_CENTER, 0, 10);
-    lv_obj_add_flag(round_row_standby, LV_OBJ_FLAG_HIDDEN);
 }
 
 static void show_hidden(lv_obj_t *obj, bool visible)
@@ -1042,7 +1037,10 @@ static void refresh_round_ui(void)
     lv_obj_align(round_lbl_time, LV_ALIGN_CENTER, 0, s_standby ? -55 : -20);
 
     bool show_overview = !s_standby && s_round_screen == ROUND_SCR_OVERVIEW;
-    bool show_weather   = !s_standby && s_round_screen == ROUND_SCR_WEATHER;
+    // Wetterzeilen: im Standby immer (Wunsch "im Standby soll nur noch Uhr
+    // und Wetter gezeigt werden" / "im Standby fehlen noch Wetterdaten"),
+    // im Wachzustand nur auf dem Wetter-Screen.
+    bool show_weather = s_standby || s_round_screen == ROUND_SCR_WEATHER;
 
     show_hidden(round_arc_cpu, show_overview);
     show_hidden(round_arc_gpu, show_overview);
@@ -1072,16 +1070,6 @@ static void refresh_round_ui(void)
             lv_label_set_text(round_lbl_weather[0], app_config.weather_enabled ? "Warte auf Daten..." : "Wetter aus");
             for (int i = 1; i < 4; i++) lv_label_set_text(round_lbl_weather[i], "");
         }
-    }
-
-    show_hidden(round_row_standby, s_standby);
-    if (s_standby) {
-        if (weather_info.valid) {
-            snprintf(buf, sizeof(buf), "%.0fC  %d%%", weather_info.temp_c, weather_info.humidity);
-        } else {
-            strcpy(buf, "--");
-        }
-        lv_label_set_text(round_lbl_standby_weather, buf);
     }
 }
 

@@ -115,6 +115,14 @@ static lv_timer_t *s_ap_confirm_timer = NULL;
 // Widgets der Minimal-UIs (LCD_SHAPE_MONO / LCD_SHAPE_ROUND)
 static lv_obj_t *mono_lbl_cpu, *mono_lbl_gpu, *mono_lbl_time;
 static lv_obj_t *round_arc_cpu, *round_arc_gpu, *round_lbl_cpu, *round_lbl_gpu, *round_lbl_time;
+static lv_obj_t *round_lbl_weather[4];      // Wetter-Screen: Temp, Feuchte, Wind, Regen
+static lv_obj_t *round_lbl_standby_weather; // Standby: kompakte Wetterzeile (Temp + Feuchte)
+
+// Screens des runden Minimal-UIs, per Boot-Taste umschaltbar (nav_button in
+// board_profiles.h). Standby ueberlagert beide Screens mit einer eigenen,
+// reduzierten Ansicht (siehe refresh_round_ui()).
+enum { ROUND_SCR_OVERVIEW = 0, ROUND_SCR_WEATHER = 1, ROUND_SCR_COUNT = 2 };
+static int s_round_screen = ROUND_SCR_OVERVIEW;
 
 // ------------------------------------------------------------------
 // Display-/Backlight-Init
@@ -143,37 +151,52 @@ static void backlight_init(int bl_gpio)
 }
 
 // ------------------------------------------------------------------
-// Standby: Backlight aus, wenn laenger keine MQTT-Hardwaredaten ankommen
-// (weder je empfangen noch seit STANDBY_TIMEOUT_MS aktualisiert - deckt
-// beide Faelle über denselben Zeitvergleich ab, da last_update_ms beim
-// Boot bei 0 startet). Aufwecken per Touch (erster Touch weckt nur, loest
-// keine Aktion aus) oder automatisch, sobald wieder Daten eintreffen.
-// Nur fuer Panels mit Backlight-Pin relevant (siehe backlight_init()).
+// Standby: wenn laenger keine MQTT-Hardwaredaten ankommen (weder je
+// empfangen noch seit app_config.standby_timeout_s aktualisiert - deckt
+// beide Faelle über denselben Zeitvergleich ab, da last_update_ms beim Boot
+// bei 0 startet). Timeout ist im Webportal einstellbar, 0 = deaktiviert.
+// Aufwecken per Touch/Navigationstaste (erster Druck weckt nur, loest keine
+// Aktion aus) oder automatisch, sobald wieder Daten eintreffen.
+//
+// Zwei unabhaengige Auswirkungen, je nach Panel:
+// - Mit Backlight-Pin (CYD/ILI9488/ST7796S): Backlight aus, Bildschirminhalt
+//   bleibt unveraendert (ohnehin nicht sichtbar).
+// - Ohne Backlight-Pin (GC9A01/SSD1309, siehe s_has_backlight): der
+//   Bildschirminhalt selbst wird reduziert (nur Uhrzeit+Wetter statt
+//   CPU/GPU-Details, siehe refresh_round_ui()), da sich die Helligkeit dort
+//   nicht per Software abschalten laesst.
 // ------------------------------------------------------------------
-#define STANDBY_TIMEOUT_MS (2 * 60 * 1000) // 2 Minuten ohne Daten -> Standby
 static bool s_standby = false;
 static bool s_has_backlight = false;
 
 static void enter_standby(void)
 {
-    if (s_standby || !s_has_backlight) return;
+    if (s_standby) return;
     s_standby = true;
-    ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, 0);
-    ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
+    if (s_has_backlight) {
+        ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, 0);
+        ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
+    }
 }
 
 static void exit_standby(void)
 {
     if (!s_standby) return;
     s_standby = false;
-    ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, app_config.brightness);
-    ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
+    if (s_has_backlight) {
+        ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, app_config.brightness);
+        ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
+    }
 }
 
 static void check_standby(void)
 {
-    if (!s_has_backlight) return;
-    bool no_data = (now_ms() - hw_info.last_update_ms) > STANDBY_TIMEOUT_MS;
+    if (app_config.standby_timeout_s == 0) {
+        exit_standby(); // Standby deaktiviert - falls gerade aktiv, sofort aufwecken
+        return;
+    }
+    uint32_t timeout_ms = (uint32_t)app_config.standby_timeout_s * 1000u;
+    bool no_data = (now_ms() - hw_info.last_update_ms) > timeout_ms;
     if (no_data) {
         enter_standby();
     } else {
@@ -246,9 +269,11 @@ static lv_display_t *lcd_init_color_spi(const board_profile_t *p)
     LCD_CHECK(esp_lcd_panel_invert_color(panel, false));
     LCD_CHECK(esp_lcd_panel_disp_on_off(panel, true));
 
-    // Rotation -> swap/mirror + Aufloesung. Nur fuer LCD_SHAPE_RECT relevant;
-    // das runde GC9A01 bleibt immer in nativer Aufloesung (kein Rotationsfall
-    // vorgesehen, die Round-UI ist symmetrisch aufgebaut).
+    // Rotation -> swap/mirror + Aufloesung. Die 4-Wege-Rotation gilt nur fuer
+    // LCD_SHAPE_RECT (Landscape-Kachel-UI). Runde Panels (GC9A01) haben keine
+    // "Landscape/Portrait"-Unterscheidung, sondern nur eine 180°-Korrektur,
+    // falls das Modul kopfueber verbaut ist (auf dem ersten Testaufbau war
+    // das der Fall - Text erschien seitenverkehrt/kopfueber).
     bool swap_xy = false, mirror_x = false, mirror_y = false;
     int hres = p->h_res, vres = p->v_res;
     if (p->shape == LCD_SHAPE_RECT) {
@@ -259,6 +284,9 @@ static lv_display_t *lcd_init_color_spi(const board_profile_t *p)
             case 1:
             default: swap_xy = true; mirror_x = false; mirror_y = false; hres = p->h_res; vres = p->v_res; break;
         }
+    } else if (p->shape == LCD_SHAPE_ROUND) {
+        mirror_x = true;
+        mirror_y = true;
     }
     s_hres = hres;
     s_vres = vres;
@@ -393,6 +421,43 @@ static void touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
 }
 
 // ------------------------------------------------------------------
+// Navigationstaste (nur Profile ohne Touch mit nav_button>=0, aktuell nur
+// GC9A01: BOOT-Taste des Devboards). Taste zieht beim Druecken gegen GND
+// (interner Pullup) - erster Druck nach dem Standby weckt nur auf (analog
+// zu touch_read_cb), im Wachzustand schaltet sie zwischen den Screens des
+// runden Minimal-UIs um. Wird per eigenem 150ms-Timer gepollt (nicht ueber
+// den 1Hz-tick_cb, damit sich Tastendruecke nicht traege anfuehlen).
+// ------------------------------------------------------------------
+static bool s_nav_btn_prev_high = true;
+
+static void nav_button_init(const board_profile_t *p)
+{
+    if (p->nav_button < 0) return;
+    gpio_config_t io = {
+        .pin_bit_mask = 1ULL << p->nav_button,
+        .mode         = GPIO_MODE_INPUT,
+        .pull_up_en   = GPIO_PULLUP_ENABLE,
+    };
+    gpio_config(&io);
+}
+
+static void nav_button_cb(lv_timer_t *t)
+{
+    (void)t;
+    bool level_high = gpio_get_level(s_profile->nav_button) != 0;
+    if (!level_high && s_nav_btn_prev_high) {
+        // Fallende Flanke = Tastendruck.
+        if (s_standby) {
+            exit_standby();
+        } else if (s_profile->shape == LCD_SHAPE_ROUND) {
+            s_round_screen = (s_round_screen + 1) % ROUND_SCR_COUNT;
+            refresh_round_ui();
+        }
+    }
+    s_nav_btn_prev_high = level_high;
+}
+
+// ------------------------------------------------------------------
 // Style-Helfer
 // ------------------------------------------------------------------
 static void style_screen(lv_obj_t *scr)
@@ -460,10 +525,12 @@ static void compute_trend(const history_t *h, const char **sym, lv_color_t *col)
 }
 
 // ------------------------------------------------------------------
-// Navigation (nur LCD_SHAPE_RECT-UI, die anderen Shapes haben keine Touch-
-// Navigation und zeigen alles auf einem einzigen Screen)
+// Navigation (LCD_SHAPE_RECT: Touch; LCD_SHAPE_ROUND: Boot-Taste zwischen
+// Overview/Wetter, siehe nav_button_cb() weiter unten. LCD_SHAPE_MONO hat
+// weiterhin keine Navigation und zeigt alles auf einem einzigen Screen.)
 // ------------------------------------------------------------------
-static void refresh_now(void); // fwd
+static void refresh_now(void);      // fwd
+static void refresh_round_ui(void); // fwd
 
 static void tile_click_cb(lv_event_t *e)
 {
@@ -835,9 +902,14 @@ static void refresh_mono_ui(void)
 }
 
 // ------------------------------------------------------------------
-// Minimal-UI fuer runde Displays (GC9A01, 240x240) - kein Touch, zwei Arcs
-// fuer CPU/GPU-Auslastung, Uhrzeit in der Mitte. Platzhalter-Layout, das
-// spaeter noch durch ein ausgearbeitetes rundes Layout ersetzt werden kann.
+// Minimal-UI fuer runde Displays (GC9A01, 240x240) - kein Touch, Navigation
+// per Boot-Taste (board_profile_t.nav_button, siehe nav_button_cb()):
+// - Screen "Overview": zwei Arcs fuer CPU/GPU-Auslastung, Uhrzeit in der Mitte.
+// - Screen "Wetter": Temperatur/Feuchte/Wind/Regen statt der Arcs.
+// - Standby (unabhaengig vom gewaehlten Screen): nur Uhrzeit + kompakte
+//   Wetterzeile, da dieses Panel keinen Backlight-Pin zum Abdunkeln hat.
+// Platzhalter-Layout, das spaeter noch durch ein ausgearbeitetes rundes
+// Design ersetzt werden kann.
 // ------------------------------------------------------------------
 static void build_round_ui(void)
 {
@@ -870,11 +942,32 @@ static void build_round_ui(void)
     lv_obj_align(round_lbl_cpu, LV_ALIGN_CENTER, 0, 6);
     round_lbl_gpu = make_label(scr_main, "GPU --%", &lv_font_montserrat_16, COL_GPU);
     lv_obj_align(round_lbl_gpu, LV_ALIGN_CENTER, 0, 28);
+
+    // Wetter-Screen: eigene Zeilen unterhalb der Uhrzeit, ersetzen die
+    // Arcs/CPU/GPU-Labels (alle drei Bloecke schliessen sich gegenseitig
+    // aus, siehe refresh_round_ui()).
+    static const int wy[4] = { 6, 28, 50, 72 };
+    for (int i = 0; i < 4; i++) {
+        round_lbl_weather[i] = make_label(scr_main, "", &lv_font_montserrat_16, COL_TEXT);
+        lv_obj_align(round_lbl_weather[i], LV_ALIGN_CENTER, 0, wy[i]);
+        lv_obj_add_flag(round_lbl_weather[i], LV_OBJ_FLAG_HIDDEN);
+    }
+
+    // Standby: kompakte Wetterzeile statt Arcs/Wetter-Detail.
+    round_lbl_standby_weather = make_label(scr_main, "", &lv_font_montserrat_16, COL_SUB);
+    lv_obj_align(round_lbl_standby_weather, LV_ALIGN_CENTER, 0, 10);
+    lv_obj_add_flag(round_lbl_standby_weather, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void show_hidden(lv_obj_t *obj, bool visible)
+{
+    if (visible) lv_obj_remove_flag(obj, LV_OBJ_FLAG_HIDDEN);
+    else         lv_obj_add_flag(obj, LV_OBJ_FLAG_HIDDEN);
 }
 
 static void refresh_round_ui(void)
 {
-    char buf[16];
+    char buf[32];
     time_t now = time(NULL);
     struct tm ti;
     localtime_r(&now, &ti);
@@ -882,12 +975,49 @@ static void refresh_round_ui(void)
         strftime(buf, sizeof(buf), "%H:%M:%S", &ti);
         lv_label_set_text(round_lbl_time, buf);
     }
-    lv_arc_set_value(round_arc_cpu, (int)(hw_info.cpu_load + 0.5f));
-    lv_arc_set_value(round_arc_gpu, (int)(hw_info.gpu_load + 0.5f));
-    snprintf(buf, sizeof(buf), "CPU %d%%", (int)(hw_info.cpu_load + 0.5f));
-    lv_label_set_text(round_lbl_cpu, buf);
-    snprintf(buf, sizeof(buf), "GPU %d%%", (int)(hw_info.gpu_load + 0.5f));
-    lv_label_set_text(round_lbl_gpu, buf);
+
+    bool show_overview = !s_standby && s_round_screen == ROUND_SCR_OVERVIEW;
+    bool show_weather   = !s_standby && s_round_screen == ROUND_SCR_WEATHER;
+
+    show_hidden(round_arc_cpu, show_overview);
+    show_hidden(round_arc_gpu, show_overview);
+    show_hidden(round_lbl_cpu, show_overview);
+    show_hidden(round_lbl_gpu, show_overview);
+    if (show_overview) {
+        lv_arc_set_value(round_arc_cpu, (int)(hw_info.cpu_load + 0.5f));
+        lv_arc_set_value(round_arc_gpu, (int)(hw_info.gpu_load + 0.5f));
+        snprintf(buf, sizeof(buf), "CPU %d%%", (int)(hw_info.cpu_load + 0.5f));
+        lv_label_set_text(round_lbl_cpu, buf);
+        snprintf(buf, sizeof(buf), "GPU %d%%", (int)(hw_info.gpu_load + 0.5f));
+        lv_label_set_text(round_lbl_gpu, buf);
+    }
+
+    for (int i = 0; i < 4; i++) show_hidden(round_lbl_weather[i], show_weather);
+    if (show_weather) {
+        if (weather_info.valid) {
+            snprintf(buf, sizeof(buf), "%.0fC (gef. %.0fC)", weather_info.temp_c, weather_info.feels_like_c);
+            lv_label_set_text(round_lbl_weather[0], buf);
+            snprintf(buf, sizeof(buf), "%d%% Feuchte", weather_info.humidity);
+            lv_label_set_text(round_lbl_weather[1], buf);
+            snprintf(buf, sizeof(buf), "%.0fkm/h %s", weather_info.wind_speed, weather_wind_compass(weather_info.wind_deg));
+            lv_label_set_text(round_lbl_weather[2], buf);
+            snprintf(buf, sizeof(buf), "%.1fmm Regen", weather_info.rain_1h);
+            lv_label_set_text(round_lbl_weather[3], buf);
+        } else {
+            lv_label_set_text(round_lbl_weather[0], app_config.weather_enabled ? "Warte auf Wetterdaten..." : "Wetter deaktiviert");
+            for (int i = 1; i < 4; i++) lv_label_set_text(round_lbl_weather[i], "");
+        }
+    }
+
+    show_hidden(round_lbl_standby_weather, s_standby);
+    if (s_standby) {
+        if (weather_info.valid) {
+            snprintf(buf, sizeof(buf), "%.0fC  %d%%", weather_info.temp_c, weather_info.humidity);
+        } else {
+            strcpy(buf, "--");
+        }
+        lv_label_set_text(round_lbl_standby_weather, buf);
+    }
 }
 
 // ------------------------------------------------------------------
@@ -1051,6 +1181,7 @@ void display_ui_begin(void)
     if (s_profile->has_touch) {
         touch_xpt2046_init(s_profile);
     }
+    nav_button_init(s_profile);
 
     // Ab hier LVGL-Objekte nur unter Lock anlegen (esp_lvgl_port-Task laeuft).
     lvgl_port_lock(0);
@@ -1080,6 +1211,9 @@ void display_ui_begin(void)
     }
 
     lv_timer_create(tick_cb, 1000, NULL); // 1x/Sek aktualisieren
+    if (s_profile->nav_button >= 0) {
+        lv_timer_create(nav_button_cb, 150, NULL); // schnelleres Polling fuer reaktionsfreudige Taste
+    }
     tick_cb(NULL);
 
     lvgl_port_unlock();

@@ -37,6 +37,12 @@ typedef struct {
     uint8_t  rotation;           // 0-3 (nur fuer LCD_SHAPE_RECT-Displays relevant)
 
     display_type_t display_type; // welches Panel verbaut ist, siehe board_profiles.h
+
+    // Sekunden ohne neue MQTT-Hardwaredaten, bevor das Display in den
+    // Standby geht (Backlight aus bzw. bei Panels ohne Backlight-Pin nur
+    // reduzierter Inhalt, siehe display_ui.c: check_standby()). 0 = Standby
+    // deaktiviert.
+    uint16_t standby_timeout_s;
 } app_config_t;
 
 // ----------------------------------------------------------------

@@ -64,6 +64,11 @@ typedef struct {
     spi_host_device_t touch_spi_host;
     int touch_spi_hz;
 
+    // ---- Navigationstaste fuer Profile ohne Touch (z.B. GC9A01: BOOT-Taste
+    // des Devboards) - -1, wenn keine vorgesehen. Zieht beim Druecken gegen
+    // GND (interner Pullup), siehe display_ui.c: nav_button_init()/-_cb().
+    int nav_button;
+
     // ---- Aufloesung / Farbe ----
     int  h_res, v_res;      // native Aufloesung (rotation=1/3 vertauscht bei RECT-Shape)
     bool bgr;               // true = BGR-Panel (RGB_ELEMENT_ORDER_BGR)

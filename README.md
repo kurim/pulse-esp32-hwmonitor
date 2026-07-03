@@ -102,17 +102,25 @@ Das runde Minimal-UI hat zwei per Taste umschaltbare Screens (`display_ui.c`:
 
 - **Overview** (Default): Uhrzeit + zwei Arcs fuer CPU-/GPU-Auslastung,
   gleicher Radius, rechte Haelfte CPU / linke Haelfte GPU (ein gemeinsamer,
-  geteilter Ring statt zwei ineinander verschachtelter Kreise).
-- **Wetter**: Uhrzeit + Temperatur/gefuehlte Temperatur/Luftfeuchte/Wind/Regen
-  (erfordert `weather_enabled` im Webportal).
+  geteilter Ring statt zwei ineinander verschachtelter Kreise), je mit
+  Chip-Icon + Prozentzahl darunter.
+- **Wetter**: Uhrzeit + Temperatur/gefuehlte Temperatur (Thermometer-Icon) /
+  Luftfeuchte / Wind (Icon) / Regen (Icon) (erfordert `weather_enabled` im
+  Webportal).
 
 Ein Druck auf die BOOT-Taste schaltet zwischen beiden um. Da dieses Panel
 keinen Backlight-Pin hat (`bl = -1`), laesst sich der Standby nicht per
 Software abdunkeln - stattdessen wird der Bildschirminhalt reduziert: im
-Standby werden **immer nur Uhrzeit + eine kompakte Wetterzeile** angezeigt,
-unabhaengig vom zuletzt gewaehlten Screen. Ein Tastendruck im Standby weckt
-nur auf (zeigt wieder den zuletzt gewaehlten Screen), loest aber keinen
-Screen-Wechsel aus - analog zum Touch-Wakeup beim CYD-Profil.
+Standby werden **immer nur eine groessere, weiter oben stehende Uhrzeit +
+eine kompakte Wetterzeile** angezeigt, unabhaengig vom zuletzt gewaehlten
+Screen. Ein Tastendruck im Standby weckt nur auf (zeigt wieder den zuletzt
+gewaehlten Screen), loest aber keinen Screen-Wechsel aus - analog zum
+Touch-Wakeup beim CYD-Profil.
+
+Die Arc-Widgets sind eigentlich Schieberegler und zeichnen ohne
+`lv_obj_remove_style(..., LV_PART_KNOB)` einen dicken Knob an der aktuellen
+Werteposition - sah wie ein Glitch/Fremdkoerper auf dem duennen Ring aus,
+ist jetzt entfernt (`build_round_ui()` in `display_ui.c`).
 
 **Standby-Timeout ist im Webportal einstellbar** (Karte "Display" →
 "Standby nach ... Sekunden", `app_config.standby_timeout_s`, 0 = deaktiviert,

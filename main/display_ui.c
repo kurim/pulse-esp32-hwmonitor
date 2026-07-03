@@ -114,9 +114,10 @@ static lv_timer_t *s_ap_confirm_timer = NULL;
 
 // Widgets der Minimal-UIs (LCD_SHAPE_MONO / LCD_SHAPE_ROUND)
 static lv_obj_t *mono_lbl_cpu, *mono_lbl_gpu, *mono_lbl_time;
-static lv_obj_t *round_arc_cpu, *round_arc_gpu, *round_lbl_cpu, *round_lbl_gpu, *round_lbl_time;
-static lv_obj_t *round_lbl_weather[4];      // Wetter-Screen: Temp, Feuchte, Wind, Regen
-static lv_obj_t *round_lbl_standby_weather; // Standby: kompakte Wetterzeile (Temp + Feuchte)
+static lv_obj_t *round_arc_cpu, *round_arc_gpu, *round_lbl_time;
+static lv_obj_t *round_row_cpu, *round_lbl_cpu, *round_row_gpu, *round_lbl_gpu;
+static lv_obj_t *round_row_weather[4], *round_lbl_weather[4]; // Wetter-Screen: Temp, Feuchte, Wind, Regen
+static lv_obj_t *round_row_standby, *round_lbl_standby_weather; // Standby: kompakte Wetterzeile
 
 // Screens des runden Minimal-UIs, per Boot-Taste umschaltbar (nav_button in
 // board_profiles.h). Standby ueberlagert beide Screens mit einer eigenen,
@@ -927,6 +928,30 @@ static void refresh_mono_ui(void)
 // Platzhalter-Layout, das spaeter noch durch ein ausgearbeitetes rundes
 // Design ersetzt werden kann.
 // ------------------------------------------------------------------
+// Icon+Text-Zeile fuer das runde UI: eigener horizontaler Flex-Container
+// (Breite an den Inhalt angepasst), damit Icon (MDI-Font) und Text (trotz
+// unterschiedlicher Fonts, siehe mdi_icons.h-Einschraenkung) als Einheit
+// mittig ausgerichtet werden koennen. icon==NULL laesst den Icon-Teil weg.
+// *out_text erhaelt das Text-Label zum spaeteren Aktualisieren, Rueckgabewert
+// ist der Zeilen-Container zum Ein-/Ausblenden.
+static lv_obj_t *make_round_line(lv_obj_t *parent, const char *icon, lv_color_t icon_color,
+                                  const lv_font_t *text_font, lv_color_t text_color, lv_obj_t **out_text)
+{
+    lv_obj_t *row = lv_obj_create(parent);
+    lv_obj_set_size(row, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(row, 0, 0);
+    lv_obj_set_style_pad_all(row, 0, 0);
+    lv_obj_set_style_pad_column(row, 4, 0);
+    lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clear_flag(row, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    if (icon) make_label(row, icon, &mdi_icons_20, icon_color);
+    *out_text = make_label(row, "", text_font, text_color);
+    return row;
+}
+
 static void build_round_ui(void)
 {
     scr_main = lv_obj_create(NULL);
@@ -948,6 +973,11 @@ static void build_round_ui(void)
     lv_arc_set_range(round_arc_cpu, 0, 100);
     lv_obj_set_style_arc_color(round_arc_cpu, COL_CPU_BAR_A, LV_PART_INDICATOR);
     lv_obj_remove_flag(round_arc_cpu, LV_OBJ_FLAG_CLICKABLE);
+    // LVGL-Arcs sind eigentlich Schieberegler und zeichnen deshalb per
+    // Default einen Knob (dicker Punkt an der aktuellen Werteposition) -
+    // ohne Style-Entfernung sah der wie ein Fremdkoerper/Glitch auf dem
+    // duennen Ring aus. Fuer reine Anzeige-Ringe weg damit.
+    lv_obj_remove_style(round_arc_cpu, NULL, LV_PART_KNOB);
 
     round_arc_gpu = lv_arc_create(scr_main);
     lv_obj_set_size(round_arc_gpu, arc_d, arc_d);
@@ -957,28 +987,36 @@ static void build_round_ui(void)
     lv_arc_set_range(round_arc_gpu, 0, 100);
     lv_obj_set_style_arc_color(round_arc_gpu, COL_GPU_BAR_A, LV_PART_INDICATOR);
     lv_obj_remove_flag(round_arc_gpu, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_remove_style(round_arc_gpu, NULL, LV_PART_KNOB);
 
-    round_lbl_time = make_label(scr_main, "--:--:--", &lv_font_montserrat_20, COL_TEXT);
+    round_lbl_time = make_label(scr_main, "--:--:--", &lv_font_montserrat_24, COL_TEXT);
     lv_obj_align(round_lbl_time, LV_ALIGN_CENTER, 0, -20);
-    round_lbl_cpu = make_label(scr_main, "CPU --%", &lv_font_montserrat_16, COL_ACCENT);
-    lv_obj_align(round_lbl_cpu, LV_ALIGN_CENTER, 0, 6);
-    round_lbl_gpu = make_label(scr_main, "GPU --%", &lv_font_montserrat_16, COL_GPU);
-    lv_obj_align(round_lbl_gpu, LV_ALIGN_CENTER, 0, 28);
+
+    round_row_cpu = make_round_line(scr_main, MDI_CHIP, COL_ACCENT, &lv_font_montserrat_20, COL_ACCENT, &round_lbl_cpu);
+    lv_obj_align(round_row_cpu, LV_ALIGN_CENTER, 0, 10);
+    round_row_gpu = make_round_line(scr_main, MDI_CHIP, COL_GPU, &lv_font_montserrat_20, COL_GPU, &round_lbl_gpu);
+    lv_obj_align(round_row_gpu, LV_ALIGN_CENTER, 0, 34);
 
     // Wetter-Screen: eigene Zeilen unterhalb der Uhrzeit, ersetzen die
-    // Arcs/CPU/GPU-Labels (alle drei Bloecke schliessen sich gegenseitig
-    // aus, siehe refresh_round_ui()).
-    static const int wy[4] = { 6, 28, 50, 72 };
+    // Arcs/CPU/GPU-Zeilen (alle drei Bloecke schliessen sich gegenseitig
+    // aus, siehe refresh_round_ui()). Icon nur, wo mdi_icons.h einen
+    // passenden Glyph hat (keiner fuer Luftfeuchte).
+    static const char *wicons[4] = { MDI_THERMOMETER, NULL, MDI_WIND, MDI_RAIN };
+    const lv_color_t wcolors[4] = { COL_THERMO, COL_TEXT, COL_SUB, COL_RAIN }; // lv_color_hex() ist kein Compile-Time-Konstantenausdruck -> kein "static"
+    static const int wy[4] = { 10, 36, 62, 88 };
     for (int i = 0; i < 4; i++) {
-        round_lbl_weather[i] = make_label(scr_main, "", &lv_font_montserrat_16, COL_TEXT);
-        lv_obj_align(round_lbl_weather[i], LV_ALIGN_CENTER, 0, wy[i]);
-        lv_obj_add_flag(round_lbl_weather[i], LV_OBJ_FLAG_HIDDEN);
+        round_row_weather[i] = make_round_line(scr_main, wicons[i], wcolors[i],
+                                                &lv_font_montserrat_20, COL_TEXT, &round_lbl_weather[i]);
+        lv_obj_align(round_row_weather[i], LV_ALIGN_CENTER, 0, wy[i]);
+        lv_obj_add_flag(round_row_weather[i], LV_OBJ_FLAG_HIDDEN);
     }
 
-    // Standby: kompakte Wetterzeile statt Arcs/Wetter-Detail.
-    round_lbl_standby_weather = make_label(scr_main, "", &lv_font_montserrat_16, COL_SUB);
-    lv_obj_align(round_lbl_standby_weather, LV_ALIGN_CENTER, 0, 10);
-    lv_obj_add_flag(round_lbl_standby_weather, LV_OBJ_FLAG_HIDDEN);
+    // Standby: kompakte Wetterzeile statt Arcs/Wetter-Detail. Uhrzeit rueckt
+    // dafuer in refresh_round_ui() weiter nach oben und wird groesser.
+    round_row_standby = make_round_line(scr_main, MDI_THERMOMETER, COL_THERMO,
+                                         &lv_font_montserrat_20, COL_SUB, &round_lbl_standby_weather);
+    lv_obj_align(round_row_standby, LV_ALIGN_CENTER, 0, 10);
+    lv_obj_add_flag(round_row_standby, LV_OBJ_FLAG_HIDDEN);
 }
 
 static void show_hidden(lv_obj_t *obj, bool visible)
@@ -998,13 +1036,18 @@ static void refresh_round_ui(void)
         lv_label_set_text(round_lbl_time, buf);
     }
 
+    // Standby: Uhrzeit groesser + weiter oben, sonst Standardgroesse/-position
+    // (siehe Wunsch "idle Uhr kann weiter nach oben und/oder groesser").
+    lv_obj_set_style_text_font(round_lbl_time, s_standby ? &lv_font_montserrat_28 : &lv_font_montserrat_24, 0);
+    lv_obj_align(round_lbl_time, LV_ALIGN_CENTER, 0, s_standby ? -55 : -20);
+
     bool show_overview = !s_standby && s_round_screen == ROUND_SCR_OVERVIEW;
     bool show_weather   = !s_standby && s_round_screen == ROUND_SCR_WEATHER;
 
     show_hidden(round_arc_cpu, show_overview);
     show_hidden(round_arc_gpu, show_overview);
-    show_hidden(round_lbl_cpu, show_overview);
-    show_hidden(round_lbl_gpu, show_overview);
+    show_hidden(round_row_cpu, show_overview);
+    show_hidden(round_row_gpu, show_overview);
     if (show_overview) {
         lv_arc_set_value(round_arc_cpu, (int)(hw_info.cpu_load + 0.5f));
         lv_arc_set_value(round_arc_gpu, (int)(hw_info.gpu_load + 0.5f));
@@ -1014,24 +1057,24 @@ static void refresh_round_ui(void)
         lv_label_set_text(round_lbl_gpu, buf);
     }
 
-    for (int i = 0; i < 4; i++) show_hidden(round_lbl_weather[i], show_weather);
+    for (int i = 0; i < 4; i++) show_hidden(round_row_weather[i], show_weather);
     if (show_weather) {
         if (weather_info.valid) {
-            snprintf(buf, sizeof(buf), "%.0fC (gef. %.0fC)", weather_info.temp_c, weather_info.feels_like_c);
+            snprintf(buf, sizeof(buf), "%.0fC / %.0fC", weather_info.temp_c, weather_info.feels_like_c);
             lv_label_set_text(round_lbl_weather[0], buf);
-            snprintf(buf, sizeof(buf), "%d%% Feuchte", weather_info.humidity);
+            snprintf(buf, sizeof(buf), "%d%%", weather_info.humidity);
             lv_label_set_text(round_lbl_weather[1], buf);
             snprintf(buf, sizeof(buf), "%.0fkm/h %s", weather_info.wind_speed, weather_wind_compass(weather_info.wind_deg));
             lv_label_set_text(round_lbl_weather[2], buf);
-            snprintf(buf, sizeof(buf), "%.1fmm Regen", weather_info.rain_1h);
+            snprintf(buf, sizeof(buf), "%.1fmm", weather_info.rain_1h);
             lv_label_set_text(round_lbl_weather[3], buf);
         } else {
-            lv_label_set_text(round_lbl_weather[0], app_config.weather_enabled ? "Warte auf Wetterdaten..." : "Wetter deaktiviert");
+            lv_label_set_text(round_lbl_weather[0], app_config.weather_enabled ? "Warte auf Daten..." : "Wetter aus");
             for (int i = 1; i < 4; i++) lv_label_set_text(round_lbl_weather[i], "");
         }
     }
 
-    show_hidden(round_lbl_standby_weather, s_standby);
+    show_hidden(round_row_standby, s_standby);
     if (s_standby) {
         if (weather_info.valid) {
             snprintf(buf, sizeof(buf), "%.0fC  %d%%", weather_info.temp_c, weather_info.humidity);

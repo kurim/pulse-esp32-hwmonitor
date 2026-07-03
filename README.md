@@ -126,6 +126,16 @@ idf.py -p /dev/ttyUSB0 flash monitor
 Ersteinrichtung: offener AP **`ESP32-HWMon-XXXX`** → `http://192.168.4.1` →
 WLAN/MQTT/Zeitzone/Displaytyp eintragen → speichern → Neustart.
 
+> **Captive-Portal-Erkennung des Handys kann kurzzeitig Sockets ausschoepfen**:
+> iOS/Android/Windows pruefen die Internetverbindung im Setup-AP ueber mehrere
+> parallele Anfragen (`hotspot-detect.html`, `generate_204`,
+> `connecttest.txt`, ...). `CONFIG_LWIP_MAX_SOCKETS` ist deshalb auf 16 erhoeht
+> (`httpd_config_t.max_open_sockets=13` in `web_portal.c`) und die bekanntesten
+> Erkennungspfade sind direkt registriert statt nur ueber den generischen
+> 404-Handler zu laufen. Aeussert sich unbehandelt als `error in accept (23)`/
+> `error in recv: 104` im Log und als springender Fokus/Neuladen im
+> Config-Formular auf dem Handy.
+
 > **Hinweis zu ESP32-S3/-C3**: Der Code selbst ist chip-unabhaengig (die
 > GPIO-Nummern in `board_profiles.c` sind reine Zahlen, keine ESP32-classic-
 > Spezifika mehr - mit Ausnahme des ESP32-2432S028-Profils, das die feste

@@ -17,6 +17,11 @@ CONFIG_ESP_MAIN_TASK_STACK_SIZE=6144
 # --- HTTP-Server (Config-Portal + OTA) ---
 CONFIG_HTTPD_MAX_REQ_HDR_LEN=1024
 CONFIG_HTTPD_MAX_URI_LEN=512
+# Hochgesetzt (Default 10): Handys pruefen im Setup-AP die Internet-
+# verbindung ueber mehrere parallele Captive-Portal-Anfragen; mit dem
+# Default gingen dem httpd-Server dabei die Sockets aus ("error in accept").
+# web_portal.c setzt httpd_config_t.max_open_sockets passend dazu auf 13.
+CONFIG_LWIP_MAX_SOCKETS=16
 
 # --- LVGL (Display-UI) ---
 CONFIG_LV_COLOR_DEPTH_16=y

@@ -48,6 +48,20 @@
 #define GENERIC_SPI_BL   4
 #endif
 
+// ------------------------------------------------------------------
+// GC9A01-Verdrahtung: eigene, vom Nutzer vorgegebene Pins (getrennt von
+// GENERIC_SPI_* oben), kein MISO (GC9A01 ist ein reines Write-only-Panel)
+// und kein separater Backlight-Pin angegeben - falls doch einer verdrahtet
+// ist, hier ergaenzen (aktuell -1 = kein LEDC-Backlight, Panel bleibt immer
+// an bzw. haengt per Vorwiderstand fest an VCC).
+// ------------------------------------------------------------------
+#define GC9A01_SDA 3   // MOSI
+#define GC9A01_SCL 4   // SCLK
+#define GC9A01_CS  1
+#define GC9A01_DC  10
+#define GC9A01_RST 0
+#define GC9A01_BL  (-1)
+
 static const board_profile_t s_profiles[DISPLAY_TYPE_COUNT] = {
     [DISPLAY_CYD_ILI9341] = {
         .name = "ESP32-2432S028 - ILI9341 320x240, SPI + XPT2046-Touch",
@@ -77,8 +91,8 @@ static const board_profile_t s_profiles[DISPLAY_TYPE_COUNT] = {
     [DISPLAY_GC9A01] = {
         .name = "GC9A01 (240x240, rund, SPI, kein Touch)",
         .bus = LCD_BUS_SPI, .shape = LCD_SHAPE_ROUND, .has_touch = false,
-        .mosi = GENERIC_SPI_MOSI, .miso = GENERIC_SPI_MISO, .sclk = GENERIC_SPI_SCLK,
-        .cs = GENERIC_SPI_CS, .dc = GENERIC_SPI_DC, .rst = GENERIC_SPI_RST, .bl = GENERIC_SPI_BL,
+        .mosi = GC9A01_SDA, .miso = -1, .sclk = GC9A01_SCL,
+        .cs = GC9A01_CS, .dc = GC9A01_DC, .rst = GC9A01_RST, .bl = GC9A01_BL,
         .spi_hz = 40 * 1000 * 1000, .spi_host = SPI2_HOST,
         .h_res = 240, .v_res = 240, .bgr = true, .color_16bit = true,
     },

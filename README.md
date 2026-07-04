@@ -11,6 +11,8 @@ und OTA-Update.
 > ESP-IDF-Port nebeneinander in Unterordnern). Hier auf `esp-idf` liegt der
 > ESP-IDF-Code direkt im Repo-Root, ohne Arduino-Dateien daneben.
 
+Aenderungen je Release siehe [CHANGELOG.md](CHANGELOG.md).
+
 ## Displayauswahl: ein Image fuer mehrere Boards/Panels
 
 Es gibt **keinen** display- oder chipspezifischen Build mehr: eine Firmware

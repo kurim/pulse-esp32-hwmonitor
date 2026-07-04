@@ -726,7 +726,10 @@ static void build_main(void)
     lv_obj_set_pos(wi, 204, 8);
     lbl_wind = make_label(bar, "--", &lv_font_montserrat_14, COL_SUB);
     lv_obj_set_pos(lbl_wind, 227, 9);
-    lv_obj_set_width(lbl_wind, 64);
+    // Bis knapp an den rechten Rand (Statuspunkt sitzt jetzt unten rechts,
+    // siehe icon_wifi weiter unten) - vorher bei fixen 64px wurde z.B.
+    // "34km/h NNW" am "W" abgeschnitten.
+    lv_obj_set_width(lbl_wind, s_hres - 227 - 6);
     lv_label_set_long_mode(lbl_wind, LV_LABEL_LONG_MODE_CLIP);
 
     lv_obj_t *ri = make_label(bar, MDI_RAIN, &mdi_icons_20, COL_RAIN);
@@ -736,11 +739,12 @@ static void build_main(void)
     lv_obj_set_width(lbl_rain, 36);
     lv_label_set_long_mode(lbl_rain, LV_LABEL_LONG_MODE_CLIP);
 
-    // Statuspunkt statt WLAN-Icon: das MDI_WIFI-Icon ueberlappte bei
-    // laengeren Windwerten ("34km/h NNW") die Windspalte - ein einfacher
-    // Punkt braucht deutlich weniger Breite.
+    // Statuspunkt statt WLAN-Icon, unten rechts (nicht oben rechts) platziert:
+    // die Windzeile braucht bei laengeren Werten ("34km/h NNW") die volle
+    // Zeilenbreite bis zum rechten Rand, die Regenzeile darunter ist kurz
+    // genug ("0.0"), um daneben Platz zu lassen.
     icon_wifi = shape_rrect(bar, 14, 14, 7, COL_WARN);
-    lv_obj_align(icon_wifi, LV_ALIGN_TOP_RIGHT, -6, 6);
+    lv_obj_align(icon_wifi, LV_ALIGN_BOTTOM_RIGHT, -6, -6);
 
     // ---- Kacheln (Breite anhand der Panel-Aufloesung berechnet) ----
     const int margin = 6, gap = 6;

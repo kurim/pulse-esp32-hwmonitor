@@ -203,21 +203,28 @@ Diese Trennung vermeidet, dass mobile Browser beim Ausfuellen des langen
 Formulars zwischenzeitlich den Fokus verlieren und zurueck aufs SSID-Feld
 springen.
 
-### CI-Build (GitHub Actions, manuell)
+### CI-Build (GitHub Actions)
 
 `.github/workflows/build-idf.yml` baut die Firmware im offiziellen
 `espressif/idf`-Docker-Image (`espressif/esp-idf-ci-action`) und fasst
 Bootloader + Partitionstabelle + App-Image per `idf.py merge-bin` zu
-**einer** flashbaren Datei zusammen (`esp32-hwmonitor-vX.X.X-idf[-<target>].bin`,
-Version aus `FW_VERSION` in `main/shared_state.h`). Diese Datei laesst sich
-per Web-Flasher (z.B. ESP Web Tools/esptool-js) oder `esptool.py write_flash
-0x0 <datei>` in einem Rutsch flashen, statt Bootloader/Partitionstabelle/App
-einzeln an drei Offsets schreiben zu muessen.
+**einer** flashbaren Datei zusammen (`esp32-hwmonitor-vX.X.X-idf[-<target>].bin`).
+Diese Datei laesst sich per Web-Flasher (z.B. ESP Web Tools/esptool-js) oder
+`esptool.py write_flash 0x0 <datei>` in einem Rutsch flashen, statt
+Bootloader/Partitionstabelle/App einzeln an drei Offsets schreiben zu muessen.
 
-Der Workflow laeuft **nur manuell** (kein Trigger auf push/PR, da der
-Docker-Build vergleichsweise lange dauert): Tab "Actions" → "ESP-IDF Build" →
-"Run workflow" → Ziel-Chip (esp32/esp32s3/esp32c3) und ESP-IDF-Docker-Tag
-waehlen. Ergebnis liegt als Artifact am Workflow-Run.
+Zwei Ausloeser:
+
+- **Manuell** (Tab "Actions" → "ESP-IDF Build" → "Run workflow"): Ziel-Chip
+  (esp32/esp32s3/esp32c3) und ESP-IDF-Docker-Tag waehlen, baut nur diesen
+  einen Chip. Ergebnis liegt als Artifact am Workflow-Run, `FW_VERSION` kommt
+  unveraendert aus `main/shared_state.h`.
+- **Tag-Push** (`git tag v1.0.0-idf && git push origin v1.0.0-idf`): baut alle
+  drei Chips (esp32/esp32s3/esp32c3) und legt anschliessend automatisch ein
+  GitHub-Release zum Tag an, mit allen drei `.bin`-Dateien als Anhang.
+  `FW_VERSION` wird dabei **aus dem Tag** gesetzt (fuehrendes "v" abgeschnitten,
+  `v1.0.0-idf` → `FW_VERSION "1.0.0-idf"`) statt aus `main/shared_state.h` -
+  der im Repo eingetragene Wert dient nur als Default fuer manuelle Builds.
 
 > **Captive-Portal-Erkennung des Handys kann kurzzeitig Sockets ausschoepfen**:
 > iOS/Android/Windows pruefen die Internetverbindung im Setup-AP ueber mehrere

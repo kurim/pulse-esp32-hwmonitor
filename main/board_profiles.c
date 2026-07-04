@@ -128,10 +128,21 @@ static const board_profile_t s_profiles[DISPLAY_TYPE_COUNT] = {
         .nav_button = -1,
         .h_res = 128, .v_res = 64, .bgr = false, .color_16bit = false,
     },
+    // Platzhalter-Eintrag - Werte werden nie an esp_lcd/SPI/I2C uebergeben,
+    // lcd_init() in display_ui.c bricht fuer DISPLAY_NONE vorher ab.
+    [DISPLAY_NONE] = {
+        .name = "Kein Display (Panel-Init ueberspringen)",
+        .bus = LCD_BUS_SPI, .shape = LCD_SHAPE_RECT, .has_touch = false,
+        .mosi = -1, .miso = -1, .sclk = -1, .cs = -1, .dc = -1, .rst = -1, .bl = -1,
+        .nav_button = -1,
+        .h_res = 0, .v_res = 0, .bgr = false, .color_16bit = false,
+    },
 };
 
 bool board_profile_is_available(display_type_t type)
 {
+    // "Kein Display" ist immer waehlbar, unabhaengig vom Zielchip.
+    if (type == DISPLAY_NONE) return true;
 #if CONFIG_IDF_TARGET_ESP32
     // Klassischer ESP32: nur das CYD-Profil (feste Werksverdrahtung des
     // ESP32-2432S028) - die generischen Profile sind hier nicht gemeint,
@@ -146,10 +157,10 @@ bool board_profile_is_available(display_type_t type)
 
 display_type_t board_profile_default(void)
 {
-    for (int i = 0; i < DISPLAY_TYPE_COUNT; i++) {
-        if (board_profile_is_available((display_type_t)i)) return (display_type_t)i;
-    }
-    return DISPLAY_CYD_ILI9341;
+    // Bewusst kein Panel vorauswaehlen (siehe Kommentar in board_profiles.h) -
+    // ein frisch geflashtes Geraet initialisiert damit erst nach expliziter
+    // Auswahl im Webportal SPI/I2C-Pins.
+    return DISPLAY_NONE;
 }
 
 const board_profile_t *board_profile_get(display_type_t type)
@@ -207,6 +218,7 @@ static const char *s_keys[DISPLAY_TYPE_COUNT] = {
     [DISPLAY_ST7796S]     = "st7796s",
     [DISPLAY_GC9A01]      = "gc9a01",
     [DISPLAY_SSD1309_I2C] = "ssd1309_i2c",
+    [DISPLAY_NONE]        = "none",
 };
 
 const char *board_profile_key(display_type_t type)

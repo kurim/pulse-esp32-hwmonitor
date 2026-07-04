@@ -26,6 +26,11 @@ typedef enum {
     DISPLAY_ST7796S,         // generisch verdrahtet: ST7796S 480x320 SPI, kein Touch
     DISPLAY_GC9A01,          // generisch verdrahtet: GC9A01 240x240 rund, SPI, kein Touch
     DISPLAY_SSD1309_I2C,     // generisch verdrahtet: SSD1309 128x64 monochrom, I2C, kein Touch
+    // Neu ans Ende angehaengt (nicht nach vorne einsortiert!) - der Wert wird
+    // 1:1 als uint8_t in NVS abgelegt (config_store.c), ein Einsortieren
+    // wuerde bei bereits geflashten Geraeten die gespeicherte Zahl auf einen
+    // anderen Displaytyp verschieben.
+    DISPLAY_NONE,            // kein Panel - ueberspringt jede Hardware-Init in display_ui.c
     DISPLAY_TYPE_COUNT
 } display_type_t;
 
@@ -125,8 +130,12 @@ display_type_t board_profile_from_key(const char *key);
 // Displayauswahl build-spezifisch auszublenden (siehe web_portal.c).
 bool board_profile_is_available(display_type_t type);
 
-// Sinnvoller Default fuer config_set_defaults(): CYD auf klassischem ESP32,
-// sonst das erste generische Profil.
+// Sinnvoller Default fuer config_set_defaults(): DISPLAY_NONE, damit ein
+// frisch geflashtes Geraet (bzw. ein anderer Chip/Board als angenommen)
+// nicht ungefragt SPI/I2C-Pins eines evtl. falschen Panels anspricht - das
+// hat sich als problematisch erwiesen, wenn (noch) gar kein Display bzw.
+// ein Board mit abweichender Verdrahtung angeschlossen ist. Displaytyp wird
+// im Webportal ausgewaehlt, danach greift er nach dem naechsten Neustart.
 display_type_t board_profile_default(void);
 
 #ifdef __cplusplus

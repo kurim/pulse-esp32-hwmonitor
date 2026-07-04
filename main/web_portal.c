@@ -214,7 +214,7 @@ static const char INDEX_HTML[] =
 "function renderDisplayInfo(){"
 "const key=document.getElementById('display_type').value;"
 "const d=displays.find(x=>x.key===key);const el=document.getElementById('displayInfo');"
-"if(!d){el.innerHTML='';return;}"
+"if(!d||d.bus==='none'){el.innerHTML='';return;}"
 "let rows='<tr><td>Bus</td><td>'+d.bus.toUpperCase()+(d.has_touch?' + Touch (XPT2046)':'')+'</td></tr>'"
 "+'<tr><td>'+t('resolution')+'</td><td>'+d.h_res+'x'+d.v_res+(d.shape==='round'?t('shape_round'):d.shape==='mono'?t('shape_mono'):'')+'</td></tr>';"
 "if(d.bus==='spi'){rows+='<tr><td>MOSI/MISO/SCLK</td><td>GPIO'+d.pins.mosi+' / GPIO'+d.pins.miso+' / GPIO'+d.pins.sclk+'</td></tr>'"
@@ -238,7 +238,7 @@ static const char INDEX_HTML[] =
 "function updatePinFields(){"
 "const key=document.getElementById('display_type').value;const d=displays.find(x=>x.key===key);"
 "if(!d)return;"
-"const fixed=(key===FIXED_WIRING_KEY);"
+"const fixed=(key===FIXED_WIRING_KEY)||(d.bus==='none');"
 "document.getElementById('pinCard').style.display=fixed?'none':'';"
 "document.getElementById('pinGroupSpi').style.display=d.bus==='spi'?'':'none';"
 "document.getElementById('pinGroupTouch').style.display=d.has_touch?'':'none';"
@@ -637,7 +637,7 @@ static esp_err_t h_displays(httpd_req_t *req)
         cJSON *d = cJSON_CreateObject();
         cJSON_AddStringToObject(d, "key", board_profile_key((display_type_t)i));
         cJSON_AddStringToObject(d, "name", p->name);
-        cJSON_AddStringToObject(d, "bus", p->bus == LCD_BUS_I2C ? "i2c" : "spi");
+        cJSON_AddStringToObject(d, "bus", i == DISPLAY_NONE ? "none" : (p->bus == LCD_BUS_I2C ? "i2c" : "spi"));
         cJSON_AddStringToObject(d, "shape",
             p->shape == LCD_SHAPE_ROUND ? "round" : (p->shape == LCD_SHAPE_MONO ? "mono" : "rect"));
         cJSON_AddBoolToObject(d, "has_touch", p->has_touch);
@@ -645,7 +645,10 @@ static esp_err_t h_displays(httpd_req_t *req)
         cJSON_AddNumberToObject(d, "v_res", p->v_res);
 
         cJSON *pins = cJSON_CreateObject();
-        if (p->bus == LCD_BUS_I2C) {
+        if (i == DISPLAY_NONE) {
+            // keine Pins - JS blendet Pin-Karte/Verdrahtungstabelle fuer
+            // bus==='none' komplett aus.
+        } else if (p->bus == LCD_BUS_I2C) {
             cJSON_AddNumberToObject(pins, "sda", p->i2c_sda);
             cJSON_AddNumberToObject(pins, "scl", p->i2c_scl);
             cJSON_AddNumberToObject(pins, "addr", p->i2c_addr);

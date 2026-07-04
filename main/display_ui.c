@@ -422,6 +422,11 @@ static lv_display_t *lcd_init_mono_i2c(const board_profile_t *p)
 
 static lv_display_t *lcd_init(void)
 {
+    if (app_config.display_type == DISPLAY_NONE) {
+        ESP_LOGI(TAG, "Kein Display ausgewaehlt - Panel-Init uebersprungen.");
+        return NULL;
+    }
+
     s_profile_storage = board_profile_apply_overrides(board_profile_get(app_config.display_type),
                                                         &app_config.pin_overrides);
     s_profile = &s_profile_storage;
@@ -1283,13 +1288,16 @@ void display_ui_begin(void)
 {
     lv_display_t *disp = lcd_init();
     if (!disp) {
-        // Panel-Init fehlgeschlagen (z.B. Profil mit auf diesem Chip nicht
-        // existierender GPIO-Nummer, siehe LCD_CHECK oben). Bewusst NICHT
+        // DISPLAY_NONE (lcd_init() hat bereits geloggt) oder Panel-Init
+        // fehlgeschlagen (z.B. Profil mit auf diesem Chip nicht existierender
+        // GPIO-Nummer, siehe LCD_CHECK oben). In beiden Faellen bewusst NICHT
         // abbrechen: das Geraet soll trotzdem WLAN/Webportal starten, damit
-        // sich der Displaytyp dort korrigieren laesst, statt in einer
-        // Boot-Schleife ohne jede Erreichbarkeit haengen zu bleiben.
-        ESP_LOGE(TAG, "Kein Display initialisiert - Webportal bleibt trotzdem erreichbar, "
-                      "Displaytyp dort korrigieren und neu starten.");
+        // sich der Displaytyp dort (aus)waehlen/korrigieren laesst, statt in
+        // einer Boot-Schleife ohne jede Erreichbarkeit haengen zu bleiben.
+        if (app_config.display_type != DISPLAY_NONE) {
+            ESP_LOGE(TAG, "Kein Display initialisiert - Webportal bleibt trotzdem erreichbar, "
+                          "Displaytyp dort korrigieren und neu starten.");
+        }
         return;
     }
 

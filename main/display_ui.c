@@ -325,8 +325,14 @@ static lv_display_t *lcd_init_color_spi(const board_profile_t *p)
     lvgl_port_display_cfg_t dcfg = {
         .io_handle     = io,
         .panel_handle  = panel,
+        // Einzelpuffer statt Doppelpuffer: keines der unterstuetzten Boards
+        // hat PSRAM, ein zweiter Flush-Puffer wuerde also ~20-40 KB internes
+        // SRAM zusaetzlich kosten (h_res*40 Zeilen*2 Byte). LVGL wartet beim
+        // Flush dadurch synchron auf das SPI-DMA-Ende statt vorzurendern -
+        // fuer eine Dashboard-UI mit wenigen Updates/Sekunde kein spuerbarer
+        // Nachteil, spart aber deutlich Speicher.
         .buffer_size   = p->h_res * 40,
-        .double_buffer = true,
+        .double_buffer = false,
         .hres          = hres,
         .vres          = vres,
         .monochrome    = false,

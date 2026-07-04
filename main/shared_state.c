@@ -19,7 +19,7 @@ void config_set_defaults(app_config_t *cfg)
 {
     memset(cfg, 0, sizeof(*cfg));
     cfg->mqtt_port = 1883;
-    strcpy(cfg->mqtt_topic, "pcbridge/hwinfo");
+    strcpy(cfg->mqtt_topic, "pulsemqtt/hwinfo");
     strcpy(cfg->tz, "CET-1CEST,M3.5.0,M10.5.0/3");   // Europe/Berlin
     strcpy(cfg->ntp_server, "pool.ntp.org");
     cfg->weather_enabled = false;

@@ -105,9 +105,14 @@ bool touch_xpt2046_read(uint16_t *sx, uint16_t *sy)
             x = map_range(ry, TOUCH_RAW_Y_MIN, TOUCH_RAW_Y_MAX, 320, 0);
             y = map_range(rx, TOUCH_RAW_X_MIN, TOUCH_RAW_X_MAX, 240, 0);
             break;
-        case 3: // Landscape, USB links (180 Grad gegenueber rotation=1)
-            x = map_range(ry, TOUCH_RAW_Y_MIN, TOUCH_RAW_Y_MAX, 320, 0);
-            y = map_range(rx, TOUCH_RAW_X_MIN, TOUCH_RAW_X_MAX, 240, 0);
+        case 3: // Landscape, USB links (180 Grad gegenueber rotation=1) - war
+                // bisher identisch zu Fall 1 gemappt, dadurch lief der Touch
+                // bei rotation=3 nicht mit dem 180 Grad gedrehten Text mit
+                // (oben/unten und links/rechts vertauscht). Beide Achsen
+                // gegenueber Fall 1 invertiert, damit Touch und Text gleich
+                // herum stehen.
+            x = map_range(ry, TOUCH_RAW_Y_MIN, TOUCH_RAW_Y_MAX, 0, 320);
+            y = map_range(rx, TOUCH_RAW_X_MIN, TOUCH_RAW_X_MAX, 0, 240);
             break;
         case 0: // Portrait
             x = map_range(rx, TOUCH_RAW_X_MIN, TOUCH_RAW_X_MAX, 0, 240);

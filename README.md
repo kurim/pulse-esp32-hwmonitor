@@ -311,13 +311,17 @@ Diese Punkte sind board-abhängig und ließen sich ohne Gerät nicht verifiziere
    (180°-Korrektur noetig, siehe Punkt 5, sowie Layout/Screens/Boot-Taste
    grundsaetzlich funktionsfaehig) - Feinschliff (Schriftgroessen, Icons im
    Wetter-Screen, ggf. weitere Screens) noch offen.
-5. **Display-Rotation / Spiegelung** — `app_config.rotation` (0-3, im Webportal
-   einstellbar) hat je nach Panelform eine andere Bedeutung:
+5. **Display-Rotation / Spiegelung** — `app_config.rotation` hat je nach
+   Panelform eine andere Bedeutung; das Webportal zeigt dafuer nur die pro
+   Displaytyp sinnvollen Werte an (`renderRotationOptions()` in
+   `web_portal.c`):
    - LCD_SHAPE_RECT (ESP32-2432S028/ILI9488/ST7796S): waehlt zwischen den vier
-     Landscape/Portrait-Faellen. Fuer ILI9341 rotation=1 (Default) auf
-     Hardware verifiziert; die anderen Panels/Rotationen nicht einzeln
-     getestet. Portrait (0/2) ist zusaetzlich unlayoutet, da die Kachel-UI
-     fest auf Landscape ausgelegt ist.
+     Landscape/Portrait-Faellen, das Webportal bietet hier aber nur 1 und 3
+     an (jeweils Landscape, 180° zueinander) - 0/2 schalten intern auf
+     Portrait um, was die fest auf Landscape gezeichnete Kachel-UI zerreisst.
+     Fuer ILI9341 rotation=1 (Default) auf Hardware verifiziert, rotation=3
+     ebenfalls (siehe Touch-Hinweis unten); die anderen Panels nicht einzeln
+     getestet.
    - LCD_SHAPE_ROUND (GC9A01): waehlt direkt zwischen den vier moeglichen
      `mirror_x`/`mirror_y`-Kombinationen (`lcd_init_color_spi()` in
      `display_ui.c`), da nicht vorhersagbar ist, welche Kombination bei
@@ -330,7 +334,10 @@ Diese Punkte sind board-abhängig und ließen sich ohne Gerät nicht verifiziere
      noetig (nur Neustart nach dem Speichern).
 6. **Touch-Kalibrierung** — `touch_xpt2046.c`: `TOUCH_RAW_*`-Grenzen und die
    Achsen-Zuordnung pro `rotation`, nur fuer das ESP32-2432S028-Profil
-   relevant.
+   relevant. `rotation=3` (180°) mappte die Touch-Koordinaten bis vor Kurzem
+   identisch zu `rotation=1` - der Touchpunkt war dadurch bei gedrehtem Text
+   oben/unten und links/rechts vertauscht. Beide Achsen fuer `rotation=3`
+   jetzt gegenueber `rotation=1` invertiert.
 7. **LVGL-Komponenten-Versionen** — `main/idf_component.yml`. Falls der
    Component Manager andere Versionen erwartet, dort die Ranges anpassen.
    Die UI ist gegen die LVGL-9-API geschrieben.
@@ -421,7 +428,7 @@ Den `#ifdef LV_LVGL_H_INCLUDE_SIMPLE`-Include-Block danach durch ein einfaches
 ## MQTT-Datenformat
 
 Der PC-Client publiziert ein JSON-Objekt auf das konfigurierte Topic
-(Standard: `pcbridge/hwinfo`):
+(Standard: `pulsemqtt/hwinfo`):
 
 ```json
 {

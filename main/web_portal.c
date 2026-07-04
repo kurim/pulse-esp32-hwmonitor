@@ -43,7 +43,7 @@ static httpd_handle_t s_httpd;
 static const char INDEX_HTML[] =
 "<!DOCTYPE html><html lang=\"de\"><head><meta charset=\"UTF-8\">"
 "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
-"<title>ESP32 Hardware-Monitor</title><style>"
+"<title>Pulse ESP32 Hardware-Monitor</title><style>"
 ":root{--bg:#10141c;--card:#1a2030;--accent:#3fd0e0;--text:#e8edf4;--sub:#8893a8;--border:#2a3142;}"
 "*{box-sizing:border-box;}body{background:var(--bg);color:var(--text);font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:0;padding:24px 16px;}"
 ".wrap{max-width:560px;margin:0 auto;}h1{font-size:1.4rem;margin-bottom:4px;}"
@@ -72,14 +72,14 @@ static const char INDEX_HTML[] =
 ".wifilist button:active,.wifilist button:hover{background:#161c29;}"
 ".wifilist .rssi{color:var(--sub);font-size:.8rem;white-space:nowrap;}"
 "</style></head><body><div class=\"wrap\">"
-"<h1>ESP32 Hardware-Monitor</h1><div class=\"sub\">Konfiguration (ESP-IDF)</div>"
+"<h1>Pulse ESP32 Hardware-Monitor</h1><div class=\"sub\">Konfiguration (ESP-IDF)</div>"
 "<div class=\"statbar\" id=\"livebar\">Lade Status...</div>"
 "<form id=\"wifiForm\"><div class=\"card\"><h2>WLAN</h2>"
-"<label>SSID</label><input type=\"text\" id=\"wifi_ssid\" maxlength=\"32\" autocomplete=\"off\">"
+"<label>SSID</label><input type=\"text\" id=\"wifi_ssid\" name=\"wifi-ssid\" maxlength=\"32\" autocomplete=\"off\">"
 "<button type=\"button\" onclick=\"scanWifi()\" style=\"background:var(--card);color:var(--text);border:1px solid var(--border);margin-top:8px\">WLAN-Netzwerke suchen</button>"
 "<div class=\"hint\" id=\"wifiScanStatus\"></div>"
 "<div class=\"wifilist\" id=\"wifiList\" style=\"display:none\"></div>"
-"<label>Passwort</label><input type=\"password\" id=\"wifi_pass\" maxlength=\"64\" placeholder=\"unver&auml;ndert lassen = leer\">"
+"<label>Passwort</label><input type=\"password\" id=\"wifi_pass\" name=\"wifi-password\" maxlength=\"64\" autocomplete=\"new-password\" placeholder=\"unver&auml;ndert lassen = leer\">"
 "<button type=\"submit\">WLAN speichern &amp; Neustart</button><div id=\"wifiStatus\"></div></div></form>"
 "<button type=\"button\" id=\"advToggle\" onclick=\"toggleAdvanced()\" style=\"background:var(--card);color:var(--text);border:1px solid var(--border)\">Erweiterte Einstellungen anzeigen</button>"
 "<div id=\"advancedWrap\" style=\"display:none;margin-top:16px\">"
@@ -104,11 +104,11 @@ static const char INDEX_HTML[] =
 "Verdrahtung wie oben angezeigt oder weiter unten die PINs anpassen.</div>"
 "<div class=\"row\" style=\"margin-top:10px\">"
 "<div><label>Helligkeit (0-255)</label><input type=\"number\" id=\"brightness\" min=\"0\" max=\"255\"></div>"
-"<div><label>Rotation/Spiegelung (0-3, je nach Displaytyp durchprobieren)</label><input type=\"number\" id=\"rotation\" min=\"0\" max=\"3\"></div></div>"
+"<div><label>Rotation/Spiegelung</label><select id=\"rotation\"></select></div></div>"
 "<label>Standby nach (Sekunden ohne MQTT-Daten, 0 = deaktiviert)</label>"
 "<input type=\"number\" id=\"standby_timeout_s\" min=\"0\" max=\"65535\">"
 "<div class=\"toggle\"><input type=\"checkbox\" id=\"color_invert\"><label style=\"margin:0\">Farben invertieren (Dark Mode, falls Hintergrund hell statt dunkel ist)</label></div></div>"
-"<div class=\"card\"><h2>Pin-Belegung (optional anpassen)</h2>"
+"<div class=\"card\" id=\"pinCard\"><h2>Pin-Belegung (optional anpassen)</h2>"
 "<div class=\"hint\">Leer lassen = Standard-Pin f&uuml;r den oben gew&auml;hlten Displaytyp verwenden (siehe Tabelle "
 "oben). Nur bei abweichender eigener Verdrahtung &auml;ndern. Wechselt der Displaytyp, werden alle Pin-Overrides "
 "zur&uuml;ckgesetzt.</div>"
@@ -164,9 +164,16 @@ static const char INDEX_HTML[] =
 "let activeKey='';"
 "const PIN_FIELDS=['mosi','miso','sclk','cs','dc','rst','bl','touch_cs','touch_irq','touch_mosi','touch_miso','touch_clk','i2c_sda','i2c_scl','i2c_addr','nav_button'];"
 "const PIN_KEY_MAP={i2c_sda:'sda',i2c_scl:'scl',i2c_addr:'addr'};"
+// cyd_ili9341 ist die feste Werksverdrahtung des ESP32-2432S028 - dort gibt
+// es (anders als bei generisch verdrahteten Profilen) nichts anzupassen,
+// die Karte "Pin-Belegung" blendet updatePinFields() fuer dieses Profil
+// deshalb komplett aus.
+"const FIXED_WIRING_KEY='cyd_ili9341';"
 "function updatePinFields(){"
 "const key=document.getElementById('display_type').value;const d=displays.find(x=>x.key===key);"
 "if(!d)return;"
+"const fixed=(key===FIXED_WIRING_KEY);"
+"document.getElementById('pinCard').style.display=fixed?'none':'';"
 "document.getElementById('pinGroupSpi').style.display=d.bus==='spi'?'':'none';"
 "document.getElementById('pinGroupTouch').style.display=d.has_touch?'':'none';"
 "document.getElementById('pinGroupI2c').style.display=d.bus==='i2c'?'':'none';"
@@ -180,10 +187,24 @@ static const char INDEX_HTML[] =
 // aktiven Profils unter falschen Feldbeschriftungen auftauchen.
 "if(key!==activeKey)el.value='';"
 "});}"
+// rect-Profile sind Landscape-verdrahtet (h_res > v_res) - rotation 0/2
+// schalten dort intern auf swap_xy=false und damit auf Portrait um, was das
+// fest auf Landscape gezeichnete Kachel-UI zerreisst (siehe display_ui.c:
+// lcd_init_color_spi()). Nur 1/3 (jeweils Landscape, 180 Grad zueinander)
+// ergeben dort ueberhaupt ein brauchbares Bild - andere Shapes (rund/mono)
+// behalten alle vier Werte.
+"function renderRotationOptions(){"
+"const key=document.getElementById('display_type').value;const d=displays.find(x=>x.key===key);"
+"const sel=document.getElementById('rotation');const prev=sel.value;"
+"const opts=(d&&d.shape==='rect')"
+"?[[1,'Standard'],[3,'180\\u00b0 gedreht'+(d.has_touch?' (Touch ebenfalls gedreht)':'')]]"
+":[[0,'Rotation 0'],[1,'Rotation 1'],[2,'Rotation 2'],[3,'Rotation 3']];"
+"sel.innerHTML='';opts.forEach(o=>{const el=document.createElement('option');el.value=o[0];el.textContent=o[1];sel.appendChild(el);});"
+"if(opts.some(o=>String(o[0])===prev))sel.value=prev;}"
 "async function loadDisplays(){const r=await fetch('/api/displays');displays=await r.json();"
 "const sel=document.getElementById('display_type');sel.innerHTML='';"
 "displays.forEach(d=>{const o=document.createElement('option');o.value=d.key;o.textContent=d.name;sel.appendChild(o);});"
-"sel.addEventListener('change',()=>{renderDisplayInfo();updatePinFields();});"
+"sel.addEventListener('change',()=>{renderDisplayInfo();renderRotationOptions();updatePinFields();});"
 "if(displays.length<=1){"
 "document.getElementById('displayChoice').style.display='none';"
 "const f=document.getElementById('displayFixed');f.style.display='block';"
@@ -191,8 +212,14 @@ static const char INDEX_HTML[] =
 "if(displays.length)sel.value=displays[0].key;"
 "}}"
 "async function loadCfg(){const r=await fetch('/api/config');const c=await r.json();"
-"for(const k in c){const el=document.getElementById(k);if(!el)continue;if(el.type==='checkbox')el.checked=!!c[k];else el.value=(c[k]===null?'':c[k]);}"
+// display_type und die davon abgeleiteten Rotation-Optionen muessen VOR dem
+// generischen Zuweisungs-Loop unten stehen, sonst waere die Rotation-Auswahl
+// beim Laden noch leer (das <select> haette noch keine <option>-Kinder) und
+// c.rotation liesse sich nicht setzen.
+"if(c.display_type!==undefined)document.getElementById('display_type').value=c.display_type;"
 "activeKey=document.getElementById('display_type').value;"
+"renderRotationOptions();"
+"for(const k in c){const el=document.getElementById(k);if(!el)continue;if(el.type==='checkbox')el.checked=!!c[k];else el.value=(c[k]===null?'':c[k]);}"
 "renderDisplayInfo();updatePinFields();}"
 "async function loadStatus(){try{const r=await fetch('/api/status');const s=await r.json();"
 "document.getElementById('fwVersion').innerText=s.fw_version+' (freier Speicher: '+Math.round(s.free_heap/1024)+' KB)';"
@@ -234,6 +261,9 @@ static const char INDEX_HTML[] =
 // Leeres Zahlenfeld -> null (= "kein Override, Default verwenden" auf dem
 // Geraet), nicht 0 - 0 waere ein gueltiger, aber i.d.R. falscher GPIO-Wert.
 "else if(el.type==='number')payload[id]=(el.value===''?null:Number(el.value));"
+// rotation ist ein <select> (id==='number' greift hier nicht) - der Server
+// erwartet trotzdem eine JSON-Zahl, nicht den String, den el.value liefert.
+"else if(id==='rotation')payload[id]=Number(el.value);"
 "else payload[id]=el.value;});"
 "document.getElementById('status').innerText='Speichere...';"
 "await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});"

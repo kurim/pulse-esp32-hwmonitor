@@ -74,6 +74,10 @@ static const char *TAG = "ui";
 #define CARD_H   116
 
 // Panel-/UI-Zustand, in lcd_init() bzw. den *_init()-Helfern gesetzt.
+// s_profile zeigt auf s_profile_storage (kompilierter Default + im Webportal
+// gesetzte Pin-Overrides gemergt, siehe board_profile_apply_overrides()),
+// nicht mehr direkt auf die statische Tabelle in board_profiles.c.
+static board_profile_t s_profile_storage;
 static const board_profile_t *s_profile;
 static int s_hres, s_vres;
 
@@ -402,7 +406,9 @@ static lv_display_t *lcd_init_mono_i2c(const board_profile_t *p)
 
 static lv_display_t *lcd_init(void)
 {
-    s_profile = board_profile_get(app_config.display_type);
+    s_profile_storage = board_profile_apply_overrides(board_profile_get(app_config.display_type),
+                                                        &app_config.pin_overrides);
+    s_profile = &s_profile_storage;
     ESP_LOGI(TAG, "Display: %s", s_profile->name);
 
     if (s_profile->bus == LCD_BUS_I2C) {

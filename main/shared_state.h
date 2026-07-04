@@ -7,7 +7,7 @@
 extern "C" {
 #endif
 
-#define FW_VERSION "2.2.2-idf"
+#define FW_VERSION "2.3.0-idf"
 
 // Ringpuffer-Laenge fuer Verlaufsdiagramme (60 Samples = ~1 Min bei 1 Wert/Sek)
 #define HIST_LEN 60
@@ -50,6 +50,11 @@ typedef struct {
     // Webportal umschaltbar, da andere Panels (z.B. GC9A01) das anders
     // brauchen koennen.
     bool color_invert;
+
+    // Pin-Overrides fuer das aktuell gewaehlte Display (siehe board_profiles.h:
+    // pin_override_t). Wird zurueckgesetzt, wenn display_type geaendert wird
+    // (siehe web_portal.c: h_config_post).
+    pin_override_t pin_overrides;
 } app_config_t;
 
 // ----------------------------------------------------------------

@@ -93,6 +93,33 @@ static const char INDEX_HTML[] =
 "<label>Standby nach (Sekunden ohne MQTT-Daten, 0 = deaktiviert)</label>"
 "<input type=\"number\" id=\"standby_timeout_s\" min=\"0\" max=\"65535\">"
 "<div class=\"toggle\"><input type=\"checkbox\" id=\"color_invert\"><label style=\"margin:0\">Farben invertieren (Dark Mode, falls Hintergrund hell statt dunkel ist)</label></div></div>"
+"<div class=\"card\"><h2>Pin-Belegung (optional anpassen)</h2>"
+"<div class=\"hint\">Leer lassen = Standard-Pin fuer den oben gew&auml;hlten Displaytyp verwenden (siehe Tabelle "
+"oben). Nur bei abweichender eigener Verdrahtung &auml;ndern. Wechselt der Displaytyp, werden alle Pin-Overrides "
+"zurueckgesetzt.</div>"
+"<div id=\"pinGroupSpi\" style=\"margin-top:10px\">"
+"<div class=\"row\"><div><label>MOSI</label><input type=\"number\" id=\"pin_mosi\" min=\"0\" max=\"48\"></div>"
+"<div><label>MISO (-1 = kein Pin)</label><input type=\"number\" id=\"pin_miso\" min=\"-1\" max=\"48\"></div></div>"
+"<div class=\"row\"><div><label>SCLK</label><input type=\"number\" id=\"pin_sclk\" min=\"0\" max=\"48\"></div>"
+"<div><label>CS</label><input type=\"number\" id=\"pin_cs\" min=\"0\" max=\"48\"></div></div>"
+"<div class=\"row\"><div><label>DC</label><input type=\"number\" id=\"pin_dc\" min=\"0\" max=\"48\"></div>"
+"<div><label>RESET (-1 = kein Pin)</label><input type=\"number\" id=\"pin_rst\" min=\"-1\" max=\"48\"></div></div>"
+"<div class=\"row\"><div><label>Backlight (-1 = kein Pin)</label><input type=\"number\" id=\"pin_bl\" min=\"-1\" max=\"48\"></div>"
+"<div></div></div></div>"
+"<div id=\"pinGroupTouch\">"
+"<div class=\"row\"><div><label>Touch CS</label><input type=\"number\" id=\"pin_touch_cs\" min=\"0\" max=\"48\"></div>"
+"<div><label>Touch IRQ</label><input type=\"number\" id=\"pin_touch_irq\" min=\"0\" max=\"48\"></div></div>"
+"<div class=\"row\"><div><label>Touch MOSI</label><input type=\"number\" id=\"pin_touch_mosi\" min=\"0\" max=\"48\"></div>"
+"<div><label>Touch MISO</label><input type=\"number\" id=\"pin_touch_miso\" min=\"0\" max=\"48\"></div></div>"
+"<div class=\"row\"><div><label>Touch CLK</label><input type=\"number\" id=\"pin_touch_clk\" min=\"0\" max=\"48\"></div>"
+"<div></div></div></div>"
+"<div id=\"pinGroupI2c\">"
+"<div class=\"row\"><div><label>SDA</label><input type=\"number\" id=\"pin_i2c_sda\" min=\"0\" max=\"48\"></div>"
+"<div><label>SCL</label><input type=\"number\" id=\"pin_i2c_scl\" min=\"0\" max=\"48\"></div></div>"
+"<label>I2C-Adresse (dezimal, z.B. 60 f&uuml;r 0x3C)</label><input type=\"number\" id=\"pin_i2c_addr\" min=\"1\" max=\"127\"></div>"
+"<div id=\"pinGroupNav\">"
+"<label>Navigationstaste (BOOT-Button, -1 = keine)</label><input type=\"number\" id=\"pin_nav_button\" min=\"-1\" max=\"48\"></div>"
+"</div>"
 "<button type=\"submit\">Speichern &amp; Neustart</button><div id=\"status\"></div></form>"
 "<div class=\"card\"><h2>Firmware-Update (OTA)</h2>"
 "<div class=\"sub\" style=\"margin-bottom:10px\">Aktuelle Version: <span id=\"fwVersion\">-</span></div>"
@@ -118,10 +145,29 @@ static const char INDEX_HTML[] =
 "+'<tr><td>I2C-Adresse</td><td>0x'+d.pins.addr.toString(16).toUpperCase()+'</td></tr>'"
 "+'<tr><td>VCC / GND</td><td>3.3V / GND</td></tr>';}"
 "el.innerHTML='<table class=\"pintable\">'+rows+'</table>';}"
+"let activeKey='';"
+"const PIN_FIELDS=['mosi','miso','sclk','cs','dc','rst','bl','touch_cs','touch_irq','touch_mosi','touch_miso','touch_clk','i2c_sda','i2c_scl','i2c_addr','nav_button'];"
+"const PIN_KEY_MAP={i2c_sda:'sda',i2c_scl:'scl',i2c_addr:'addr'};"
+"function updatePinFields(){"
+"const key=document.getElementById('display_type').value;const d=displays.find(x=>x.key===key);"
+"if(!d)return;"
+"document.getElementById('pinGroupSpi').style.display=d.bus==='spi'?'':'none';"
+"document.getElementById('pinGroupTouch').style.display=d.has_touch?'':'none';"
+"document.getElementById('pinGroupI2c').style.display=d.bus==='i2c'?'':'none';"
+"document.getElementById('pinGroupNav').style.display=d.shape==='round'?'':'none';"
+"PIN_FIELDS.forEach(f=>{const el=document.getElementById('pin_'+f);if(!el)return;"
+"const srcKey=PIN_KEY_MAP[f]||f;"
+"el.placeholder=(d.pins[srcKey]!==undefined)?('Default: '+d.pins[srcKey]):'Default';"
+// Beim Wechsel auf einen ANDEREN Displaytyp als den aktuell aktiven gibt es
+// keine passenden Overrides zu zeigen (es existiert nur EIN Override-Set,
+// siehe board_profiles.h) - Felder leeren, sonst wuerden die Zahlen des
+// aktiven Profils unter falschen Feldbeschriftungen auftauchen.
+"if(key!==activeKey)el.value='';"
+"});}"
 "async function loadDisplays(){const r=await fetch('/api/displays');displays=await r.json();"
 "const sel=document.getElementById('display_type');sel.innerHTML='';"
 "displays.forEach(d=>{const o=document.createElement('option');o.value=d.key;o.textContent=d.name;sel.appendChild(o);});"
-"sel.addEventListener('change',renderDisplayInfo);"
+"sel.addEventListener('change',()=>{renderDisplayInfo();updatePinFields();});"
 "if(displays.length<=1){"
 "document.getElementById('displayChoice').style.display='none';"
 "const f=document.getElementById('displayFixed');f.style.display='block';"
@@ -129,8 +175,9 @@ static const char INDEX_HTML[] =
 "if(displays.length)sel.value=displays[0].key;"
 "}}"
 "async function loadCfg(){const r=await fetch('/api/config');const c=await r.json();"
-"for(const k in c){const el=document.getElementById(k);if(!el)continue;if(el.type==='checkbox')el.checked=!!c[k];else el.value=c[k];}"
-"renderDisplayInfo();}"
+"for(const k in c){const el=document.getElementById(k);if(!el)continue;if(el.type==='checkbox')el.checked=!!c[k];else el.value=(c[k]===null?'':c[k]);}"
+"activeKey=document.getElementById('display_type').value;"
+"renderDisplayInfo();updatePinFields();}"
 "async function loadStatus(){try{const r=await fetch('/api/status');const s=await r.json();"
 "document.getElementById('fwVersion').innerText=s.fw_version+' (freier Speicher: '+Math.round(s.free_heap/1024)+' KB)';"
 "document.getElementById('livebar').innerHTML='<span><span class=\"dot\" style=\"background:'+(s.wifi?'#3fd0e0':'#e05a5a')+'\"></span>WLAN</span>'+"
@@ -138,7 +185,13 @@ static const char INDEX_HTML[] =
 "'<span>CPU '+s.cpu_load.toFixed(0)+'%</span><span>GPU '+s.gpu_load.toFixed(0)+'%</span><span>IP '+s.ip+'</span>';}catch(e){}}"
 "document.getElementById('cfgForm').addEventListener('submit',async(e)=>{e.preventDefault();"
 "const ids=['wifi_ssid','wifi_pass','mqtt_host','mqtt_port','mqtt_user','mqtt_pass','mqtt_topic','ntp_server','tz','weather_enabled','weather_api_key','weather_city','weather_units','brightness','rotation','display_type','standby_timeout_s','color_invert'];"
-"const payload={};ids.forEach(id=>{const el=document.getElementById(id);payload[id]=el.type==='checkbox'?el.checked:(el.type==='number'?Number(el.value):el.value);});"
+"PIN_FIELDS.forEach(f=>ids.push('pin_'+f));"
+"const payload={};ids.forEach(id=>{const el=document.getElementById(id);if(!el)return;"
+"if(el.type==='checkbox')payload[id]=el.checked;"
+// Leeres Zahlenfeld -> null (= "kein Override, Default verwenden" auf dem
+// Geraet), nicht 0 - 0 waere ein gueltiger, aber i.d.R. falscher GPIO-Wert.
+"else if(el.type==='number')payload[id]=(el.value===''?null:Number(el.value));"
+"else payload[id]=el.value;});"
 "document.getElementById('status').innerText='Speichere...';"
 "await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});"
 "document.getElementById('status').innerText='Gespeichert. Ger\\u00e4t startet neu...';});"
@@ -313,6 +366,16 @@ static esp_err_t h_status(httpd_req_t *req)
     return httpd_resp_send(req, buf, n);
 }
 
+// cJSON hat kein eingebautes "Zahl oder null" - Pin-Overrides sind entweder
+// ein konkreter GPIO-Wert oder PIN_UNSET/0 ("kein Override, siehe
+// board_profiles.h"), letzteres muss das Webportal als leeres Formularfeld
+// darstellen koennen (0 waere ein gueltiger, aber i.d.R. falscher GPIO-Wert).
+static void add_pin_or_null(cJSON *d, const char *key, int16_t v)
+{
+    if (v == PIN_UNSET) cJSON_AddNullToObject(d, key);
+    else cJSON_AddNumberToObject(d, key, v);
+}
+
 static esp_err_t h_config_get(httpd_req_t *req)
 {
     cJSON *d = cJSON_CreateObject();
@@ -334,6 +397,25 @@ static esp_err_t h_config_get(httpd_req_t *req)
     cJSON_AddStringToObject(d, "display_type", board_profile_key(app_config.display_type));
     cJSON_AddNumberToObject(d, "standby_timeout_s", app_config.standby_timeout_s);
     cJSON_AddBoolToObject(  d, "color_invert", app_config.color_invert);
+
+    const pin_override_t *ov = &app_config.pin_overrides;
+    add_pin_or_null(d, "pin_mosi", ov->mosi);
+    add_pin_or_null(d, "pin_miso", ov->miso);
+    add_pin_or_null(d, "pin_sclk", ov->sclk);
+    add_pin_or_null(d, "pin_cs",   ov->cs);
+    add_pin_or_null(d, "pin_dc",   ov->dc);
+    add_pin_or_null(d, "pin_rst",  ov->rst);
+    add_pin_or_null(d, "pin_bl",   ov->bl);
+    add_pin_or_null(d, "pin_touch_cs",   ov->touch_cs);
+    add_pin_or_null(d, "pin_touch_irq",  ov->touch_irq);
+    add_pin_or_null(d, "pin_touch_mosi", ov->touch_mosi);
+    add_pin_or_null(d, "pin_touch_miso", ov->touch_miso);
+    add_pin_or_null(d, "pin_touch_clk",  ov->touch_clk);
+    add_pin_or_null(d, "pin_i2c_sda", ov->i2c_sda);
+    add_pin_or_null(d, "pin_i2c_scl", ov->i2c_scl);
+    if (ov->i2c_addr == 0) cJSON_AddNullToObject(d, "pin_i2c_addr");
+    else cJSON_AddNumberToObject(d, "pin_i2c_addr", ov->i2c_addr);
+    add_pin_or_null(d, "pin_nav_button", ov->nav_button);
 
     char *out = cJSON_PrintUnformatted(d);
     httpd_resp_set_type(req, "application/json");
@@ -388,6 +470,7 @@ static esp_err_t h_displays(httpd_req_t *req)
                 cJSON_AddNumberToObject(pins, "touch_clk",  p->touch_clk);
             }
         }
+        cJSON_AddNumberToObject(pins, "nav_button", p->nav_button);
         cJSON_AddItemToObject(d, "pins", pins);
         cJSON_AddItemToArray(arr, d);
     }
@@ -406,6 +489,26 @@ static void cfg_str(cJSON *root, const char *key, char *dst, size_t sz, bool ski
         if (skip_empty && strlen(v->valuestring) == 0) return;
         strlcpy(dst, v->valuestring, sz);
     }
+}
+
+// Pin-Override-Feld setzen: JSON null -> PIN_UNSET ("kein Override, Default
+// verwenden"), Zahl -> konkreter GPIO-Override. Fehlt das Feld im Request
+// komplett, bleibt der aktuelle Wert unveraendert (das Webportal sendet aber
+// immer alle Pin-Felder mit, siehe PIN_FIELDS im JS).
+static void cfg_pin(cJSON *root, const char *key, int16_t *dst)
+{
+    cJSON *v = cJSON_GetObjectItem(root, key);
+    if (!v) return;
+    if (cJSON_IsNull(v)) *dst = PIN_UNSET;
+    else if (cJSON_IsNumber(v)) *dst = (int16_t)v->valuedouble;
+}
+
+static void cfg_pin_addr(cJSON *root, const char *key, uint8_t *dst)
+{
+    cJSON *v = cJSON_GetObjectItem(root, key);
+    if (!v) return;
+    if (cJSON_IsNull(v)) *dst = 0;
+    else if (cJSON_IsNumber(v)) *dst = (uint8_t)v->valuedouble;
 }
 
 static esp_err_t h_config_post(httpd_req_t *req)
@@ -454,11 +557,40 @@ static esp_err_t h_config_post(httpd_req_t *req)
     cJSON *ro = cJSON_GetObjectItem(root, "rotation");
     if (cJSON_IsNumber(ro)) app_config.rotation = (uint8_t)ro->valuedouble;
     cJSON *dt = cJSON_GetObjectItem(root, "display_type");
-    if (cJSON_IsString(dt)) app_config.display_type = board_profile_from_key(dt->valuestring);
+    if (cJSON_IsString(dt)) {
+        display_type_t new_type = board_profile_from_key(dt->valuestring);
+        if (new_type != app_config.display_type) {
+            // Displaytyp gewechselt: alte Pin-Overrides galten fuer ein
+            // anderes Panel/Bus und passen hier i.d.R. nicht mehr - reset,
+            // bevor unten eventuell neue Overrides fuer das neue Profil
+            // aus demselben Request angewendet werden.
+            pin_override_set_defaults(&app_config.pin_overrides);
+        }
+        app_config.display_type = new_type;
+    }
     cJSON *sb = cJSON_GetObjectItem(root, "standby_timeout_s");
     if (cJSON_IsNumber(sb)) app_config.standby_timeout_s = (uint16_t)sb->valuedouble;
     cJSON *inv = cJSON_GetObjectItem(root, "color_invert");
     if (cJSON_IsBool(inv)) app_config.color_invert = cJSON_IsTrue(inv);
+
+    pin_override_t *ov = &app_config.pin_overrides;
+    cfg_pin(root, "pin_mosi", &ov->mosi);
+    cfg_pin(root, "pin_miso", &ov->miso);
+    cfg_pin(root, "pin_sclk", &ov->sclk);
+    cfg_pin(root, "pin_cs",   &ov->cs);
+    cfg_pin(root, "pin_dc",   &ov->dc);
+    cfg_pin(root, "pin_rst",  &ov->rst);
+    cfg_pin(root, "pin_bl",   &ov->bl);
+    cfg_pin(root, "pin_touch_cs",   &ov->touch_cs);
+    cfg_pin(root, "pin_touch_irq",  &ov->touch_irq);
+    cfg_pin(root, "pin_touch_mosi", &ov->touch_mosi);
+    cfg_pin(root, "pin_touch_miso", &ov->touch_miso);
+    cfg_pin(root, "pin_touch_clk",  &ov->touch_clk);
+    cfg_pin(root, "pin_i2c_sda", &ov->i2c_sda);
+    cfg_pin(root, "pin_i2c_scl", &ov->i2c_scl);
+    cfg_pin_addr(root, "pin_i2c_addr", &ov->i2c_addr);
+    cfg_pin(root, "pin_nav_button", &ov->nav_button);
+
     cJSON_Delete(root);
 
     config_store_save(&app_config);

@@ -7,7 +7,7 @@
 extern "C" {
 #endif
 
-#define FW_VERSION "2.3.0-idf"
+#define FW_VERSION "2.4.0-idf"
 
 // Ringpuffer-Laenge fuer Verlaufsdiagramme (60 Samples = ~1 Min bei 1 Wert/Sek)
 #define HIST_LEN 60

@@ -65,9 +65,16 @@ static const char INDEX_HTML[] =
 "</style></head><body><div class=\"wrap\">"
 "<h1>ESP32 Hardware-Monitor</h1><div class=\"sub\">Konfiguration (ESP-IDF)</div>"
 "<div class=\"statbar\" id=\"livebar\">Lade Status...</div>"
+"<form id=\"wifiForm\"><div class=\"card\"><h2>WLAN</h2>"
+"<label>SSID</label><input type=\"text\" id=\"wifi_ssid\" maxlength=\"32\" list=\"wifiList\" autocomplete=\"off\">"
+"<datalist id=\"wifiList\"></datalist>"
+"<button type=\"button\" onclick=\"scanWifi()\" style=\"background:var(--card);color:var(--text);border:1px solid var(--border);margin-top:8px\">WLAN-Netzwerke suchen</button>"
+"<div class=\"hint\" id=\"wifiScanStatus\"></div>"
+"<label>Passwort</label><input type=\"password\" id=\"wifi_pass\" maxlength=\"64\" placeholder=\"unver&auml;ndert lassen = leer\">"
+"<button type=\"submit\">WLAN speichern &amp; Neustart</button><div id=\"wifiStatus\"></div></div></form>"
+"<button type=\"button\" id=\"advToggle\" onclick=\"toggleAdvanced()\" style=\"background:var(--card);color:var(--text);border:1px solid var(--border)\">Erweiterte Einstellungen anzeigen</button>"
+"<div id=\"advancedWrap\" style=\"display:none;margin-top:16px\">"
 "<form id=\"cfgForm\">"
-"<div class=\"card\"><h2>WLAN</h2><label>SSID</label><input type=\"text\" id=\"wifi_ssid\" maxlength=\"32\">"
-"<label>Passwort</label><input type=\"password\" id=\"wifi_pass\" maxlength=\"64\" placeholder=\"unver&auml;ndert lassen = leer\"></div>"
 "<div class=\"card\"><h2>MQTT (Hardwaredaten vom PC)</h2><label>Broker-Host</label><input type=\"text\" id=\"mqtt_host\" maxlength=\"64\">"
 "<div class=\"row\"><div><label>Port</label><input type=\"number\" id=\"mqtt_port\" min=\"1\" max=\"65535\"></div>"
 "<div><label>Topic</label><input type=\"text\" id=\"mqtt_topic\" maxlength=\"64\"></div></div>"
@@ -126,7 +133,8 @@ static const char INDEX_HTML[] =
 "<input type=\"file\" id=\"fwFile\" accept=\".bin\">"
 "<button type=\"button\" onclick=\"uploadFirmware()\" style=\"background:#e0a53f\">.bin hochladen &amp; flashen</button>"
 "<progress id=\"otaProgress\" value=\"0\" max=\"100\" style=\"width:100%;margin-top:10px;display:none\"></progress>"
-"<div id=\"otaStatus\" style=\"margin-top:8px;font-size:.85rem;color:var(--sub)\"></div></div></div>"
+"<div id=\"otaStatus\" style=\"margin-top:8px;font-size:.85rem;color:var(--sub)\"></div></div>"
+"</div></div>"
 "<script>"
 "let displays=[];"
 "function renderDisplayInfo(){"
@@ -183,8 +191,24 @@ static const char INDEX_HTML[] =
 "document.getElementById('livebar').innerHTML='<span><span class=\"dot\" style=\"background:'+(s.wifi?'#3fd0e0':'#e05a5a')+'\"></span>WLAN</span>'+"
 "'<span><span class=\"dot\" style=\"background:'+(s.mqtt?'#3fd0e0':'#e05a5a')+'\"></span>MQTT</span>'+"
 "'<span>CPU '+s.cpu_load.toFixed(0)+'%</span><span>GPU '+s.gpu_load.toFixed(0)+'%</span><span>IP '+s.ip+'</span>';}catch(e){}}"
+"document.getElementById('wifiForm').addEventListener('submit',async(e)=>{e.preventDefault();"
+"const payload={wifi_ssid:document.getElementById('wifi_ssid').value,wifi_pass:document.getElementById('wifi_pass').value};"
+"document.getElementById('wifiStatus').innerText='Speichere...';"
+"await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});"
+"document.getElementById('wifiStatus').innerText='Gespeichert. Ger\\u00e4t startet neu...';});"
+"function toggleAdvanced(){const w=document.getElementById('advancedWrap');const b=document.getElementById('advToggle');"
+"const show=w.style.display==='none';w.style.display=show?'block':'none';"
+"b.innerText=show?'Erweiterte Einstellungen ausblenden':'Erweiterte Einstellungen anzeigen';}"
+"async function scanWifi(){const s=document.getElementById('wifiScanStatus');s.innerText='Suche...';"
+"try{const r=await fetch('/api/wifi_scan');const nets=await r.json();"
+"const dl=document.getElementById('wifiList');dl.innerHTML='';"
+"const seen=new Set();"
+"nets.forEach(n=>{if(seen.has(n.ssid))return;seen.add(n.ssid);"
+"const opt=document.createElement('option');opt.value=n.ssid;dl.appendChild(opt);});"
+"s.innerText=nets.length?nets.length+' Netzwerke gefunden.':'Keine Netzwerke gefunden.';"
+"}catch(e){s.innerText='Fehler bei der Suche.';}}"
 "document.getElementById('cfgForm').addEventListener('submit',async(e)=>{e.preventDefault();"
-"const ids=['wifi_ssid','wifi_pass','mqtt_host','mqtt_port','mqtt_user','mqtt_pass','mqtt_topic','ntp_server','tz','weather_enabled','weather_api_key','weather_city','weather_units','brightness','rotation','display_type','standby_timeout_s','color_invert'];"
+"const ids=['mqtt_host','mqtt_port','mqtt_user','mqtt_pass','mqtt_topic','ntp_server','tz','weather_enabled','weather_api_key','weather_city','weather_units','brightness','rotation','display_type','standby_timeout_s','color_invert'];"
 "PIN_FIELDS.forEach(f=>ids.push('pin_'+f));"
 "const payload={};ids.forEach(id=>{const el=document.getElementById(id);if(!el)return;"
 "if(el.type==='checkbox')payload[id]=el.checked;"
@@ -364,6 +388,54 @@ static esp_err_t h_status(httpd_req_t *req)
         (unsigned)esp_get_free_heap_size());
     httpd_resp_set_type(req, "application/json");
     return httpd_resp_send(req, buf, n);
+}
+
+// Scannt nach WLAN-Netzwerken, waehrend der Setup-AP (falls aktiv) weiter
+// laeuft - dafuer kurzzeitig auf APSTA umschalten statt reinem AP-Modus,
+// sonst wuerde das Handy vom Setup-AP getrennt. Nach dem Scan wieder auf den
+// vorherigen Modus zurueckschalten.
+static esp_err_t h_wifi_scan(httpd_req_t *req)
+{
+    wifi_mode_t prev_mode = WIFI_MODE_NULL;
+    esp_wifi_get_mode(&prev_mode);
+    if (s_ap_mode && prev_mode == WIFI_MODE_AP) {
+        esp_wifi_set_mode(WIFI_MODE_APSTA);
+    }
+
+    wifi_scan_config_t scan_cfg = { 0 };
+    esp_err_t err = esp_wifi_scan_start(&scan_cfg, true);
+
+    cJSON *arr = cJSON_CreateArray();
+    if (err == ESP_OK) {
+        uint16_t num = 0;
+        esp_wifi_scan_get_ap_num(&num);
+        if (num > 20) num = 20;
+        wifi_ap_record_t *aps = calloc(num, sizeof(wifi_ap_record_t));
+        if (aps) {
+            esp_wifi_scan_get_ap_records(&num, aps);
+            for (int i = 0; i < num; i++) {
+                if (aps[i].ssid[0] == '\0') continue;
+                cJSON *o = cJSON_CreateObject();
+                cJSON_AddStringToObject(o, "ssid", (const char *)aps[i].ssid);
+                cJSON_AddNumberToObject(o, "rssi", aps[i].rssi);
+                cJSON_AddItemToArray(arr, o);
+            }
+            free(aps);
+        }
+    } else {
+        ESP_LOGW(TAG, "WLAN-Scan fehlgeschlagen: %s", esp_err_to_name(err));
+    }
+
+    if (s_ap_mode && prev_mode == WIFI_MODE_AP) {
+        esp_wifi_set_mode(WIFI_MODE_AP);
+    }
+
+    char *json = cJSON_PrintUnformatted(arr);
+    httpd_resp_set_type(req, "application/json");
+    esp_err_t send_err = httpd_resp_send(req, json, HTTPD_RESP_USE_STRLEN);
+    free(json);
+    cJSON_Delete(arr);
+    return send_err;
 }
 
 // cJSON hat kein eingebautes "Zahl oder null" - Pin-Overrides sind entweder
@@ -686,6 +758,7 @@ static void start_http(void)
         { .uri = "/api/config",   .method = HTTP_GET,  .handler = h_config_get },
         { .uri = "/api/config",   .method = HTTP_POST, .handler = h_config_post },
         { .uri = "/api/displays", .method = HTTP_GET,  .handler = h_displays },
+        { .uri = "/api/wifi_scan", .method = HTTP_GET, .handler = h_wifi_scan },
         { .uri = "/update",       .method = HTTP_POST, .handler = h_update },
         // Bekannte Captive-Portal-Erkennungspfade der wichtigsten Betriebs-
         // systeme direkt registrieren (statt nur ueber den generischen

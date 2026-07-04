@@ -30,6 +30,7 @@ void config_set_defaults(app_config_t *cfg)
     cfg->display_type = board_profile_default();
     cfg->standby_timeout_s = 120; // 2 Minuten, entspricht dem bisherigen fixen Wert
     cfg->color_invert = false;    // entspricht dem bisherigen fixen Wert (fuer ILI9341/CYD korrekt)
+    strcpy(cfg->language, "de");  // bisheriges Verhalten fuer bereits geflashte Geraete
     pin_override_set_defaults(&cfg->pin_overrides);
 }
 

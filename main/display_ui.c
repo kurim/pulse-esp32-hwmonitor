@@ -86,7 +86,12 @@ static int s_hres, s_vres;
 enum { SCR_MAIN = 0, SCR_CPU = 1, SCR_GPU = 2, SCR_SETTINGS = 3 };
 static int s_screen = SCR_MAIN;
 
-static lv_obj_t *scr_main, *scr_detail, *scr_settings;
+static lv_obj_t *scr_main, *scr_detail, *scr_settings, *scr_standby;
+
+// Standby-Screen-Widgets (LCD_SHAPE_RECT) - grosse Uhrzeit + Datum + kompakte
+// Wetterzeile, analog zum Standby des runden Minimal-UIs (siehe
+// refresh_round_ui()), statt wie frueher nur das Backlight abzuschalten.
+static lv_obj_t *standby_lbl_time, *standby_lbl_date, *standby_lbl_weather;
 
 // Kachel-Widgets, gebuendelt pro Kachel (CPU/GPU)
 typedef struct {
@@ -166,24 +171,23 @@ static void backlight_init(int bl_gpio)
 // Aufwecken per Touch/Navigationstaste (erster Druck weckt nur, loest keine
 // Aktion aus) oder automatisch, sobald wieder Daten eintreffen.
 //
-// Zwei unabhaengige Auswirkungen, je nach Panel:
-// - Mit Backlight-Pin (CYD/ILI9488/ST7796S): Backlight aus, Bildschirminhalt
-//   bleibt unveraendert (ohnehin nicht sichtbar).
-// - Ohne Backlight-Pin (GC9A01/SSD1309, siehe s_has_backlight): der
-//   Bildschirminhalt selbst wird reduziert (nur Uhrzeit+Wetter statt
-//   CPU/GPU-Details, siehe refresh_round_ui()), da sich die Helligkeit dort
-//   nicht per Software abschalten laesst.
+// Einheitlich fuer alle Panels: der Bildschirminhalt wird auf eine reduzierte
+// Anzeige (nur Uhrzeit+Wetter) umgeschaltet statt Details zu zeigen - bei
+// LCD_SHAPE_RECT (CYD/ILI9488/ST7796S) durch Umschalten auf einen eigenen
+// Standby-Screen (siehe scr_standby), bei LCD_SHAPE_ROUND analog ueber
+// refresh_round_ui(). Das Backlight bleibt dabei unangetastet (frueher wurde
+// es bei Panels mit Backlight-Pin abgeschaltet - das liess den Touch beim
+// naechsten Aufwecken kurzzeitig "blind" wirken und wich vom Verhalten der
+// anderen Panels ab).
 // ------------------------------------------------------------------
 static bool s_standby = false;
-static bool s_has_backlight = false;
 
 static void enter_standby(void)
 {
     if (s_standby) return;
     s_standby = true;
-    if (s_has_backlight) {
-        ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, 0);
-        ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
+    if (s_profile->shape == LCD_SHAPE_RECT) {
+        lv_screen_load(scr_standby);
     }
 }
 
@@ -191,9 +195,11 @@ static void exit_standby(void)
 {
     if (!s_standby) return;
     s_standby = false;
-    if (s_has_backlight) {
-        ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, app_config.brightness);
-        ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
+    if (s_profile->shape == LCD_SHAPE_RECT) {
+        lv_obj_t *target = scr_main;
+        if (s_screen == SCR_CPU || s_screen == SCR_GPU) target = scr_detail;
+        else if (s_screen == SCR_SETTINGS)              target = scr_settings;
+        lv_screen_load(target);
     }
 }
 
@@ -218,7 +224,6 @@ static void check_standby(void)
 static lv_display_t *lcd_init_color_spi(const board_profile_t *p)
 {
     backlight_init(p->bl);
-    s_has_backlight = (p->bl >= 0);
 
     spi_bus_config_t bus = {
         .mosi_io_num     = p->mosi,
@@ -344,8 +349,6 @@ static lv_display_t *lcd_init_color_spi(const board_profile_t *p)
 // ------------------------------------------------------------------
 static lv_display_t *lcd_init_mono_i2c(const board_profile_t *p)
 {
-    s_has_backlight = false; // OLED ist selbstleuchtend, kein Backlight-Pin
-
     // ESP-IDF >=5.2/6.x: esp_lcd_new_panel_io_i2c erwartet einen
     // i2c_master_bus_handle_t aus dem neuen i2c_master-Treiber, nicht mehr
     // den legacy i2c_port_t (driver/i2c.h). Legacy-API brach auf IDF 6.0.2
@@ -902,6 +905,27 @@ static void build_settings(void)
 }
 
 // ------------------------------------------------------------------
+// Standby-Screen (LCD_SHAPE_RECT) - grosse Uhrzeit/Datum + kompakte
+// Wetterzeile, analog zur reduzierten Standby-Ansicht des runden Minimal-UIs.
+// ------------------------------------------------------------------
+static void build_standby(void)
+{
+    scr_standby = lv_obj_create(NULL);
+    style_screen(scr_standby);
+
+    standby_lbl_time = make_label(scr_standby, "--:--:--", &lv_font_montserrat_48, COL_TEXT);
+    lv_obj_align(standby_lbl_time, LV_ALIGN_CENTER, 0, -30);
+
+    standby_lbl_date = make_label(scr_standby, "", &lv_font_montserrat_16, COL_SUB);
+    lv_obj_align(standby_lbl_date, LV_ALIGN_CENTER, 0, 24);
+
+    standby_lbl_weather = make_label(scr_standby, "", &lv_font_montserrat_16, COL_SUB);
+    lv_obj_set_width(standby_lbl_weather, s_hres - 20);
+    lv_obj_set_style_text_align(standby_lbl_weather, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(standby_lbl_weather, LV_ALIGN_CENTER, 0, 54);
+}
+
+// ------------------------------------------------------------------
 // Minimal-UI fuer monochrome Displays (SSD1309, 128x64) - kein Touch, kein
 // Farbverlauf/Balken (1bpp), nur Text. Platzhalter-Layout, das spaeter noch
 // verfeinert werden kann.
@@ -1130,11 +1154,15 @@ static void refresh_now(void)
     if (ti.tm_year > 100) {
         strftime(buf, sizeof(buf), "%H:%M:%S", &ti);
         lv_label_set_text(lbl_time, buf);
+        lv_label_set_text(standby_lbl_time, buf);
         strftime(buf, sizeof(buf), "%d.%m.%Y", &ti);
         lv_label_set_text(lbl_date, buf);
+        lv_label_set_text(standby_lbl_date, buf);
     } else {
         lv_label_set_text(lbl_time, "--:--:--");
         lv_label_set_text(lbl_date, "");
+        lv_label_set_text(standby_lbl_time, "--:--:--");
+        lv_label_set_text(standby_lbl_date, "");
     }
 
     // --- Wetter-Block (3-Spalten-Raster: Temp / Feuchte / Wind / Regen) ---
@@ -1151,16 +1179,22 @@ static void refresh_now(void)
         // "X.Xmm" nicht zuverlässig (wurde auf Hardware abgeschnitten).
         snprintf(buf, sizeof(buf), "%.1f", weather_info.rain_1h);
         lv_label_set_text(lbl_rain, buf);
+        snprintf(buf, sizeof(buf), "%.0fC  %d%%  %.0fkm/h %s  %.1fmm",
+                 weather_info.temp_c, weather_info.humidity, weather_info.wind_speed,
+                 weather_wind_compass(weather_info.wind_deg), weather_info.rain_1h);
+        lv_label_set_text(standby_lbl_weather, buf);
     } else if (app_config.weather_enabled) {
         lv_label_set_text(lbl_weather, "--C");
         lv_label_set_text(lbl_humidity, "--%");
         lv_label_set_text(lbl_wind, "--");
         lv_label_set_text(lbl_rain, "--");
+        lv_label_set_text(standby_lbl_weather, "--");
     } else {
         lv_label_set_text(lbl_weather, "");
         lv_label_set_text(lbl_humidity, "");
         lv_label_set_text(lbl_wind, "");
         lv_label_set_text(lbl_rain, "");
+        lv_label_set_text(standby_lbl_weather, "");
     }
 
     // --- WLAN/MQTT-Statusicon ---
@@ -1280,6 +1314,7 @@ void display_ui_begin(void)
             build_main();
             build_detail();
             build_settings();
+            build_standby();
             lv_screen_load(scr_main);
             break;
     }

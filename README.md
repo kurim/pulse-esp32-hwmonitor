@@ -203,16 +203,24 @@ mid-way through the long form and jumping back to the SSID field.
 ### CI build (GitHub Actions)
 
 `.github/workflows/build-idf.yml` builds the firmware in the official
-`espressif/idf` Docker image (`espressif/esp-idf-ci-action`) and combines
-bootloader + partition table + app image via `idf.py merge-bin` into
-**one** flashable file (`esp32-hwmonitor-vX.X.X-idf[-<target>].bin`). This
-file can be flashed in one go via a web flasher (e.g. ESP Web Tools/
-esptool-js) or `esptool.py write_flash 0x0 <file>`, instead of writing
-bootloader/partition table/app separately at three offsets.
+`espressif/idf` Docker image (`espressif/esp-idf-ci-action`) and produces
+**two** files per chip:
+
+- `esp32-hwmonitor-vX.X.X-idf[-<target>].bin` - bootloader + partition table
+  + app image combined via `idf.py merge-bin`, meant for the **initial**
+  flash via a web flasher (e.g. ESP Web Tools/esptool-js) or
+  `esptool.py write_flash 0x0 <file>`, instead of writing bootloader/
+  partition table/app separately at three offsets.
+- `esp32-hwmonitor-vX.X.X-idf[-<target>]-ota.bin` - just the app image
+  (`build/esp32-hwmonitor.bin`, no bootloader/partition table), sized to fit
+  a single OTA partition (~1.4 MB). **Use this one for the web portal's
+  Firmware-Update (OTA) upload** - `h_update()` in `main/web_portal.c` writes
+  the uploaded body 1:1 via `esp_ota_write()` into an OTA partition, so
+  uploading the merged image there fails/bricks the upload.
 
 Both triggers always build **all three** supported chips (esp32/esp32s3/
 esp32c3) as a matrix job - there's no per-chip selection anymore, a single
-run always produces all three `.bin` files:
+run always produces both `.bin` files for all three chips:
 
 - **Manual** (tab "Actions" → "ESP-IDF Build" → "Run workflow"): choose the
   ESP-IDF Docker tag, builds all three chips. Results are available as
@@ -220,7 +228,7 @@ run always produces all three `.bin` files:
   `main/shared_state.h`.
 - **Tag push** (`git tag v1.0.0-idf && git push origin v1.0.0-idf`): builds
   all three chips and then automatically creates a GitHub release for the
-  tag, with all three `.bin` files attached. `FW_VERSION` is set **from the
+  tag, with all `.bin` files attached. `FW_VERSION` is set **from the
   tag** in this case (leading "v" stripped, `v1.0.0-idf` →
   `FW_VERSION "1.0.0-idf"`) instead of from `main/shared_state.h` - the
   value checked into the repo only serves as the default for manual builds.

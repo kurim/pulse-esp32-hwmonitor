@@ -43,7 +43,7 @@ jobs:
           command: >-
             idf.py set-target ${{ inputs.target }} &&
             idf.py build &&
-            idf.py merge-bin -o build/merged.bin --fill-flash-size 4MB
+            idf.py merge-bin -o merged.bin --fill-flash-size 4MB
 
       - name: Flashbare Datei benennen
         id: name

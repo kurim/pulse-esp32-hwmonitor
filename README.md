@@ -49,10 +49,10 @@ dort gar nicht erst auf.
   Einstellung.
 - Die Pin-Zuordnungen fuer ILI9488/ST7796S/GC9A01/SSD1309 sind
   **Standard-Verdrahtungsvorschlaege** fuer einen generischen ESP32/S3/C3-
-  Aufbau (siehe Tabelle unten), keine Werksverdrahtung. Bei abweichender
-  eigener Verdrahtung muessen die Defines in `main/board_profiles.c`
-  angepasst werden - eine Pin-Konfiguration ueber das Webportal ist (noch)
-  nicht vorgesehen.
+  Aufbau (siehe Tabelle unten), keine Werksverdrahtung - bei abweichender
+  eigener Verdrahtung im Webportal unter "Pin-Belegung" pro Feld anpassbar
+  (leer lassen = Default aus der Tabelle), kein Neubauen/Neuflashen noetig.
+  Siehe Abschnitt "Pin-Overrides" unten.
 - **Nur ILI9341 (ESP32-2432S028) ist auf echter Hardware verifiziert.** Die
   anderen vier Panel-Treiber, das Rundlayout und das Mono-Layout sind neu und
   noch nicht gegengeprueft (siehe Abschnitt "Auf Hardware zu pruefen" unten).
@@ -94,6 +94,29 @@ gueltigen Pins an - hier beide Varianten zum Nachschlagen:
 | RST | 0 |
 | Backlight | kein separater Pin (fest verdrahtet/immer an) |
 | Navigationstaste | BOOT-Taste des Devboards: GPIO9 (C3/C6/H2) bzw. GPIO0 (ESP32/S3) - auf ESP32/S3 identisch mit RST, dort daher deaktiviert (`board_profiles.c`) |
+
+### Pin-Overrides (eigene Verdrahtung ohne Neubauen)
+
+Alle Pins oben sind Defaults (`board_profiles.c`), aber im Webportal unter
+"Pin-Belegung (optional anpassen)" pro Feld ueberschreibbar - z.B. wenn die
+eigene Verdrahtung von den Vorschlaegen abweicht. Leeres Feld = Default
+verwenden. Nach dem Speichern startet das Geraet neu und uebernimmt die
+neuen Pins.
+
+Design-Entscheidung: Es gibt **ein** Override-Set, nicht eins pro
+Displaytyp - ein Geraet wird in der Praxis dauerhaft mit einem physischen
+Display betrieben, eine Verwaltung von Overrides fuer fuenf gleichzeitig nie
+genutzte Profile waere unnoetiger Aufwand gewesen. Wechselt man im Webportal
+den Displaytyp, werden alle Pin-Overrides automatisch zurueckgesetzt (alte
+Pins - z.B. Touch-Pins vom CYD-Profil - passen sonst i.d.R. nicht zum neuen
+Panel/Bus). Implementiert in `board_profiles.h/.c` (`pin_override_t`,
+`board_profile_apply_overrides()`) und `display_ui.c` (`lcd_init()` merged
+Override + Default zu `s_profile`, bevor irgendein GPIO angefasst wird).
+
+Da eine fehlerhafte Pin-Eingabe dank `LCD_CHECK` (siehe oben) nicht mehr zur
+Boot-Schleife fuehrt, sondern nur die Display-Init ueberspringt, ist das
+Risiko einer verunglueckten manuellen Anpassung gering - das Webportal
+bleibt so oder so erreichbar, um es zu korrigieren.
 
 ### GC9A01: Screens, Standby, Navigationstaste
 

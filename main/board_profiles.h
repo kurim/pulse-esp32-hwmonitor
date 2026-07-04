@@ -75,8 +75,40 @@ typedef struct {
     bool color_16bit;       // true = RGB565, false = monochrom (1bpp)
 } board_profile_t;
 
+// ------------------------------------------------------------------
+// Pin-Overrides: die obigen Pins sind Vorschlaege/Defaults, im Webportal
+// aber pro Feld ueberschreibbar (Karte "Pin-Belegung"), damit man bei
+// abweichender eigener Verdrahtung nicht den Quellcode anpassen und neu
+// bauen muss. PIN_UNSET markiert "kein Override, Default aus board_profile_t
+// verwenden" - GPIO-Nummern koennen legitim -1 sein (z.B. "kein Reset-Pin"),
+// daher ein eigener Sentinel-Wert ausserhalb des gueltigen GPIO-Bereichs.
+// Es gibt genau EIN Override-Set (nicht pro Displaytyp), da ein Geraet in
+// der Praxis dauerhaft mit einem physischen Display betrieben wird; beim
+// Wechsel des Displaytyps im Webportal wird es automatisch zurueckgesetzt
+// (siehe web_portal.c: h_config_post), da alte Pins fuer ein anderes Panel
+// i.d.R. nicht mehr passen.
+// ------------------------------------------------------------------
+#define PIN_UNSET ((int16_t)-32768)
+
+typedef struct {
+    int16_t mosi, miso, sclk, cs, dc, rst, bl;
+    int16_t touch_cs, touch_irq, touch_mosi, touch_miso, touch_clk;
+    int16_t i2c_sda, i2c_scl;
+    uint8_t i2c_addr; // 0 = kein Override (0x00 ist keine gueltige I2C-Geraeteadresse)
+    int16_t nav_button;
+} pin_override_t;
+
+// Setzt alle Felder auf "kein Override" (Defaults aus board_profiles.c gelten).
+void pin_override_set_defaults(pin_override_t *ov);
+
+// Wendet ov auf base an (PIN_UNSET/0-Felder bleiben beim Default aus base) und
+// gibt das Ergebnis als eigenstaendige Kopie zurueck (kein Pointer mehr auf
+// die statische Tabelle in board_profiles.c).
+board_profile_t board_profile_apply_overrides(const board_profile_t *base, const pin_override_t *ov);
+
 // Liefert das Profil fuer den gegebenen Displaytyp (immer gueltig, faellt bei
-// out-of-range auf DISPLAY_CYD_ILI9341 zurueck).
+// out-of-range auf DISPLAY_CYD_ILI9341 zurueck). Liefert die kompilierten
+// Defaults OHNE Pin-Overrides - siehe board_profile_apply_overrides().
 const board_profile_t *board_profile_get(display_type_t type);
 
 // Kurzname fuer Webportal-Dropdown ("cyd_ili9341", "ili9488", ...).

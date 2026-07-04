@@ -160,6 +160,47 @@ const board_profile_t *board_profile_get(display_type_t type)
     return &s_profiles[type];
 }
 
+void pin_override_set_defaults(pin_override_t *ov)
+{
+    ov->mosi = ov->miso = ov->sclk = ov->cs = ov->dc = ov->rst = ov->bl = PIN_UNSET;
+    ov->touch_cs = ov->touch_irq = ov->touch_mosi = ov->touch_miso = ov->touch_clk = PIN_UNSET;
+    ov->i2c_sda = ov->i2c_scl = PIN_UNSET;
+    ov->i2c_addr = 0;
+    ov->nav_button = PIN_UNSET;
+}
+
+static int apply_pin(int16_t override, int base)
+{
+    return (override == PIN_UNSET) ? base : (int)override;
+}
+
+board_profile_t board_profile_apply_overrides(const board_profile_t *base, const pin_override_t *ov)
+{
+    board_profile_t p = *base;
+    if (!ov) return p;
+
+    p.mosi = apply_pin(ov->mosi, base->mosi);
+    p.miso = apply_pin(ov->miso, base->miso);
+    p.sclk = apply_pin(ov->sclk, base->sclk);
+    p.cs   = apply_pin(ov->cs,   base->cs);
+    p.dc   = apply_pin(ov->dc,   base->dc);
+    p.rst  = apply_pin(ov->rst,  base->rst);
+    p.bl   = apply_pin(ov->bl,   base->bl);
+
+    p.touch_cs   = apply_pin(ov->touch_cs,   base->touch_cs);
+    p.touch_irq  = apply_pin(ov->touch_irq,  base->touch_irq);
+    p.touch_mosi = apply_pin(ov->touch_mosi, base->touch_mosi);
+    p.touch_miso = apply_pin(ov->touch_miso, base->touch_miso);
+    p.touch_clk  = apply_pin(ov->touch_clk,  base->touch_clk);
+
+    p.i2c_sda = apply_pin(ov->i2c_sda, base->i2c_sda);
+    p.i2c_scl = apply_pin(ov->i2c_scl, base->i2c_scl);
+    p.i2c_addr = (ov->i2c_addr == 0) ? base->i2c_addr : ov->i2c_addr;
+
+    p.nav_button = apply_pin(ov->nav_button, base->nav_button);
+    return p;
+}
+
 static const char *s_keys[DISPLAY_TYPE_COUNT] = {
     [DISPLAY_CYD_ILI9341] = "cyd_ili9341",
     [DISPLAY_ILI9488]     = "ili9488",

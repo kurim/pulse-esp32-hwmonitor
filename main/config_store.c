@@ -66,6 +66,21 @@ void config_store_load(app_config_t *cfg)
     nvs_get_u8(h, "inv", &inv);
     cfg->color_invert = (inv != 0);
 
+    // Pin-Overrides als Blob (ein Feld pro Pin waere viele einzelne Keys) -
+    // Groessenpruefung, damit ein spaeter geaendertes struct pin_override_t
+    // (z.B. neue Felder) nicht stillschweigend falsch interpretiert wird;
+    // bei Groessenabweichung bleiben die von config_set_defaults gesetzten
+    // "kein Override"-Werte bestehen.
+    size_t pin_ov_len = sizeof(cfg->pin_overrides);
+    esp_err_t pin_ov_err = nvs_get_blob(h, "pin_ov", &cfg->pin_overrides, &pin_ov_len);
+    if (pin_ov_err == ESP_OK && pin_ov_len != sizeof(cfg->pin_overrides)) {
+        ESP_LOGW(TAG, "pin_ov: gespeicherte Groesse passt nicht (%u != %u) - ignoriert",
+                 (unsigned)pin_ov_len, (unsigned)sizeof(cfg->pin_overrides));
+        pin_override_set_defaults(&cfg->pin_overrides);
+    } else if (pin_ov_err != ESP_OK && pin_ov_err != ESP_ERR_NVS_NOT_FOUND) {
+        ESP_LOGW(TAG, "pin_ov: %s", esp_err_to_name(pin_ov_err));
+    }
+
     nvs_close(h);
 }
 
@@ -96,6 +111,7 @@ void config_store_save(const app_config_t *cfg)
     nvs_set_u8 (h, "disp_type",  (uint8_t)cfg->display_type);
     nvs_set_u16(h, "standby_s",  cfg->standby_timeout_s);
     nvs_set_u8 (h, "inv",        cfg->color_invert ? 1 : 0);
+    nvs_set_blob(h, "pin_ov",    &cfg->pin_overrides, sizeof(cfg->pin_overrides));
 
     err = nvs_commit(h);
     if (err != ESP_OK) ESP_LOGE(TAG, "nvs_commit: %s", esp_err_to_name(err));

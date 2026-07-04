@@ -1,69 +1,68 @@
-# ESP32 Hardware-Monitor (ESP-IDF)
+# ESP32 Hardware Monitor (ESP-IDF)
 
-Reine **ESP-IDF**-Firmware (kein Arduino Core) fuer einen kleinen
-WLAN-Hardware-Monitor: Uhrzeit/Datum, optional Wetter, sowie CPU/GPU-
-Auslastung, -Temperatur und -Leistung, die per MQTT von einem PC-Client
-geliefert werden. WLAN-Setup ueber offenen Access Point mit Config-Webportal
-und OTA-Update.
+Pure **ESP-IDF** firmware (no Arduino core) for a small WiFi hardware
+monitor: time/date, optional weather, plus CPU/GPU load, temperature and
+power, delivered via MQTT from a PC client. WiFi setup via an open access
+point with a config web portal and OTA update.
 
-> Dies ist ein eigener Dauerbranch fuer die ESP-IDF-Variante, getrennt von der
-> Arduino/PlatformIO-Variante auf `main` (dort liegen Arduino-Firmware und
-> ESP-IDF-Port nebeneinander in Unterordnern). Hier auf `esp-idf` liegt der
-> ESP-IDF-Code direkt im Repo-Root, ohne Arduino-Dateien daneben.
+> This is a dedicated long-lived branch for the ESP-IDF variant, separate
+> from the Arduino/PlatformIO variant on `main` (there, the Arduino firmware
+> and the ESP-IDF port live side by side in subfolders). Here on `esp-idf`,
+> the ESP-IDF code lives directly in the repo root, with no Arduino files
+> next to it.
 
-Aenderungen je Release siehe [CHANGELOG.md](CHANGELOG.md).
+See [CHANGELOG.md](CHANGELOG.md) for changes per release.
 
-## Displayauswahl: ein Image fuer mehrere Boards/Panels
+## Display selection: one image for multiple boards/panels
 
-Es gibt **keinen** display- oder chipspezifischen Build mehr: eine Firmware
-enthaelt alle unten aufgefuehrten Panel-Treiber. Welches Display tatsaechlich
-verbaut ist, waehlt man **nach dem Flashen im Webportal** (Karte "Display" →
-Dropdown "Displaytyp"); die Auswahl landet in NVS, das Geraet startet danach
-neu und initialisiert das gewaehlte Panel. Das Webportal zeigt zur gewaehlten
-Option automatisch die passende Pin-Tabelle an (`GET /api/displays`, aus
-`main/board_profiles.c` generiert - keine doppelte Pflege von Pinbelegungen).
+There is **no** display- or chip-specific build anymore: a single firmware
+image contains all panel drivers listed below. Which display is actually
+installed is chosen **after flashing, in the web portal** (card "Display" →
+"Display type" dropdown); the choice is stored in NVS, the device then
+reboots and initializes the selected panel. The web portal automatically
+shows the matching pin table for the selected option (`GET /api/displays`,
+generated from `main/board_profiles.c` - no duplicate maintenance of pin
+assignments).
 
-**Die Auswahl ist build-spezifisch gefiltert** (`board_profile_is_available()`
-in `board_profiles.c`, ausgewertet ueber `CONFIG_IDF_TARGET_ESP32`): auf einem
-Build fuer den klassischen ESP32 (`idf.py set-target esp32`) gibt es nur das
-ESP32-2432S028-Profil - das Webportal blendet das Dropdown dort aus und zeigt
-stattdessen nur "Fest verbaut: ...". Auf jedem anderen Chip (`esp32s3`,
-`esp32c3`, ...) erscheinen nur die vier generischen Profile im Dropdown,
-das ESP32-2432S028-Profil (feste Werksverdrahtung dieses einen Boards) taucht
-dort gar nicht erst auf.
+**The selection is filtered per build** (`board_profile_is_available()` in
+`board_profiles.c`, evaluated via `CONFIG_IDF_TARGET_ESP32`): on a build for
+the classic ESP32 (`idf.py set-target esp32`), only the ESP32-2432S028
+profile is available - the web portal hides the dropdown there and instead
+shows only "Fixed: ...". On any other chip (`esp32s3`, `esp32c3`, ...), only
+the four generic profiles appear in the dropdown; the ESP32-2432S028 profile
+(fixed factory wiring of that one board) doesn't show up there at all.
 
-| Displaytyp | Aufloesung | Bus | Touch | UI |
+| Display type | Resolution | Bus | Touch | UI |
 |---|---|---|---|---|
-| ESP32-2432S028, ILI9341 | 320x240 | SPI | XPT2046 | volle Kachel-UI (Verlauf, Settings) |
-| ILI9488 | 480x320 | SPI | nein | Kachel-UI, skaliert auf die Aufloesung |
-| ST7796S | 480x320 | SPI | nein | Kachel-UI, skaliert auf die Aufloesung |
-| GC9A01 (rund) | 240x240 | SPI | nein (BOOT-Taste als Navigation) | **Platzhalter**-UI (Arcs/Wetter + Text, noch nicht final) |
-| SSD1309 | 128x64, monochrom | I2C | nein | **Platzhalter**-UI (nur Text, kein Farbverlauf) |
+| ESP32-2432S028, ILI9341 | 320x240 | SPI | XPT2046 | full tile UI (history, settings) |
+| ILI9488 | 480x320 | SPI | no | tile UI, scaled to resolution |
+| ST7796S | 480x320 | SPI | no | tile UI, scaled to resolution |
+| GC9A01 (round) | 240x240 | SPI | no (BOOT button as navigation) | **placeholder** UI (arcs/weather + text, not final yet) |
+| SSD1309 | 128x64, monochrome | I2C | no | **placeholder** UI (text only, no gradient) |
 
-**Wichtige Einschraenkungen dieser ersten Umsetzung:**
+**Important limitations of this first implementation:**
 
-- Nur das erste Profil (ESP32-2432S028) hat Touch. GC9A01 hat stattdessen die
-  BOOT-Taste des Devboards als einfache Navigation (Screen wechseln,
-  siehe unten); ILI9488/ST7796S/SSD1309 haben gar keine Navigation am Geraet.
-  Konfiguration laeuft in jedem Fall vollstaendig ueber das Webportal.
-- Rotation (`app_config.rotation`) wirkt nur auf die rechteckige Kachel-UI
-  (ESP32-2432S028/ILI9488/ST7796S). GC9A01 und SSD1309 ignorieren die
-  Einstellung.
-- Die Pin-Zuordnungen fuer ILI9488/ST7796S/GC9A01/SSD1309 sind
-  **Standard-Verdrahtungsvorschlaege** fuer einen generischen ESP32/S3/C3-
-  Aufbau (siehe Tabelle unten), keine Werksverdrahtung - bei abweichender
-  eigener Verdrahtung im Webportal unter "Pin-Belegung" pro Feld anpassbar
-  (leer lassen = Default aus der Tabelle), kein Neubauen/Neuflashen noetig.
-  Siehe Abschnitt "Pin-Overrides" unten.
-- **Nur ILI9341 (ESP32-2432S028) ist auf echter Hardware verifiziert.** Die
-  anderen vier Panel-Treiber, das Rundlayout und das Mono-Layout sind neu und
-  noch nicht gegengeprueft (siehe Abschnitt "Auf Hardware zu pruefen" unten).
+- Only the first profile (ESP32-2432S028) has touch. GC9A01 instead uses the
+  devboard's BOOT button as simple navigation (switch screens, see below);
+  ILI9488/ST7796S/SSD1309 have no on-device navigation at all. Configuration
+  in all cases runs entirely through the web portal.
+- Rotation (`app_config.rotation`) only affects the rectangular tile UI
+  (ESP32-2432S028/ILI9488/ST7796S). GC9A01 and SSD1309 ignore the setting.
+- The pin assignments for ILI9488/ST7796S/GC9A01/SSD1309 are **suggested
+  default wiring** for a generic ESP32/S3/C3 setup (see table below), not
+  factory wiring - if your own wiring differs, it's adjustable per field in
+  the web portal under "Pin assignment" (leave empty = default from the
+  table), no rebuilding/reflashing needed. See the "Pin overrides" section
+  below.
+- **Only ILI9341 (ESP32-2432S028) is verified on real hardware.** The other
+  four panel drivers, the round layout and the mono layout are new and not
+  yet cross-checked (see the "To verify on hardware" section below).
 
-### Pin-Tabelle (Standard-Verdrahtung)
+### Pin table (default wiring)
 
-**ESP32-2432S028 (ILI9341 + XPT2046, Werksverdrahtung):**
+**ESP32-2432S028 (ILI9341 + XPT2046, factory wiring):**
 
-| Funktion | GPIO |
+| Function | GPIO |
 |---|---|
 | TFT MOSI/MISO/SCLK | 13 / 12 / 14 |
 | TFT CS/DC | 15 / 2 |
@@ -71,100 +70,97 @@ dort gar nicht erst auf.
 | Touch CS/IRQ | 33 / 36 |
 | Touch MOSI/MISO/CLK | 32 / 39 / 25 |
 
-**ILI9488 / ST7796S (generische SPI-Verdrahtung, kein Touch):**
+**ILI9488 / ST7796S (generic SPI wiring, no touch):**
 
-Unterschiedlich je Zielchip (`board_profiles.c`, `#if CONFIG_IDF_TARGET_ESP32C3`),
-da der C3 nur GPIO0-21 hat und GPIO23 dort nicht existiert. Das Webportal
-(`/api/displays`) zeigt immer die fuer den tatsaechlich geflashten Build
-gueltigen Pins an - hier beide Varianten zum Nachschlagen:
+Differs per target chip (`board_profiles.c`, `#if CONFIG_IDF_TARGET_ESP32C3`),
+since the C3 only has GPIO0-21 and GPIO23 doesn't exist there. The web portal
+(`/api/displays`) always shows the pins valid for the build actually flashed
+- both variants are listed here for reference:
 
-| Funktion | ESP32 / ESP32-S3 | ESP32-C3 |
+| Function | ESP32 / ESP32-S3 | ESP32-C3 |
 |---|---|---|
 | MOSI/MISO/SCLK | 23 / 19 / 18 | 4 / 5 / 6 |
 | CS/DC | 5 / 17 | 7 / 10 |
 | RESET | 16 | 3 |
 | Backlight | 4 | 1 |
 
-**GC9A01 (fest, chipunabhaengig, kein MISO/Touch):**
+**GC9A01 (fixed, chip-independent, no MISO/touch):**
 
-| Funktion | GPIO |
+| Function | GPIO |
 |---|---|
 | SDA (MOSI) | 3 |
 | SCL (SCLK) | 4 |
 | CS | 1 |
 | DC | 10 |
 | RST | 0 |
-| Backlight | kein separater Pin (fest verdrahtet/immer an) |
-| Navigationstaste | BOOT-Taste des Devboards: GPIO9 (C3/C6/H2) bzw. GPIO0 (ESP32/S3) - auf ESP32/S3 identisch mit RST, dort daher deaktiviert (`board_profiles.c`) |
+| Backlight | no separate pin (hardwired/always on) |
+| Nav button | devboard BOOT button: GPIO9 (C3/C6/H2) or GPIO0 (ESP32/S3) - identical to RST on ESP32/S3, therefore disabled there (`board_profiles.c`) |
 
-### Pin-Overrides (eigene Verdrahtung ohne Neubauen)
+### Pin overrides (custom wiring without rebuilding)
 
-Alle Pins oben sind Defaults (`board_profiles.c`), aber im Webportal unter
-"Pin-Belegung (optional anpassen)" pro Feld ueberschreibbar - z.B. wenn die
-eigene Verdrahtung von den Vorschlaegen abweicht. Leeres Feld = Default
-verwenden. Nach dem Speichern startet das Geraet neu und uebernimmt die
-neuen Pins.
+All pins above are defaults (`board_profiles.c`), but overridable per field
+in the web portal under "Pin assignment (optional)" - e.g. if your own
+wiring differs from the suggestions. Empty field = use default. After
+saving, the device reboots and picks up the new pins.
 
-Design-Entscheidung: Es gibt **ein** Override-Set, nicht eins pro
-Displaytyp - ein Geraet wird in der Praxis dauerhaft mit einem physischen
-Display betrieben, eine Verwaltung von Overrides fuer fuenf gleichzeitig nie
-genutzte Profile waere unnoetiger Aufwand gewesen. Wechselt man im Webportal
-den Displaytyp, werden alle Pin-Overrides automatisch zurueckgesetzt (alte
-Pins - z.B. Touch-Pins vom CYD-Profil - passen sonst i.d.R. nicht zum neuen
-Panel/Bus). Implementiert in `board_profiles.h/.c` (`pin_override_t`,
-`board_profile_apply_overrides()`) und `display_ui.c` (`lcd_init()` merged
-Override + Default zu `s_profile`, bevor irgendein GPIO angefasst wird).
+Design decision: there is **one** override set, not one per display type -
+in practice a device is permanently operated with one physical display, so
+managing overrides for five simultaneously-never-used profiles would have
+been unnecessary effort. Changing the display type in the web portal
+automatically resets all pin overrides (old pins - e.g. touch pins from the
+CYD profile - otherwise generally wouldn't fit the new panel/bus).
+Implemented in `board_profiles.h/.c` (`pin_override_t`,
+`board_profile_apply_overrides()`) and `display_ui.c` (`lcd_init()` merges
+override + default into `s_profile` before any GPIO is touched).
 
-Da eine fehlerhafte Pin-Eingabe dank `LCD_CHECK` (siehe oben) nicht mehr zur
-Boot-Schleife fuehrt, sondern nur die Display-Init ueberspringt, ist das
-Risiko einer verunglueckten manuellen Anpassung gering - das Webportal
-bleibt so oder so erreichbar, um es zu korrigieren.
+Since an invalid pin entry no longer causes a boot loop thanks to
+`LCD_CHECK` (see above) but only skips display init, the risk of a botched
+manual adjustment is low - the web portal stays reachable either way to
+correct it.
 
-### GC9A01: Screens, Standby, Navigationstaste
+### GC9A01: screens, standby, nav button
 
-Das runde Minimal-UI hat zwei per Taste umschaltbare Screens (`display_ui.c`:
+The round minimal UI has two screens switchable via button (`display_ui.c`:
 `s_round_screen`, `ROUND_SCR_*`):
 
-- **Overview** (Default): Uhrzeit + zwei Arcs fuer CPU-/GPU-Auslastung,
-  gleicher Radius, rechte Haelfte CPU / linke Haelfte GPU (ein gemeinsamer,
-  geteilter Ring statt zwei ineinander verschachtelter Kreise), je mit
-  Chip-Icon + Prozentzahl darunter.
-- **Wetter**: Uhrzeit + Temperatur/gefuehlte Temperatur (Thermometer-Icon) /
-  Luftfeuchte / Wind (Icon) / Regen (Icon) (erfordert `weather_enabled` im
-  Webportal).
+- **Overview** (default): time + two arcs for CPU/GPU load, same radius,
+  right half CPU / left half GPU (one shared, split ring instead of two
+  nested circles), each with a chip icon + percentage below.
+- **Weather**: time + temperature/feels-like temperature (thermometer icon)
+  / humidity / wind (icon) / rain (icon) (requires `weather_enabled` in the
+  web portal).
 
-Ein Druck auf die BOOT-Taste schaltet zwischen beiden um. Da dieses Panel
-keinen Backlight-Pin hat (`bl = -1`), laesst sich der Standby nicht per
-Software abdunkeln - stattdessen wird der Bildschirminhalt reduziert: im
-Standby werden **immer eine groessere, weiter oben stehende Uhrzeit + der
-komplette Wetterblock** (dieselben vier Zeilen wie auf dem Wetter-Screen)
-angezeigt, unabhaengig vom zuletzt gewaehlten Screen (Overview/CPU-GPU-Arcs
-sind im Standby immer ausgeblendet). Ein Tastendruck im Standby weckt nur
-auf (zeigt wieder den zuletzt gewaehlten Screen), loest aber keinen
-Screen-Wechsel aus - analog zum Touch-Wakeup beim CYD-Profil.
+Pressing the BOOT button switches between the two. Since this panel has no
+backlight pin (`bl = -1`), standby can't be dimmed in software - instead the
+screen content is reduced: in standby, **a larger, higher-positioned clock +
+the full weather block** (the same four lines as on the Weather screen) is
+always shown, regardless of the last-selected screen (Overview/CPU-GPU arcs
+are always hidden in standby). A button press in standby only wakes up
+(shows the last-selected screen again) without triggering a screen switch -
+analogous to touch-wakeup on the CYD profile.
 
-Die Arc-Widgets sind eigentlich Schieberegler und zeichnen ohne
-`lv_obj_remove_style(..., LV_PART_KNOB)` einen dicken Knob an der aktuellen
-Werteposition - sah wie ein Glitch/Fremdkoerper auf dem duennen Ring aus,
-ist jetzt entfernt (`build_round_ui()` in `display_ui.c`).
+The arc widgets are actually sliders and, without
+`lv_obj_remove_style(..., LV_PART_KNOB)`, draw a thick knob at the current
+value position - looked like a glitch/foreign object on the thin ring, now
+removed (`build_round_ui()` in `display_ui.c`).
 
-**Standby-Timeout ist im Webportal einstellbar** (Karte "Display" →
-"Standby nach ... Sekunden", `app_config.standby_timeout_s`, 0 = deaktiviert,
-Default 120s). Gilt fuer alle Displaytypen: bei Panels mit Backlight-Pin
-wirkt er wie bisher (Backlight aus), bei GC9A01 wie oben beschrieben
-(Inhalt reduzieren statt Helligkeit).
+**Standby timeout is configurable in the web portal** (card "Display" →
+"Standby after ... seconds", `app_config.standby_timeout_s`, 0 = disabled,
+default 120s). Applies to all display types: on panels with a backlight pin
+it works as before (backlight off), on GC9A01 as described above (reduce
+content instead of brightness).
 
-**SSD1309 (I2C, monochrom, kein Touch):**
+**SSD1309 (I2C, monochrome, no touch):**
 
-| Funktion | GPIO/Wert |
+| Function | GPIO/value |
 |---|---|
 | SDA | 8 |
 | SCL | 9 |
 | VCC | 3.3V |
 | GND | GND |
-| I2C-Adresse | 0x3C |
+| I2C address | 0x3C |
 
-## Framework-Abbildung (Arduino → ESP-IDF)
+## Framework mapping (Arduino → ESP-IDF)
 
 | Arduino | ESP-IDF |
 |---|---|
@@ -172,256 +168,252 @@ wirkt er wie bisher (Backlight aus), bei GC9A01 wie oben beschrieben
 | `Preferences` | `nvs_flash` (`config_store.c`) |
 | `ESPAsyncWebServer` | `esp_http_server` (`web_portal.c`) |
 | `PubSubClient` | `esp-mqtt` (`mqtt_handler.c`) |
-| NTP über `configTzTime` | `esp_sntp` (`time_service.c`) |
+| NTP via `configTzTime` | `esp_sntp` (`time_service.c`) |
 | `HTTPClient` | `esp_http_client` (`weather_service.c`) |
-| `Update` (OTA) | `esp_ota_ops` (`web_portal.c`, Raw-Binary-Upload) |
-| `TFT_eSPI` | `esp_lcd` (mehrere Panel-Treiber) + **LVGL 9** via `esp_lvgl_port` (`display_ui.c`, `board_profiles.c`) |
-| `XPT2046_Touchscreen` | eigener SPI-Treiber (`touch_xpt2046.c`) |
-| `ArduinoJson` | `cJSON` (Core bei IDF <6.0, managed component `espressif/cjson` ab 6.0) |
+| `Update` (OTA) | `esp_ota_ops` (`web_portal.c`, raw binary upload) |
+| `TFT_eSPI` | `esp_lcd` (multiple panel drivers) + **LVGL 9** via `esp_lvgl_port` (`display_ui.c`, `board_profiles.c`) |
+| `XPT2046_Touchscreen` | custom SPI driver (`touch_xpt2046.c`) |
+| `ArduinoJson` | `cJSON` (core on IDF <6.0, managed component `espressif/cjson` from 6.0 on) |
 
-## Voraussetzungen
+## Prerequisites
 
-- **ESP-IDF 5.1 – 6.x** (mit `idf.py` im PATH, `. $IDF_PATH/export.sh`).
-- Internetzugang beim ersten Build: Managed Components werden automatisch aus
-  dem ESP Component Registry geladen (LVGL, esp_lvgl_port, mehrere
-  esp_lcd-Panel-Treiber, ab **ESP-IDF v6.0** auch `espressif/mqtt` und
-  `espressif/cjson`, da esp-mqtt und cJSON dort nicht mehr Teil des Cores sind).
+- **ESP-IDF 5.1 – 6.x** (with `idf.py` in PATH, `. $IDF_PATH/export.sh`).
+- Internet access on first build: managed components are automatically
+  fetched from the ESP Component Registry (LVGL, esp_lvgl_port, several
+  esp_lcd panel drivers, and from **ESP-IDF v6.0** on also `espressif/mqtt`
+  and `espressif/cjson`, since esp-mqtt and cJSON are no longer part of the
+  core there).
 
-## Bauen & Flashen
+## Building & flashing
 
 ```bash
-idf.py set-target esp32       # oder esp32s3 / esp32c3, siehe Hinweis unten
+idf.py set-target esp32       # or esp32s3 / esp32c3, see note below
 idf.py build
 idf.py -p /dev/ttyUSB0 flash monitor
 ```
 
-Ersteinrichtung: offener AP **`ESP32-HWMon-XXXX`** → `http://192.168.4.1` →
-WLAN eintragen → speichern → Neustart. Das Webportal zeigt beim ersten
-Aufruf nur die WLAN-Karte (SSID/Passwort, mit Button "WLAN-Netzwerke
-suchen" fuer eine Liste der in Reichweite gefundenen Netze statt manueller
-SSID-Eingabe); alle weiteren Einstellungen (MQTT/Zeitzone/Displaytyp/
-Pin-Belegung/OTA) liegen hinter "Erweiterte Einstellungen anzeigen" verborgen.
-Diese Trennung vermeidet, dass mobile Browser beim Ausfuellen des langen
-Formulars zwischenzeitlich den Fokus verlieren und zurueck aufs SSID-Feld
-springen.
+Initial setup: open AP **`ESP32-HWMon-XXXX`** → `http://192.168.4.1` → enter
+WiFi → save → reboot. On first load, the web portal shows only the WiFi
+card (SSID/password, with a "Scan WiFi networks" button for a list of
+nearby networks instead of typing the SSID manually); all other settings
+(MQTT/timezone/display type/pin assignment/OTA) are hidden behind "Show
+advanced settings". This separation avoids mobile browsers losing focus
+mid-way through the long form and jumping back to the SSID field.
 
-### CI-Build (GitHub Actions)
+### CI build (GitHub Actions)
 
-`.github/workflows/build-idf.yml` baut die Firmware im offiziellen
-`espressif/idf`-Docker-Image (`espressif/esp-idf-ci-action`) und fasst
-Bootloader + Partitionstabelle + App-Image per `idf.py merge-bin` zu
-**einer** flashbaren Datei zusammen (`esp32-hwmonitor-vX.X.X-idf[-<target>].bin`).
-Diese Datei laesst sich per Web-Flasher (z.B. ESP Web Tools/esptool-js) oder
-`esptool.py write_flash 0x0 <datei>` in einem Rutsch flashen, statt
-Bootloader/Partitionstabelle/App einzeln an drei Offsets schreiben zu muessen.
+`.github/workflows/build-idf.yml` builds the firmware in the official
+`espressif/idf` Docker image (`espressif/esp-idf-ci-action`) and combines
+bootloader + partition table + app image via `idf.py merge-bin` into
+**one** flashable file (`esp32-hwmonitor-vX.X.X-idf[-<target>].bin`). This
+file can be flashed in one go via a web flasher (e.g. ESP Web Tools/
+esptool-js) or `esptool.py write_flash 0x0 <file>`, instead of writing
+bootloader/partition table/app separately at three offsets.
 
-Zwei Ausloeser:
+Two triggers:
 
-- **Manuell** (Tab "Actions" → "ESP-IDF Build" → "Run workflow"): Ziel-Chip
-  (esp32/esp32s3/esp32c3) und ESP-IDF-Docker-Tag waehlen, baut nur diesen
-  einen Chip. Ergebnis liegt als Artifact am Workflow-Run, `FW_VERSION` kommt
-  unveraendert aus `main/shared_state.h`.
-- **Tag-Push** (`git tag v1.0.0-idf && git push origin v1.0.0-idf`): baut alle
-  drei Chips (esp32/esp32s3/esp32c3) und legt anschliessend automatisch ein
-  GitHub-Release zum Tag an, mit allen drei `.bin`-Dateien als Anhang.
-  `FW_VERSION` wird dabei **aus dem Tag** gesetzt (fuehrendes "v" abgeschnitten,
-  `v1.0.0-idf` → `FW_VERSION "1.0.0-idf"`) statt aus `main/shared_state.h` -
-  der im Repo eingetragene Wert dient nur als Default fuer manuelle Builds.
+- **Manual** (tab "Actions" → "ESP-IDF Build" → "Run workflow"): choose the
+  target chip (esp32/esp32s3/esp32c3) and ESP-IDF Docker tag, builds only
+  that one chip. Result is available as an artifact on the workflow run,
+  `FW_VERSION` comes unchanged from `main/shared_state.h`.
+- **Tag push** (`git tag v1.0.0-idf && git push origin v1.0.0-idf`): builds
+  all three chips (esp32/esp32s3/esp32c3) and then automatically creates a
+  GitHub release for the tag, with all three `.bin` files attached.
+  `FW_VERSION` is set **from the tag** in this case (leading "v" stripped,
+  `v1.0.0-idf` → `FW_VERSION "1.0.0-idf"`) instead of from
+  `main/shared_state.h` - the value checked into the repo only serves as the
+  default for manual builds.
 
-> **Captive-Portal-Erkennung des Handys kann kurzzeitig Sockets ausschoepfen**:
-> iOS/Android/Windows pruefen die Internetverbindung im Setup-AP ueber mehrere
-> parallele Anfragen (`hotspot-detect.html`, `generate_204`,
-> `connecttest.txt`, ...). `CONFIG_LWIP_MAX_SOCKETS` ist deshalb auf 16 erhoeht
-> (`httpd_config_t.max_open_sockets=13` in `web_portal.c`) und die bekanntesten
-> Erkennungspfade sind direkt registriert statt nur ueber den generischen
-> 404-Handler zu laufen. Aeussert sich unbehandelt als `error in accept (23)`/
-> `error in recv: 104` im Log und als springender Fokus/Neuladen im
-> Config-Formular auf dem Handy.
+> **Captive portal detection on phones can briefly exhaust sockets**:
+> iOS/Android/Windows check internet connectivity in the setup AP via
+> several parallel requests (`hotspot-detect.html`, `generate_204`,
+> `connecttest.txt`, ...). `CONFIG_LWIP_MAX_SOCKETS` is therefore raised to
+> 16 (`httpd_config_t.max_open_sockets=13` in `web_portal.c`) and the
+> best-known detection paths are registered directly instead of only going
+> through the generic 404 handler. Unhandled, this shows up as
+> `error in accept (23)`/`error in recv: 104` in the log and as jumping
+> focus/reloading in the config form on the phone.
 
-> **Hinweis zu ESP32-S3/-C3**: Der Code selbst ist chip-unabhaengig (die
-> GPIO-Nummern in `board_profiles.c` sind reine Zahlen, keine ESP32-classic-
-> Spezifika mehr - mit Ausnahme des ESP32-2432S028-Profils, das die feste
-> Werksverdrahtung dieses Boards beschreibt und nur auf klassischem ESP32
-> Sinn ergibt). Fuer S3/C3 einfach mit `idf.py set-target esp32s3` bzw.
-> `esp32c3` bauen und die generischen SPI-/I2C-Displays entsprechend
-> Pin-Tabelle oben verdrahten. **Nicht separat getestet** - insbesondere
-> ESP32-C3 hat weniger SRAM und kein PSRAM; ein 480x320-Framebuffer
-> (ILI9488/ST7796S) kann dort eng werden (siehe
-> `lvgl_port_display_cfg_t.buffer_size` in `display_ui.c`, ggf. reduzieren).
-> Der C3 hat ausserdem nur einen General-Purpose-SPI-Controller (`SPI2_HOST`,
-> kein `SPI3_HOST`) - betrifft nur den (dort ohnehin nicht waehlbaren)
-> CYD-Touch-Bus, `board_profiles.c` waehlt dafuer automatisch per
-> `SOC_SPI_PERIPH_NUM` einen kompilierbaren Platzhalter. Der C3 hat zudem nur
-> GPIO0-21 (22 Pins statt bis zu 39/48 bei ESP32/S3) - der generische
-> SPI-Pinsatz ist deshalb chipabhaengig definiert (siehe Pin-Tabelle oben).
+> **Note on ESP32-S3/-C3**: The code itself is chip-independent (the GPIO
+> numbers in `board_profiles.c` are plain numbers, no more ESP32-classic
+> specifics - except for the ESP32-2432S028 profile, which describes the
+> fixed factory wiring of that one board and only makes sense on classic
+> ESP32). For S3/C3, simply build with `idf.py set-target esp32s3` or
+> `esp32c3` and wire the generic SPI/I2C displays per the pin table above.
+> **Not separately tested** - in particular ESP32-C3 has less SRAM and no
+> PSRAM; a 480x320 framebuffer (ILI9488/ST7796S) can get tight there (see
+> `lvgl_port_display_cfg_t.buffer_size` in `display_ui.c`, reduce if
+> needed). The C3 also only has one general-purpose SPI controller
+> (`SPI2_HOST`, no `SPI3_HOST`) - this only affects the (there anyway
+> unselectable) CYD touch bus, `board_profiles.c` automatically selects a
+> compilable placeholder for it via `SOC_SPI_PERIPH_NUM`. The C3 also only
+> has GPIO0-21 (22 pins instead of up to 39/48 on ESP32/S3) - the generic
+> SPI pin set is therefore defined per chip (see pin table above).
 
-> **Falsche/unpassende Displaywahl fuehrt nicht mehr zur Boot-Schleife**:
-> Panel-Init-Fehler (z.B. eine auf dem Zielchip nicht existierende GPIO-Nummer)
-> loesen seit `LCD_CHECK` in `display_ui.c` keinen `ESP_ERROR_CHECK`-Abort mehr
-> aus, sondern werden geloggt; das Geraet startet trotzdem WLAN/Webportal, nur
-> ohne Bildschirmausgabe. So bleibt die Displayauswahl im Webportal immer
-> erreichbar, um einen Fehlgriff zu korrigieren - auch nach einem
-> Chip-/Profilwechsel, bei dem die in NVS gespeicherte alte Auswahl auf dem
-> neuen Chip nicht mehr passt.
+> **A wrong/unsuitable display choice no longer causes a boot loop**: panel
+> init failures (e.g. a GPIO number that doesn't exist on the target chip)
+> no longer trigger an `ESP_ERROR_CHECK` abort since `LCD_CHECK` in
+> `display_ui.c`, but are logged instead; the device still starts WiFi/the
+> web portal, just without screen output. This keeps the display selection
+> in the web portal always reachable to fix a wrong choice - even after a
+> chip/profile change where the old selection stored in NVS no longer fits
+> the new chip.
 
-> **Hinweis bei bereits vorhandener lokaler `sdkconfig`**: `sdkconfig.defaults`
-> wird nur bei einer *neuen* `sdkconfig` angewendet, nicht bei einem
-> bestehenden Build-Verzeichnis. Betrifft nicht nur fehlende LVGL-Features
-> (`lv_font_montserrat_24`, `lv_arc_create`, ...), sondern auch die
-> **Partitionstabelle**: ohne `CONFIG_PARTITION_TABLE_CUSTOM=y` aus einer
-> aktuellen `sdkconfig` landet der Build auf dem ESP-IDF-Standardlayout
-> ("factory", 1 MB) statt auf den beiden 1.75-MB-OTA-Slots aus
-> `partitions.csv` - der Build bricht dann mit "app partition is too small"
-> ab, obwohl das Image eigentlich passt. Bei Problemen dieser Art immer
-> zuerst die lokale `sdkconfig` loeschen und neu bauen lassen, statt einzelne
-> Optionen von Hand zu suchen.
+> **Note on an existing local `sdkconfig`**: `sdkconfig.defaults` is only
+> applied to a *new* `sdkconfig`, not to an existing build directory. This
+> affects not only missing LVGL features (`lv_font_montserrat_24`,
+> `lv_arc_create`, ...) but also the **partition table**: without
+> `CONFIG_PARTITION_TABLE_CUSTOM=y` from a current `sdkconfig`, the build
+> ends up on the ESP-IDF default layout ("factory", 1 MB) instead of the two
+> 1.75 MB OTA slots from `partitions.csv` - the build then fails with
+> "app partition is too small" even though the image would actually fit.
+> For issues like this, always delete the local `sdkconfig` and rebuild
+> first, instead of hunting for individual options by hand.
 
-> **Image-Groesse**: Ein Image mit allen 5 Displaytreibern kommt je nach
-> Zielchip auf bis zu ~1.6 MB. Die OTA-Partitionen sind daher auf 1.75 MB
-> je Slot ausgelegt (`partitions.csv`) und der Build ist auf Groesse statt
-> Geschwindigkeit optimiert (`CONFIG_COMPILER_OPTIMIZATION_SIZE=y`). Falls
-> "app partition is too small" trotz aktueller `sdkconfig` weiterhin
-> auftritt, in `partitions.csv` die `ota_0`/`ota_1`-Groessen weiter erhoehen
-> (4 MB Flash abzueglich `nvs`/`otadata`/`phy_init` erlauben rechnerisch bis
-> knapp unter 2 MB je Slot) oder ungenutzte Displaytreiber testweise aus
-> `main/idf_component.yml`/`display_ui.c` entfernen.
+> **Image size**: an image with all 5 display drivers comes in at up to
+> ~1.6 MB depending on the target chip. The OTA partitions are therefore
+> sized at 1.75 MB per slot (`partitions.csv`) and the build is optimized
+> for size rather than speed (`CONFIG_COMPILER_OPTIMIZATION_SIZE=y`). If
+> "app partition is too small" still occurs despite a current `sdkconfig`,
+> further increase the `ota_0`/`ota_1` sizes in `partitions.csv` (4 MB flash
+> minus `nvs`/`otadata`/`phy_init` allows for just under 2 MB per slot) or,
+> as a test, remove unused display drivers from
+> `main/idf_component.yml`/`display_ui.c`.
 
-## Auf Hardware zu pruefen / ggf. anzupassen
+## To verify on hardware / adjust if needed
 
-Diese Punkte sind board-abhängig und ließen sich ohne Gerät nicht verifizieren:
+These points are board-dependent and couldn't be verified without a device:
 
-1. **Display-Farben** — Farbinversion ist jetzt im Webportal umschaltbar
-   (Karte "Display" → "Farben invertieren (Dark Mode)", `app_config.color_invert`,
-   Default aus/false) statt fest in `display_ui.c` verdrahtet. Fuer ILI9341
-   (ESP32-2432S028) ist "aus" (Default) auf Hardware verifiziert korrekt; beim
-   GC9A01 war der Hintergrund ohne Inversion hell statt dunkel - dort "an"
-   waehlen. Falls stattdessen Rot/Blau vertauscht sind (anderes Symptom als
-   heller/dunkler Hintergrund): das hilft `color_invert` nicht, dafuer
-   `board_profile_t.bgr` in `board_profiles.c` anpassen.
-2. **Neue Panel-Treiber-Komponenten** — `main/idf_component.yml` referenziert
-   `atanisoft/esp_lcd_ili9488` (Community-Komponente, kein offizieller
-   `espressif/`-Namespace-Eintrag existiert dafuer) sowie `espressif/esp_lcd_st7796`
-   und `espressif/esp_lcd_gc9a01` (beide offiziell, gegen die Registry-Eintraege
-   geprueft). SSD1306/SSD1309 brauchen **keinen** Registry-Eintrag - der Treiber
-   ist bereits Teil des Core-`esp_lcd`-Components (`esp_lcd_panel_vendor.h`).
-   Ein frueherer Stand dieses Branches hatte faelschlich einen nicht
-   existierenden `espressif/esp_lcd_panel_ssd1306`-Eintrag, der den Build mit
-   "Version solving failed" abbrach - das ist behoben.
-3. **SSD1309 ueber I2C** — `display_ui.c: lcd_init_mono_i2c()` nutzt den
-   Core-SSD1306-Treiber (SSD1309 spricht dasselbe Protokoll, aber ggf. mit
-   abweichenden Kontrast-/Multiplex-Defaults) ueber den neuen `i2c_master`-
-   Treiber (`driver/i2c_master.h`, `i2c_new_master_bus()` +
-   `esp_lcd_new_panel_io_i2c(i2c_master_bus_handle_t, ...)`) - die alte
-   `driver/i2c.h`-API liefert auf ESP-IDF ≥5.2/6.x nicht mehr den dafuer
-   erwarteten Bus-Handle-Typ. Noch nicht auf Hardware verifiziert.
-4. **GC9A01-Rundlayout** — `display_ui.c: build_round_ui()` ist bewusst ein
-   einfacher Platzhalter (Arcs/Text, zwei Screens, siehe Abschnitt oben), kein
-   ausgearbeitetes rundes Design. Auf einem ersten Testaufbau bestaetigt
-   (180°-Korrektur noetig, siehe Punkt 5, sowie Layout/Screens/Boot-Taste
-   grundsaetzlich funktionsfaehig) - Feinschliff (Schriftgroessen, Icons im
-   Wetter-Screen, ggf. weitere Screens) noch offen.
-5. **Display-Rotation / Spiegelung** — `app_config.rotation` hat je nach
-   Panelform eine andere Bedeutung; das Webportal zeigt dafuer nur die pro
-   Displaytyp sinnvollen Werte an (`renderRotationOptions()` in
+1. **Display colors** — color inversion is now switchable in the web portal
+   (card "Display" → "Invert colors (dark mode)", `app_config.color_invert`,
+   default off/false) instead of hardwired in `display_ui.c`. For ILI9341
+   (ESP32-2432S028), "off" (default) is verified correct on hardware; on
+   GC9A01 the background was light instead of dark without inversion -
+   choose "on" there. If red/blue are swapped instead (a different symptom
+   than light/dark background), `color_invert` won't help - adjust
+   `board_profile_t.bgr` in `board_profiles.c` instead.
+2. **New panel driver components** — `main/idf_component.yml` references
+   `atanisoft/esp_lcd_ili9488` (community component, no official
+   `espressif/` namespace entry exists for it) as well as
+   `espressif/esp_lcd_st7796` and `espressif/esp_lcd_gc9a01` (both official,
+   checked against the registry entries). SSD1306/SSD1309 need **no**
+   registry entry - the driver is already part of the core `esp_lcd`
+   component (`esp_lcd_panel_vendor.h`). An earlier state of this branch
+   incorrectly had a non-existent `espressif/esp_lcd_panel_ssd1306` entry
+   that broke the build with "Version solving failed" - that's fixed.
+3. **SSD1309 over I2C** — `display_ui.c: lcd_init_mono_i2c()` uses the core
+   SSD1306 driver (SSD1309 speaks the same protocol, but possibly with
+   different contrast/multiplex defaults) via the new `i2c_master` driver
+   (`driver/i2c_master.h`, `i2c_new_master_bus()` +
+   `esp_lcd_new_panel_io_i2c(i2c_master_bus_handle_t, ...)`) - the old
+   `driver/i2c.h` API no longer provides the expected bus handle type on
+   ESP-IDF ≥5.2/6.x. Not yet verified on hardware.
+4. **GC9A01 round layout** — `display_ui.c: build_round_ui()` is
+   deliberately a simple placeholder (arcs/text, two screens, see section
+   above), not a polished round design. Confirmed on a first test setup
+   (180° correction needed, see point 5, and layout/screens/boot button
+   fundamentally working) - polish (font sizes, icons on the weather
+   screen, possibly more screens) still open.
+5. **Display rotation / mirroring** — `app_config.rotation` has a different
+   meaning depending on panel shape; the web portal only shows the values
+   that make sense per display type (`renderRotationOptions()` in
    `web_portal.c`):
-   - LCD_SHAPE_RECT (ESP32-2432S028/ILI9488/ST7796S): waehlt zwischen den vier
-     Landscape/Portrait-Faellen, das Webportal bietet hier aber nur 1 und 3
-     an (jeweils Landscape, 180° zueinander) - 0/2 schalten intern auf
-     Portrait um, was die fest auf Landscape gezeichnete Kachel-UI zerreisst.
-     Fuer ILI9341 rotation=1 (Default) auf Hardware verifiziert, rotation=3
-     ebenfalls (siehe Touch-Hinweis unten); die anderen Panels nicht einzeln
-     getestet.
-   - LCD_SHAPE_ROUND (GC9A01): waehlt direkt zwischen den vier moeglichen
-     `mirror_x`/`mirror_y`-Kombinationen (`lcd_init_color_spi()` in
-     `display_ui.c`), da nicht vorhersagbar ist, welche Kombination bei
-     gegebener Verbauung/Panel-Charge Text weder kopfueber noch
-     seitenverkehrt darstellt - **auf dem ersten Testaufbau reichte die
-     180°-Kombination (`rotation=3`) nicht aus, das Bild blieb
-     seitenverkehrt** (mirror_x/mirror_y zusammen entspricht nicht
-     zwangslaeufig "richtig herum", sondern haengt von der Scan-Richtung
-     des jeweiligen Panels ab). Einfach 0-3 durchprobieren, kein Neuflashen
-     noetig (nur Neustart nach dem Speichern).
-6. **Touch-Kalibrierung** — `touch_xpt2046.c`: `TOUCH_RAW_*`-Grenzen und die
-   Achsen-Zuordnung pro `rotation`, nur fuer das ESP32-2432S028-Profil
-   relevant. `rotation=3` (180°) mappte die Touch-Koordinaten bis vor Kurzem
-   identisch zu `rotation=1` - der Touchpunkt war dadurch bei gedrehtem Text
-   oben/unten und links/rechts vertauscht. Beide Achsen fuer `rotation=3`
-   jetzt gegenueber `rotation=1` invertiert.
-7. **LVGL-Komponenten-Versionen** — `main/idf_component.yml`. Falls der
-   Component Manager andere Versionen erwartet, dort die Ranges anpassen.
-   Die UI ist gegen die LVGL-9-API geschrieben.
+   - LCD_SHAPE_RECT (ESP32-2432S028/ILI9488/ST7796S): chooses between the
+     four landscape/portrait cases, but the web portal only offers 1 and 3
+     here (both landscape, 180° apart) - 0/2 internally switch to portrait,
+     which tears apart the tile UI that's drawn fixed for landscape. For
+     ILI9341, rotation=1 (default) is verified on hardware, rotation=3 as
+     well (see touch note below); the other panels not individually tested.
+   - LCD_SHAPE_ROUND (GC9A01): chooses directly between the four possible
+     `mirror_x`/`mirror_y` combinations (`lcd_init_color_spi()` in
+     `display_ui.c`), since it's unpredictable which combination displays
+     text neither upside down nor mirrored for a given build/panel batch -
+     **on the first test setup, the 180° combination (`rotation=3`) wasn't
+     enough, the image stayed mirrored** (mirror_x/mirror_y together doesn't
+     necessarily mean "right way up", it depends on the scan direction of
+     the particular panel). Simply try 0-3, no reflashing needed (only a
+     reboot after saving).
+6. **Touch calibration** — `touch_xpt2046.c`: `TOUCH_RAW_*` bounds and the
+   axis mapping per `rotation`, relevant only for the ESP32-2432S028
+   profile. Until recently, `rotation=3` (180°) mapped touch coordinates
+   identically to `rotation=1` - the touch point was therefore swapped
+   top/bottom and left/right relative to the rotated text. Both axes for
+   `rotation=3` are now inverted relative to `rotation=1`.
+7. **LVGL component versions** — `main/idf_component.yml`. If the component
+   manager expects different versions, adjust the ranges there. The UI is
+   written against the LVGL 9 API.
 8. **Icons (Material Design Icons)** — `main/font_mdi_icons_20.c` +
-   `main/mdi_icons.h`, nur von der Kachel-UI genutzt. Auf ESP32-2432S028-
-   Hardware verifiziert (siehe Abschnitt "Icons" unten).
+   `main/mdi_icons.h`, only used by the tile UI. Verified on ESP32-2432S028
+   hardware (see "Icons" section below).
 
 ## Design
 
-Angelehnt an ein vom Nutzer bereitgestelltes Referenz-Layout (Karten mit
-Farbverlauf-Balken, Wetter-/Wind-/Regen-Anzeige, Trend-Pfeile, Settings-Knopf):
+Modeled after a reference layout provided by the user (cards with gradient
+bars, weather/wind/rain display, trend arrows, settings button):
 
-- **Icons**: Material Design Icons (siehe eigener Abschnitt unten) für
-  Chip/Thermometer/Sonne/Wind/Regen/Zahnrad/Zurück-Pfeil/WLAN; eingebaute
-  LVGL-Symbole (`LV_SYMBOL_CHARGE`, `LV_SYMBOL_UP`/`_DOWN`) für Power/Trend,
-  da diese mit Fließtext in einem Label gemischt sind.
-- **Wetter-Block**: nutzt weiterhin nur die bereits eingebundene
-  OpenWeatherMap-"Current Weather"-API, inkl. gefühlter Temperatur,
-  Luftfeuchte, Windgeschwindigkeit/-richtung (`weather_wind_compass()`,
-  8-Punkte-Kompass) und Regenmenge (`rain.1h`, 0 falls kein Regen gemeldet).
-  Nur auf der Kachel-UI sichtbar. Keine neue Konfiguration nötig, alles über
-  den bestehenden `weather_api_key`.
-- **Settings-Screen** (Zahnrad-Knopf, nur Kachel-UI): zeigt Firmware-Version,
-  IP-Adresse, WLAN-/MQTT-Status und freien Speicher. Der Knopf "Neustart in
-  Setup-AP" (`web_portal_force_ap()`) schaltet **zur Laufzeit ohne
-  Geräte-Neustart** vom WLAN auf den offenen Setup-AP um, ohne die
-  gespeicherten WLAN-Zugangsdaten zu löschen. Erfordert zur Bestätigung zwei
-  Taps (verhindert versehentliches Trennen).
-- **Trend-Pfeile**: vergleichen den aktuellen Auslastungswert mit dem Wert
-  vor bis zu 10 Messungen (`compute_trend()` in `display_ui.c`); Schwelle
-  ±3 Prozentpunkte für steigend/fallend, sonst "stabil" (Strich).
+- **Icons**: Material Design Icons (see dedicated section below) for
+  chip/thermometer/sun/wind/rain/gear/back-arrow/WiFi; built-in LVGL symbols
+  (`LV_SYMBOL_CHARGE`, `LV_SYMBOL_UP`/`_DOWN`) for power/trend, since these
+  are mixed with running text in one label.
+- **Weather block**: still only uses the already-integrated OpenWeatherMap
+  "Current Weather" API, including feels-like temperature, humidity, wind
+  speed/direction (`weather_wind_compass()`, 8-point compass) and rain
+  amount (`rain.1h`, 0 if no rain reported). Only visible on the tile UI. No
+  new configuration needed, everything runs through the existing
+  `weather_api_key`.
+- **Settings screen** (gear button, tile UI only): shows firmware version,
+  IP address, WiFi/MQTT status and free memory. The "Restart into setup AP"
+  button (`web_portal_force_ap()`) switches from WiFi to the open setup AP
+  **at runtime without a device reboot**, without deleting the saved WiFi
+  credentials. Requires two taps to confirm (prevents accidental
+  disconnection).
+- **Trend arrows**: compare the current load value against the value up to
+  10 measurements ago (`compute_trend()` in `display_ui.c`); threshold ±3
+  percentage points for rising/falling, otherwise "stable" (dash).
 - **Standby** (`display_ui.c`, `check_standby()`/`enter_standby()`/
-  `exit_standby()`): greift, wenn seit `app_config.standby_timeout_s`
-  (im Webportal einstellbar, Default 120s, 0 = deaktiviert) keine neuen
-  MQTT-Hardwaredaten eingetroffen sind. Bei Panels mit Backlight-Pin geht
-  die Beleuchtung per LEDC auf Duty 0; bei Panels ohne Backlight-Pin
-  (GC9A01, SSD1309) bleibt die Beleuchtung unveraendert (OLED ist
-  selbstleuchtend, GC9A01 haengt bei diesem Board fest an VCC) - beim
-  GC9A01 wird stattdessen der Inhalt auf Uhrzeit+Wetter reduziert (siehe
-  GC9A01-Abschnitt oben). Aufwecken automatisch, sobald wieder Daten
-  eintreffen, oder per Touch (ESP32-2432S028) bzw. Boot-Taste (GC9A01).
+  `exit_standby()`): kicks in when no new MQTT hardware data has arrived for
+  `app_config.standby_timeout_s` (configurable in the web portal, default
+  120s, 0 = disabled). On panels with a backlight pin, the backlight goes
+  to duty 0 via LEDC; on panels without a backlight pin (GC9A01, SSD1309)
+  the backlight stays unchanged (OLED is self-lit, GC9A01 is hardwired to
+  VCC on this board) - on GC9A01 the content is instead reduced to
+  clock+weather (see GC9A01 section above). Wakes automatically as soon as
+  data arrives again, or via touch (ESP32-2432S028) or the boot button
+  (GC9A01).
 
 ## Icons (Material Design Icons)
 
-`main/font_mdi_icons_20.c` ist eine mit
-[`lv_font_conv`](https://github.com/lvgl/lv_font_conv) aus dem npm-Paket
-`@mdi/font` (Material Design Icons, Pictogrammers, Apache-2.0-Lizenz)
-generierte LVGL-Font — **nur die 9 tatsächlich genutzten Glyphen** bei 20px/
-4bpp, nicht der komplette Icon-Satz (der hätte mehrere MB). `main/mdi_icons.h`
-deklariert die Font (`extern const lv_font_t mdi_icons_20;`) sowie ein
-`#define MDI_<NAME>` je Icon (UTF-8-codierter Codepoint als C-String), analog
-zu LVGLs eigenen `LV_SYMBOL_*`-Makros nutzbar: `make_label(parent, MDI_COG,
-&mdi_icons_20, farbe)`.
+`main/font_mdi_icons_20.c` is an LVGL font generated with
+[`lv_font_conv`](https://github.com/lvgl/lv_font_conv) from the npm package
+`@mdi/font` (Material Design Icons, Pictogrammers, Apache-2.0 license) —
+**only the 9 glyphs actually used** at 20px/4bpp, not the full icon set
+(which would be several MB). `main/mdi_icons.h` declares the font
+(`extern const lv_font_t mdi_icons_20;`) as well as a `#define MDI_<NAME>`
+per icon (UTF-8-encoded codepoint as a C string), usable analogous to
+LVGL's own `LV_SYMBOL_*` macros: `make_label(parent, MDI_COG, &mdi_icons_20,
+color)`.
 
-Verwendet werden `chip`, `thermometer`, `weather-sunny`, `weather-windy`,
-`weather-rainy`, `water-percent`, `cog`, `arrow-left`, `wifi` (alle in
-`mdi_icons.h` dokumentiert mit Original-Namen und Unicode-Codepoint).
-`water-percent` (Tropfen mit Prozent) wurde nachtraeglich fuer die
-Luftfeuchte-Anzeige im runden GC9A01-UI ergaenzt (Codepoint U+F058E,
-remapped auf U+E009) - Regenerierungsbefehl siehe unten, inklusive dieses
-neunten Eintrags im `-r`-Remapping.
+Used icons: `chip`, `thermometer`, `weather-sunny`, `weather-windy`,
+`weather-rainy`, `water-percent`, `cog`, `arrow-left`, `wifi` (all
+documented in `mdi_icons.h` with original name and Unicode codepoint).
+`water-percent` (a drop with a percent sign) was added later for the
+humidity display in the round GC9A01 UI (codepoint U+F058E, remapped to
+U+E009) - see the regeneration command below, including this ninth entry in
+the `-r` remapping.
 
-**Wichtige Einschränkung**: Ein MDI-Glyph kann nur in einem Label gerendert
-werden, dessen Font auf `&mdi_icons_20` gesetzt ist — er lässt sich *nicht*
-mitten in einen mit `&lv_font_montserrat_*` gerenderten Text einbetten (im
-Gegensatz zu LVGLs `LV_SYMBOL_*`, die Teil jeder Montserrat-Font-Größe sind).
-Deshalb sind MDI-Icons im Code immer eigene, separate Label-Objekte neben dem
-Text, nie in einen gemeinsamen String eingebettet.
+**Important limitation**: an MDI glyph can only be rendered in a label whose
+font is set to `&mdi_icons_20` — it can *not* be embedded in the middle of
+text rendered with `&lv_font_montserrat_*` (unlike LVGL's `LV_SYMBOL_*`,
+which are part of every Montserrat font size). That's why MDI icons in the
+code are always their own, separate label objects next to the text, never
+embedded in a shared string.
 
-**Weitere Icons ergänzen**: Icon-Name in `.../package/css/materialdesignicons.css`
-nachschlagen (Codepoint hinter `content: "\FXXXXX"`), dann mit Remapping auf
-einen freien Codepoint ab `0xE00A` aufwaerts (Basic Multilingual Plane,
-**nicht** den MDI-Originalcodepoint direkt verwenden!) neu generieren - dabei
-immer **alle bisherigen Remaps mit angeben**, sonst verschieben sich die
-bestehenden Icons:
+**Adding more icons**: look up the icon name in
+`.../package/css/materialdesignicons.css` (codepoint after `content:
+"\FXXXXX"`), then regenerate with a remapping to a free codepoint starting
+from `0xE00A` upward (Basic Multilingual Plane, **do not** use the original
+MDI codepoint directly!) - always include **all previous remaps**, otherwise
+the existing icons shift:
 
 ```bash
 npm pack @mdi/font@7.4.47 && tar xzf mdi-font-7.4.47.tgz
@@ -431,13 +423,13 @@ npx lv_font_conv --font package/fonts/materialdesignicons-webfont.ttf \
   -o font_mdi_icons_20.c
 ```
 
-Den `#ifdef LV_LVGL_H_INCLUDE_SIMPLE`-Include-Block danach durch ein einfaches
-`#include "lvgl.h"` ersetzen (passend zum Rest des Projekts).
+Afterwards, replace the `#ifdef LV_LVGL_H_INCLUDE_SIMPLE` include block with
+a plain `#include "lvgl.h"` (matching the rest of the project).
 
-## MQTT-Datenformat
+## MQTT data format
 
-Der PC-Client publiziert ein JSON-Objekt auf das konfigurierte Topic
-(Standard: `pulsemqtt/hwinfo`):
+The PC client publishes a JSON object on the configured topic (default:
+`pulsemqtt/hwinfo`):
 
 ```json
 {
@@ -450,27 +442,27 @@ Der PC-Client publiziert ein JSON-Objekt auf das konfigurierte Topic
 }
 ```
 
-Alle Felder sind optional - nur enthaltene Werte werden aktualisiert.
-`tools/pc_bridge_example.py` zeigt beispielhaft, wie ein Python-Skript auf
-dem PC Werte per MQTT veröffentlicht.
+All fields are optional - only values that are included get updated.
+`tools/pc_bridge_example.py` shows an example of how a Python script on the
+PC can publish values via MQTT.
 
-## Struktur
+## Structure
 
 ```
 CMakeLists.txt, sdkconfig.defaults, partitions.csv
 main/
-  app_main.c           Boot/Verdrahtung
-  shared_state.[ch]    globale Zustände, Ringpuffer
-  config_store.[ch]    NVS-Persistenz
-  board_profiles.[ch]  Displaytyp-Enum + Pin-/Bus-/UI-Profile (Kern der Multi-Display-Unterstuetzung)
-  web_portal.[ch]      WLAN (STA/offener AP) + HTTP-Portal (inkl. Displayauswahl) + OTA
-  mqtt_handler.[ch]    esp-mqtt + JSON-Parsing
-  time_service.[ch]    SNTP + Zeitzone
-  weather_service.[ch] OpenWeatherMap-Abruf
-  display_ui.[ch]      esp_lcd (mehrere Panel-Treiber) + LVGL-Oberflaeche (Kachel-/Mono-/Rund-UI)
-  font_mdi_icons_20.c  generierte Material-Design-Icons-Font
-  mdi_icons.h          Font-Deklaration + MDI_*-Zeichen-Makros
-  touch_xpt2046.[ch]   XPT2046-SPI-Treiber (nur ESP32-2432S028-Profil)
+  app_main.c           boot/wiring
+  shared_state.[ch]    global state, ring buffers
+  config_store.[ch]    NVS persistence
+  board_profiles.[ch]  display type enum + pin/bus/UI profiles (core of multi-display support)
+  web_portal.[ch]      WiFi (STA/open AP) + HTTP portal (incl. display selection) + OTA
+  mqtt_handler.[ch]    esp-mqtt + JSON parsing
+  time_service.[ch]    SNTP + timezone
+  weather_service.[ch] OpenWeatherMap fetch
+  display_ui.[ch]      esp_lcd (multiple panel drivers) + LVGL UI (tile/mono/round UI)
+  font_mdi_icons_20.c  generated Material Design Icons font
+  mdi_icons.h          font declaration + MDI_* character macros
+  touch_xpt2046.[ch]   XPT2046 SPI driver (ESP32-2432S028 profile only)
 tools/
-  pc_bridge_example.py Beispiel PC->MQTT Bridge
+  pc_bridge_example.py example PC->MQTT bridge
 ```

@@ -1,63 +1,64 @@
 # Changelog
 
-Alle nennenswerten Aenderungen dieses Projekts werden hier dokumentiert.
-Format lose an [Keep a Changelog](https://keepachangelog.com/) angelehnt,
-Versionierung folgt `vX.Y.Z-idf`-Tags (siehe `.github/workflows/build-idf.yml`).
+All notable changes to this project are documented here. Format loosely
+follows [Keep a Changelog](https://keepachangelog.com/), versioning follows
+`vX.Y.Z-idf` tags (see `.github/workflows/build-idf.yml`).
 
-## [v1.0.0-idf] - Erstes Release
+## [v1.0.0-idf] - First release
 
-Erstes offizielles Release des ESP-IDF-Ports. Ein Firmware-Image je Ziel-Chip
-(ESP32/ESP32-S3/ESP32-C3), Displaytyp wird zur Laufzeit im Webportal gewaehlt
-- kein Neuflashen bei Displaywechsel noetig.
+First official release of the ESP-IDF port. One firmware image per target
+chip (ESP32/ESP32-S3/ESP32-C3), display type is chosen at runtime in the web
+portal - no reflashing needed to switch displays.
 
-### Unterstuetzte Hardware
+### Supported hardware
 
-- **Chips**: ESP32 (klassisch), ESP32-S3, ESP32-C3.
-- **Displays**: ILI9341 320x240 + XPT2046-Touch (ESP32-2432S028 "CYD",
-  Werksverdrahtung), ILI9488 480x320, ST7796S 480x320, GC9A01 240x240 rund,
-  SSD1309 128x64 monochrom (I2C) - alle fuenf in einem einzigen Firmware-Image
-  enthalten.
-- **Pin-Belegung**: fuer alle generisch verdrahteten Profile (alles ausser
-  ESP32-2432S028) im Webportal pro Feld ueberschreibbar, mit sinnvollen
-  Defaults; Wechsel des Displaytyps setzt die Overrides automatisch zurueck.
+- **Chips**: ESP32 (classic), ESP32-S3, ESP32-C3.
+- **Displays**: ILI9341 320x240 + XPT2046 touch (ESP32-2432S028 "CYD",
+  factory wiring), ILI9488 480x320, ST7796S 480x320, GC9A01 240x240 round,
+  SSD1309 128x64 monochrome (I2C) - all five contained in a single firmware
+  image.
+- **Pin assignment**: overridable per field in the web portal for all
+  generically-wired profiles (everything except ESP32-2432S028), with
+  sensible defaults; changing the display type automatically resets the
+  overrides.
 
 ### Features
 
-- **Webportal-Konfiguration**: WLAN (mit Netzwerk-Scan als klickbare Liste
-  statt eines Eingabefelds), MQTT-Broker/Topic, NTP/Zeitzone, Wetter
-  (OpenWeatherMap), Displaytyp + Pin-Overrides, Helligkeit, Rotation/
-  Spiegelung, Standby-Timeout, Farbinversion - WLAN-Karte bewusst von den
-  uebrigen (erweiterten) Einstellungen getrennt, um Formularprobleme auf
-  mobilen Browsern zu vermeiden.
-- **OTA-Firmware-Update** ueber das Webportal (`.bin`-Upload), zwei
-  OTA-Partitionen (je 1.75 MB).
-- **MQTT-Datenquelle**: CPU/GPU-Auslastung, -Temperatur, -Leistungsaufnahme
-  vom PC per JSON auf konfigurierbarem Topic (Standard `pulsemqtt/hwinfo`,
-  Beispiel-Bridge unter `tools/pc_bridge_example.py`).
-- **UI je Panelform**: rechteckige Kachel-UI mit Verlaufsdiagrammen und
-  Trend-Pfeilen (ILI9341/ILI9488/ST7796S), reduziertes Rund-Layout mit
-  zwei Screens (GC9A01, Navigation ueber die BOOT-Taste), minimales
-  Monochrom-Layout (SSD1309).
-- **Standby-Modus** nach konfigurierbarer Inaktivitaet (0 = deaktiviert),
-  zeigt Uhrzeit/Datum + Wetter.
-- **Material-Design-Icons** (Thermometer, Sonne, Wind, Regen, Luftfeuchte,
-  Zahnrad, WLAN, Zurueck-Pfeil) als eigene LVGL-Font, keine Vektorgrafiken.
-- **CI**: manueller oder Tag-basierter GitHub-Actions-Build
-  (`espressif/esp-idf-ci-action`), fasst Bootloader/Partitionstabelle/App
-  per `idf.py merge-bin` zu einer einzigen, per Web-Flasher flashbaren Datei
-  zusammen. Tag-Push (`vX.Y.Z-idf`) baut alle drei Chips und veroeffentlicht
-  automatisch ein GitHub-Release mit allen drei Binaries.
+- **Web portal configuration**: WiFi (with network scan as a clickable list
+  instead of a plain input field), MQTT broker/topic, NTP/timezone, weather
+  (OpenWeatherMap), display type + pin overrides, brightness, rotation/
+  mirroring, standby timeout, color inversion - the WiFi card deliberately
+  separated from the remaining (advanced) settings to avoid form issues on
+  mobile browsers.
+- **OTA firmware update** via the web portal (`.bin` upload), two OTA
+  partitions (1.75 MB each).
+- **MQTT data source**: CPU/GPU load, temperature, power draw from the PC as
+  JSON on a configurable topic (default `pulsemqtt/hwinfo`, example bridge
+  under `tools/pc_bridge_example.py`).
+- **UI per panel shape**: rectangular tile UI with history charts and trend
+  arrows (ILI9341/ILI9488/ST7796S), reduced round layout with two screens
+  (GC9A01, navigation via the BOOT button), minimal monochrome layout
+  (SSD1309).
+- **Standby mode** after configurable inactivity (0 = disabled), shows
+  time/date + weather.
+- **Material Design Icons** (thermometer, sun, wind, rain, humidity, gear,
+  WiFi, back arrow) as a dedicated LVGL font, no vector graphics.
+- **CI**: manual or tag-based GitHub Actions build
+  (`espressif/esp-idf-ci-action`), combines bootloader/partition table/app
+  into a single file flashable via a web flasher, using `idf.py merge-bin`.
+  A tag push (`vX.Y.Z-idf`) builds all three chips and automatically
+  publishes a GitHub release with all three binaries.
 
-### Bekannte Einschraenkungen
+### Known limitations
 
-- Nur ESP32-2432S028 (ILI9341) ist auf echter Hardware ausfuehrlich
-  verifiziert; GC9A01 und SSD1309 wurden auf ersten Testaufbauten bestaetigt,
-  ILI9488/ST7796S/ESP32-S3/ESP32-C3 noch nicht auf physischer Hardware
-  gegengeprueft (siehe README, Abschnitt "Auf Hardware zu pruefen").
-- Rotation ist fuer rechteckige Panels auf die beiden sinnvollen Landscape-
-  Werte begrenzt (0/2 wuerden die fest auf Landscape ausgelegte Kachel-UI auf
-  Portrait umschalten); bei rundem Panel muss die richtige Spiegel-Kombination
-  je nach Panel-Charge ggf. durchprobiert werden.
-- Nur das ESP32-2432S028-Profil hat Touch; GC9A01 nutzt die BOOT-Taste als
-  einfache Navigation, die uebrigen Profile haben keine Eingabe am Geraet
-  (Konfiguration laeuft dort vollstaendig ueber das Webportal).
+- Only ESP32-2432S028 (ILI9341) is thoroughly verified on real hardware;
+  GC9A01 and SSD1309 have been confirmed on first test setups, ILI9488/
+  ST7796S/ESP32-S3/ESP32-C3 not yet cross-checked on physical hardware (see
+  README, "To verify on hardware" section).
+- Rotation is limited to the two sensible landscape values for rectangular
+  panels (0/2 would switch the tile UI, which is fixed for landscape, to
+  portrait); for the round panel, the right mirror combination may need to
+  be tried depending on the panel batch.
+- Only the ESP32-2432S028 profile has touch; GC9A01 uses the BOOT button as
+  simple navigation, the remaining profiles have no input on the device
+  (configuration runs entirely through the web portal there).

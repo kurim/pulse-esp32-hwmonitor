@@ -16,26 +16,49 @@ on:
         required: true
         type: string
         default: latest
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ github.event_name == 'workflow_dispatch' && fromJSON(format('["{0}"]', inputs.target)) || fromJSON('["esp32","esp32s3","esp32c3"]') }}
     steps:
       - name: Repo auschecken
         uses: actions/checkout@v6
+
+      # Bei Tag-Push (v1.0.0-idf, ...) FW_VERSION im Quellcode auf den Tag
+      # setzen (ohne fuehrendes "v"), statt den in main/shared_state.h fest
+      # eingetragenen Wert zu verwenden - bei manuellem workflow_dispatch
+      # bleibt FW_VERSION aus dem Quellcode unveraendert.
+      - name: FW_VERSION aus Tag setzen
+        if: github.ref_type == 'tag'
+        run: |
+          V="${GITHUB_REF_NAME#v}"
+          sed -i "s/#define FW_VERSION \".*\"/#define FW_VERSION \"${V}\"/" main/shared_state.h
+
       - name: Build + merge-bin
         uses: espressif/esp-idf-ci-action@v1
         with:
-          esp_idf_version: ${{ inputs.esp_idf_version }}
-          target: ${{ inputs.target }}
+          esp_idf_version: ${{ inputs.esp_idf_version || 'latest' }}
+          target: ${{ matrix.target }}
           command: >-
-            idf.py set-target ${{ inputs.target }} &&
+            idf.py set-target ${{ matrix.target }} &&
             idf.py build &&
             idf.py merge-bin -o merged.bin --fill-flash-size 4MB
+
       - name: Flashbare Datei benennen
         id: name
         run: |
           VERSION=$(grep -oP '(?<=FW_VERSION ")[0-9]+\.[0-9]+\.[0-9]+' main/shared_state.h)
-          TARGET="${{ inputs.target }}"
+          TARGET="${{ matrix.target }}"
           if [ "$TARGET" = "esp32" ]; then
             FNAME="esp32-hwmonitor-v${VERSION}-idf.bin"
           else
@@ -44,9 +67,25 @@ jobs:
           mkdir -p dist
           cp build/merged.bin "dist/${FNAME}"
           echo "fname=${FNAME}" >> "$GITHUB_OUTPUT"
+
       - name: Firmware hochladen
         uses: actions/upload-artifact@v6
         with:
           name: ${{ steps.name.outputs.fname }}
           path: dist/${{ steps.name.outputs.fname }}
           if-no-files-found: error
+
+  release:
+    needs: build
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Firmware-Artefakte laden
+        uses: actions/download-artifact@v6
+        with:
+          path: dist
+
+      - name: GitHub-Release anlegen
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/**/*.bin

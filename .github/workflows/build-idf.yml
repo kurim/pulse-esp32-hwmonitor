@@ -6,9 +6,8 @@ on:
         description: "Ziel-Chip (idf.py set-target)"
         required: true
         type: choice
-        default: all
+        default: esp32
         options:
-          - all
           - esp32
           - esp32s3
           - esp32c3
@@ -17,47 +16,26 @@ on:
         required: true
         type: string
         default: latest
-
 jobs:
-  matrix-vorbereiten:
-    runs-on: ubuntu-latest
-    outputs:
-      targets: ${{ steps.set.outputs.targets }}
-    steps:
-      - id: set
-        run: |
-          if [ "${{ inputs.target }}" = "all" ]; then
-            echo 'targets=["esp32","esp32s3","esp32c3"]' >> "$GITHUB_OUTPUT"
-          else
-            echo 'targets=["${{ inputs.target }}"]' >> "$GITHUB_OUTPUT"
-          fi
-
   build:
-    needs: matrix-vorbereiten
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        target: ${{ fromJson(needs.matrix-vorbereiten.outputs.targets) }}
     steps:
       - name: Repo auschecken
-        uses: actions/checkout@v4
-
+        uses: actions/checkout@v6
       - name: Build + merge-bin
         uses: espressif/esp-idf-ci-action@v1
         with:
           esp_idf_version: ${{ inputs.esp_idf_version }}
-          target: ${{ matrix.target }}
+          target: ${{ inputs.target }}
           command: >-
-            idf.py set-target ${{ matrix.target }} &&
+            idf.py set-target ${{ inputs.target }} &&
             idf.py build &&
             idf.py merge-bin -o merged.bin --fill-flash-size 4MB
-
       - name: Flashbare Datei benennen
         id: name
         run: |
           VERSION=$(grep -oP '(?<=FW_VERSION ")[0-9]+\.[0-9]+\.[0-9]+' main/shared_state.h)
-          TARGET="${{ matrix.target }}"
+          TARGET="${{ inputs.target }}"
           if [ "$TARGET" = "esp32" ]; then
             FNAME="esp32-hwmonitor-v${VERSION}-idf.bin"
           else
@@ -66,9 +44,8 @@ jobs:
           mkdir -p dist
           cp build/merged.bin "dist/${FNAME}"
           echo "fname=${FNAME}" >> "$GITHUB_OUTPUT"
-
       - name: Firmware hochladen
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ steps.name.outputs.fname }}
           path: dist/${{ steps.name.outputs.fname }}

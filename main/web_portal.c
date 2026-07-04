@@ -802,8 +802,15 @@ static esp_err_t h_update(httpd_req_t *req)
     const esp_partition_t *part = esp_ota_get_next_update_partition(NULL);
     if (!part) { httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "no ota part"); return ESP_FAIL; }
 
+    // Tatsaechliche Groesse statt OTA_SIZE_UNKNOWN uebergeben: sonst loescht
+    // esp_ota_begin() sofort die komplette (1.75 MB grosse) Zielpartition auf
+    // einmal, was den Flash-Cache fuer mehrere Sekunden blockiert. In dieser
+    // Zeit kann der WLAN-/LWIP-Stack keine Pakete mehr bedienen und der
+    // Browser bricht den Upload mit "Verbindungsfehler" ab. Mit bekannter
+    // Groesse werden nur die tatsaechlich benoetigten Sektoren geloescht.
     esp_ota_handle_t ota;
-    if (esp_ota_begin(part, OTA_SIZE_UNKNOWN, &ota) != ESP_OK) {
+    size_t ota_size = req->content_len > 0 ? (size_t)req->content_len : OTA_SIZE_UNKNOWN;
+    if (esp_ota_begin(part, ota_size, &ota) != ESP_OK) {
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "ota begin"); return ESP_FAIL;
     }
 

@@ -3,10 +3,16 @@ on:
   workflow_dispatch:
     inputs:
       esp_idf_version:
+        # "latest" trackt den master-Branch von ESP-IDF (also den jeweils
+        # neuesten, ggf. unfertigen Entwicklungsstand) - nicht das zuletzt
+        # veroeffentlichte Release. Fuer reproduzierbare Builds daher fest
+        # auf das letzte veroeffentlichte Release gepinnt (vX.Y = Release-Tag,
+        # release-vX.Y wuerde stattdessen den Release-Branch inkl. Backports
+        # tracken). Siehe hub.docker.com/r/espressif/idf/tags fuer neuere Tags.
         description: "ESP-IDF Docker-Image-Tag (siehe hub.docker.com/r/espressif/idf/tags)"
         required: true
         type: string
-        default: latest
+        default: v6.0.2
   push:
     tags:
       - "v*"
@@ -42,7 +48,7 @@ jobs:
       - name: Build + merge-bin
         uses: espressif/esp-idf-ci-action@v1
         with:
-          esp_idf_version: ${{ inputs.esp_idf_version || 'latest' }}
+          esp_idf_version: ${{ inputs.esp_idf_version || 'v6.0.2' }}
           target: ${{ matrix.target }}
           command: >-
             idf.py set-target ${{ matrix.target }} &&

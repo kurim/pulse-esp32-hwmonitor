@@ -1017,19 +1017,28 @@ static void build_round_ui(void)
     style_screen(scr_main);
 
     int d = s_hres < s_vres ? s_hres : s_vres; // Durchmesser = kleinere Kante
-    // Beide Arcs auf demselben Radius (vorher d-8 vs. d-28 - dadurch wirkten
-    // sie als zwei ineinander verschachtelte Halbkreise statt als ein
-    // gemeinsamer, in CPU/GPU-Haelften geteilter Ring). Rechte Haelfte (CPU,
-    // rotation=270) und linke Haelfte (GPU, rotation=90) grenzen exakt
-    // aneinander (0/180° Uebergang), ueberschneiden sich also nicht.
+    // Zwei konzentrische Ringe statt links/rechts geteilter Haelften: CPU
+    // ganz aussen, GPU nach innen versetzt auf derselben "Bahn". Beide
+    // nutzen denselben 320°-Bogen mit einer gemeinsamen 40°-Luecke unten
+    // (Suedpunkt = 90° im lokalen Arc-Frame), dort wo die CPU/GPU-Textzeilen
+    // sitzen - so bleibt der Bereich unter dem Text frei statt vom Ring
+    // durchquert zu werden.
+    const int arc_gap_deg = 40;             // Breite der Luecke unten
+    const int arc_span_deg = 360 - arc_gap_deg; // 320°
+    const int arc_rotation = 90 + arc_gap_deg / 2; // Start der Luecke bei Suedpunkt zentrieren
+    const int arc_width = 10;
+    const int arc_ring_gap = 4;              // radialer Abstand zwischen CPU- und GPU-Ring
+
     int arc_d = d - 16;
 
     round_arc_cpu = lv_arc_create(scr_main);
     lv_obj_set_size(round_arc_cpu, arc_d, arc_d);
     lv_obj_center(round_arc_cpu);
-    lv_arc_set_rotation(round_arc_cpu, 270);
-    lv_arc_set_bg_angles(round_arc_cpu, 0, 180);
+    lv_arc_set_rotation(round_arc_cpu, arc_rotation);
+    lv_arc_set_bg_angles(round_arc_cpu, 0, arc_span_deg);
     lv_arc_set_range(round_arc_cpu, 0, 100);
+    lv_obj_set_style_arc_width(round_arc_cpu, arc_width, LV_PART_MAIN);
+    lv_obj_set_style_arc_width(round_arc_cpu, arc_width, LV_PART_INDICATOR);
     lv_obj_set_style_arc_color(round_arc_cpu, COL_CPU_BAR_A, LV_PART_INDICATOR);
     lv_obj_remove_flag(round_arc_cpu, LV_OBJ_FLAG_CLICKABLE);
     // LVGL-Arcs sind eigentlich Schieberegler und zeichnen deshalb per
@@ -1038,12 +1047,15 @@ static void build_round_ui(void)
     // duennen Ring aus. Fuer reine Anzeige-Ringe weg damit.
     lv_obj_remove_style(round_arc_cpu, NULL, LV_PART_KNOB);
 
+    int arc_d_gpu = arc_d - 2 * (arc_width + arc_ring_gap);
     round_arc_gpu = lv_arc_create(scr_main);
-    lv_obj_set_size(round_arc_gpu, arc_d, arc_d);
+    lv_obj_set_size(round_arc_gpu, arc_d_gpu, arc_d_gpu);
     lv_obj_center(round_arc_gpu);
-    lv_arc_set_rotation(round_arc_gpu, 90);
-    lv_arc_set_bg_angles(round_arc_gpu, 0, 180);
+    lv_arc_set_rotation(round_arc_gpu, arc_rotation);
+    lv_arc_set_bg_angles(round_arc_gpu, 0, arc_span_deg);
     lv_arc_set_range(round_arc_gpu, 0, 100);
+    lv_obj_set_style_arc_width(round_arc_gpu, arc_width, LV_PART_MAIN);
+    lv_obj_set_style_arc_width(round_arc_gpu, arc_width, LV_PART_INDICATOR);
     lv_obj_set_style_arc_color(round_arc_gpu, COL_GPU_BAR_A, LV_PART_INDICATOR);
     lv_obj_remove_flag(round_arc_gpu, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_remove_style(round_arc_gpu, NULL, LV_PART_KNOB);

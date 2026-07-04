@@ -210,19 +210,20 @@ file can be flashed in one go via a web flasher (e.g. ESP Web Tools/
 esptool-js) or `esptool.py write_flash 0x0 <file>`, instead of writing
 bootloader/partition table/app separately at three offsets.
 
-Two triggers:
+Both triggers always build **all three** supported chips (esp32/esp32s3/
+esp32c3) as a matrix job - there's no per-chip selection anymore, a single
+run always produces all three `.bin` files:
 
 - **Manual** (tab "Actions" → "ESP-IDF Build" → "Run workflow"): choose the
-  target chip (esp32/esp32s3/esp32c3) and ESP-IDF Docker tag, builds only
-  that one chip. Result is available as an artifact on the workflow run,
-  `FW_VERSION` comes unchanged from `main/shared_state.h`.
+  ESP-IDF Docker tag, builds all three chips. Results are available as
+  artifacts on the workflow run, `FW_VERSION` comes unchanged from
+  `main/shared_state.h`.
 - **Tag push** (`git tag v1.0.0-idf && git push origin v1.0.0-idf`): builds
-  all three chips (esp32/esp32s3/esp32c3) and then automatically creates a
-  GitHub release for the tag, with all three `.bin` files attached.
-  `FW_VERSION` is set **from the tag** in this case (leading "v" stripped,
-  `v1.0.0-idf` → `FW_VERSION "1.0.0-idf"`) instead of from
-  `main/shared_state.h` - the value checked into the repo only serves as the
-  default for manual builds.
+  all three chips and then automatically creates a GitHub release for the
+  tag, with all three `.bin` files attached. `FW_VERSION` is set **from the
+  tag** in this case (leading "v" stripped, `v1.0.0-idf` →
+  `FW_VERSION "1.0.0-idf"`) instead of from `main/shared_state.h` - the
+  value checked into the repo only serves as the default for manual builds.
 
 > **Captive portal detection on phones can briefly exhaust sockets**:
 > iOS/Android/Windows check internet connectivity in the setup AP via

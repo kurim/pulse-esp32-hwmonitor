@@ -10,7 +10,7 @@ Abhängigkeiten:
     pip install paho-mqtt psutil requests
 
 Nutzung:
-    python pc_bridge_example.py --host 192.168.1.50 --topic cyd/hwinfo
+    python pc_bridge_example.py --host 192.168.1.50 --topic pcbridge/hwinfo
 """
 import argparse
 import json
@@ -51,7 +51,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--host", required=True, help="MQTT-Broker-Adresse")
     parser.add_argument("--port", type=int, default=1883)
-    parser.add_argument("--topic", default="cyd/hwinfo")
+    parser.add_argument("--topic", default="pcbridge/hwinfo")
     parser.add_argument("--user", default=None)
     parser.add_argument("--password", default=None)
     parser.add_argument("--interval", type=float, default=2.0, help="Sekunden zwischen Updates")

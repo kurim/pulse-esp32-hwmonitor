@@ -194,7 +194,14 @@ idf.py -p /dev/ttyUSB0 flash monitor
 ```
 
 Ersteinrichtung: offener AP **`ESP32-HWMon-XXXX`** → `http://192.168.4.1` →
-WLAN/MQTT/Zeitzone/Displaytyp eintragen → speichern → Neustart.
+WLAN eintragen → speichern → Neustart. Das Webportal zeigt beim ersten
+Aufruf nur die WLAN-Karte (SSID/Passwort, mit Button "WLAN-Netzwerke
+suchen" fuer eine Liste der in Reichweite gefundenen Netze statt manueller
+SSID-Eingabe); alle weiteren Einstellungen (MQTT/Zeitzone/Displaytyp/
+Pin-Belegung/OTA) liegen hinter "Erweiterte Einstellungen anzeigen" verborgen.
+Diese Trennung vermeidet, dass mobile Browser beim Ausfuellen des langen
+Formulars zwischenzeitlich den Fokus verlieren und zurueck aufs SSID-Feld
+springen.
 
 > **Captive-Portal-Erkennung des Handys kann kurzzeitig Sockets ausschoepfen**:
 > iOS/Android/Windows pruefen die Internetverbindung im Setup-AP ueber mehrere
@@ -398,7 +405,7 @@ Den `#ifdef LV_LVGL_H_INCLUDE_SIMPLE`-Include-Block danach durch ein einfaches
 ## MQTT-Datenformat
 
 Der PC-Client publiziert ein JSON-Objekt auf das konfigurierte Topic
-(Standard: `cyd/hwinfo`):
+(Standard: `pcbridge/hwinfo`):
 
 ```json
 {

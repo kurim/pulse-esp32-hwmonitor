@@ -1,0 +1,70 @@
+name: ESP-IDF Build
+
+# Nur manuell ausloesbar (kein Trigger auf push/pull_request) - Build laeuft
+# in einem Docker-Container mit dem offiziellen espressif/idf-Image und
+# dauert entsprechend lange, das soll nicht bei jedem Commit automatisch
+# laufen.
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Ziel-Chip (idf.py set-target)"
+        required: true
+        type: choice
+        default: esp32
+        options:
+          - esp32
+          - esp32s3
+          - esp32c3
+      esp_idf_version:
+        description: "ESP-IDF Docker-Image-Tag (siehe hub.docker.com/r/espressif/idf/tags)"
+        required: true
+        type: string
+        default: latest
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Repo auschecken
+        uses: actions/checkout@v4
+
+      # Baut die Firmware im offiziellen ESP-IDF-Docker-Image und fasst
+      # anschliessend Bootloader + Partitionstabelle + App-Image (ota_0) in
+      # EINE flashbare Datei zusammen (idf.py merge-bin), damit sie sich per
+      # Web-Flasher (z.B. ESP Web Tools/esptool-js) an Offset 0x0 in einem
+      # Rutsch schreiben laesst, statt drei einzelne Dateien an drei
+      # verschiedenen Offsets flashen zu muessen.
+      - name: Build + merge-bin
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: ${{ inputs.esp_idf_version }}
+          target: ${{ inputs.target }}
+          command: >-
+            idf.py set-target ${{ inputs.target }} &&
+            idf.py build &&
+            idf.py merge-bin -o build/merged.bin --flash_size 4MB
+
+      - name: Flashbare Datei benennen
+        id: name
+        run: |
+          # FW_VERSION traegt bereits ein "-idf"-Suffix (main/shared_state.h,
+          # z.B. "2.4.0-idf") - fuer den Dateinamen nur den numerischen Teil
+          # verwenden, sonst stuende "-idf" doppelt im Dateinamen.
+          VERSION=$(grep -oP '(?<=FW_VERSION ")[0-9]+\.[0-9]+\.[0-9]+' main/shared_state.h)
+          TARGET="${{ inputs.target }}"
+          if [ "$TARGET" = "esp32" ]; then
+            FNAME="esp32-hwmonitor-v${VERSION}-idf.bin"
+          else
+            FNAME="esp32-hwmonitor-v${VERSION}-idf-${TARGET}.bin"
+          fi
+          mkdir -p dist
+          cp build/merged.bin "dist/${FNAME}"
+          echo "fname=${FNAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Firmware hochladen
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.name.outputs.fname }}
+          path: dist/${{ steps.name.outputs.fname }}
+          if-no-files-found: error

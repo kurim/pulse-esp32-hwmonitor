@@ -713,9 +713,11 @@ static void build_main(void)
     lv_obj_set_width(lbl_weather, 50);
     lv_label_set_long_mode(lbl_weather, LV_LABEL_LONG_MODE_CLIP);
 
+    lv_obj_t *hu = make_label(bar, MDI_HUMIDITY, &mdi_icons_20, COL_RAIN);
+    lv_obj_set_pos(hu, 124, 37);
     lbl_humidity = make_label(bar, "--", &lv_font_montserrat_14, COL_SUB);
-    lv_obj_set_pos(lbl_humidity, 124, 39);
-    lv_obj_set_width(lbl_humidity, 60);
+    lv_obj_set_pos(lbl_humidity, 147, 39);
+    lv_obj_set_width(lbl_humidity, 37);
     lv_label_set_long_mode(lbl_humidity, LV_LABEL_LONG_MODE_CLIP);
 
     // -- Spalte 3: Wind/Regen (jetzt uebereinander statt nebeneinander -
@@ -734,8 +736,11 @@ static void build_main(void)
     lv_obj_set_width(lbl_rain, 36);
     lv_label_set_long_mode(lbl_rain, LV_LABEL_LONG_MODE_CLIP);
 
-    icon_wifi = make_label(bar, MDI_WIFI, &mdi_icons_20, COL_WARN);
-    lv_obj_align(icon_wifi, LV_ALIGN_TOP_RIGHT, -4, 3);
+    // Statuspunkt statt WLAN-Icon: das MDI_WIFI-Icon ueberlappte bei
+    // laengeren Windwerten ("34km/h NNW") die Windspalte - ein einfacher
+    // Punkt braucht deutlich weniger Breite.
+    icon_wifi = shape_rrect(bar, 14, 14, 7, COL_WARN);
+    lv_obj_align(icon_wifi, LV_ALIGN_TOP_RIGHT, -6, 6);
 
     // ---- Kacheln (Breite anhand der Panel-Aufloesung berechnet) ----
     const int margin = 6, gap = 6;
@@ -1156,7 +1161,7 @@ static void refresh_now(void)
     // --- WLAN/MQTT-Statusicon ---
     lv_color_t sc = (wifi_connected && mqtt_connected) ? COL_GREEN
                     : (wifi_connected ? COL_YELLOW : COL_WARN);
-    lv_obj_set_style_text_color(icon_wifi, sc, 0);
+    lv_obj_set_style_bg_color(icon_wifi, sc, 0);
 
     if (s_screen == SCR_MAIN) {
         update_tile(&cpu_tile, &cpu_history, hw_info.cpu_load, hw_info.cpu_temp, hw_info.cpu_power);

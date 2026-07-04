@@ -221,6 +221,12 @@ static void check_standby(void)
 // ------------------------------------------------------------------
 // Farb-SPI-Panels (ILI9341/ILI9488/ST7796S/GC9A01)
 // ------------------------------------------------------------------
+// Hoehe einer LVGL-Flush-Kachel in Zeilen (Breite x LCD_FLUSH_LINES Pixel).
+// Kleiner = weniger internes SRAM fuer den Flush-Puffer, aber mehr einzelne
+// SPI-Transaktionen pro Vollbild. Kein unterstuetztes Board hat PSRAM, daher
+// bewusst klein gehalten statt auf Durchsatz optimiert.
+#define LCD_FLUSH_LINES 20
+
 static lv_display_t *lcd_init_color_spi(const board_profile_t *p)
 {
     backlight_init(p->bl);
@@ -231,7 +237,7 @@ static lv_display_t *lcd_init_color_spi(const board_profile_t *p)
         .sclk_io_num     = p->sclk,
         .quadwp_io_num   = -1,
         .quadhd_io_num   = -1,
-        .max_transfer_sz = p->h_res * 80 * sizeof(uint16_t),
+        .max_transfer_sz = p->h_res * LCD_FLUSH_LINES * 2 * sizeof(uint16_t),
     };
     LCD_CHECK(spi_bus_initialize(p->spi_host, &bus, SPI_DMA_CH_AUTO));
 
@@ -259,8 +265,9 @@ static lv_display_t *lcd_init_color_spi(const board_profile_t *p)
             // atanisoft/esp_lcd_ili9488 braucht zusaetzlich die Groesse des
             // internen RGB565->RGB666-Konvertierungspuffers (in Pixeln) -
             // an die groesste zu erwartende draw_bitmap()-Flaeche angelehnt,
-            // hier eine LVGL-Flush-Kachel (Breite x 40 Zeilen, s. dcfg unten).
-            LCD_CHECK(esp_lcd_new_panel_ili9488(io, &panel_cfg, p->h_res * 40, &panel));
+            // hier eine LVGL-Flush-Kachel (Breite x LCD_FLUSH_LINES Zeilen,
+            // s. dcfg unten).
+            LCD_CHECK(esp_lcd_new_panel_ili9488(io, &panel_cfg, p->h_res * LCD_FLUSH_LINES, &panel));
             break;
         case DISPLAY_ST7796S:
             LCD_CHECK(esp_lcd_new_panel_st7796(io, &panel_cfg, &panel));
@@ -326,12 +333,11 @@ static lv_display_t *lcd_init_color_spi(const board_profile_t *p)
         .io_handle     = io,
         .panel_handle  = panel,
         // Einzelpuffer statt Doppelpuffer: keines der unterstuetzten Boards
-        // hat PSRAM, ein zweiter Flush-Puffer wuerde also ~20-40 KB internes
-        // SRAM zusaetzlich kosten (h_res*40 Zeilen*2 Byte). LVGL wartet beim
-        // Flush dadurch synchron auf das SPI-DMA-Ende statt vorzurendern -
-        // fuer eine Dashboard-UI mit wenigen Updates/Sekunde kein spuerbarer
-        // Nachteil, spart aber deutlich Speicher.
-        .buffer_size   = p->h_res * 40,
+        // hat PSRAM, ein zweiter Flush-Puffer wuerde internes SRAM verdoppeln.
+        // LVGL wartet beim Flush dadurch synchron auf das SPI-DMA-Ende statt
+        // vorzurendern - fuer eine Dashboard-UI mit wenigen Updates/Sekunde
+        // kein spuerbarer Nachteil, spart aber deutlich Speicher.
+        .buffer_size   = p->h_res * LCD_FLUSH_LINES,
         .double_buffer = false,
         .hres          = hres,
         .vres          = vres,

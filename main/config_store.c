@@ -66,6 +66,8 @@ void config_store_load(app_config_t *cfg)
     nvs_get_u8(h, "inv", &inv);
     cfg->color_invert = (inv != 0);
 
+    get_str(h, "language", cfg->language, sizeof(cfg->language));
+
     // Pin-Overrides als Blob (ein Feld pro Pin waere viele einzelne Keys) -
     // Groessenpruefung, damit ein spaeter geaendertes struct pin_override_t
     // (z.B. neue Felder) nicht stillschweigend falsch interpretiert wird;
@@ -111,6 +113,7 @@ void config_store_save(const app_config_t *cfg)
     nvs_set_u8 (h, "disp_type",  (uint8_t)cfg->display_type);
     nvs_set_u16(h, "standby_s",  cfg->standby_timeout_s);
     nvs_set_u8 (h, "inv",        cfg->color_invert ? 1 : 0);
+    nvs_set_str(h, "language",   cfg->language);
     nvs_set_blob(h, "pin_ov",    &cfg->pin_overrides, sizeof(cfg->pin_overrides));
 
     err = nvs_commit(h);

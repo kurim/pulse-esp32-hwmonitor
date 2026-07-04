@@ -51,6 +51,12 @@ typedef struct {
     // brauchen koennen.
     bool color_invert;
 
+    // Anzeigesprache des Geraete-Displays ("de"/"en", siehe main/ui_strings.h).
+    // Wirkt erst nach einem Neustart, da die LVGL-Screens nur einmal beim Boot
+    // gebaut werden (display_ui_begin()) - selbes Muster wie display_type/
+    // rotation/brightness.
+    char language[3];
+
     // Pin-Overrides fuer das aktuell gewaehlte Display (siehe board_profiles.h:
     // pin_override_t). Wird zurueckgesetzt, wenn display_type geaendert wird
     // (siehe web_portal.c: h_config_post).

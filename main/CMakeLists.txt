@@ -5,6 +5,7 @@ idf_component_register(
         "shared_state.c"
         "board_profiles.c"
         "display_ui.c"
+        "ui_strings.c"
         "font_mdi_icons_20.c"
         "touch_xpt2046.c"
         "web_portal.c"

@@ -29,9 +29,13 @@ static esp_err_t http_event(esp_http_client_event_t *evt)
 }
 
 // Wandelt eine Windrichtung in Grad in eine 8-Punkte-Kompassangabe um.
+// Abkuerzungen sind sprachabhaengig (DE: N/NO/O/SO/S/SW/W/NW, EN: N/NE/E/SE/
+// S/SW/W/NW), siehe app_config.language.
 const char *weather_wind_compass(int deg)
 {
-    static const char *dirs[] = { "N", "NO", "O", "SO", "S", "SW", "W", "NW" };
+    static const char *dirs_de[] = { "N", "NO", "O", "SO", "S", "SW", "W", "NW" };
+    static const char *dirs_en[] = { "N", "NE", "E", "SE", "S", "SW", "W", "NW" };
+    const char **dirs = (strcmp(app_config.language, "en") == 0) ? dirs_en : dirs_de;
     int idx = ((deg % 360) + 360) % 360;
     idx = (idx + 22) / 45; // auf 8 Sektoren runden (je 45 Grad)
     return dirs[idx % 8];
@@ -42,10 +46,11 @@ static void fetch_weather(void)
     if (!app_config.weather_enabled || strlen(app_config.weather_api_key) == 0) return;
     if (!wifi_connected) return;
 
+    const char *owm_lang = (strcmp(app_config.language, "en") == 0) ? "en" : "de";
     char url[320];
     snprintf(url, sizeof(url),
-             "http://api.openweathermap.org/data/2.5/weather?q=%s&appid=%s&units=%s&lang=de",
-             app_config.weather_city, app_config.weather_api_key, app_config.weather_units);
+             "http://api.openweathermap.org/data/2.5/weather?q=%s&appid=%s&units=%s&lang=%s",
+             app_config.weather_city, app_config.weather_api_key, app_config.weather_units, owm_lang);
 
     s_resp_len = 0;
     s_resp[0]  = '\0';

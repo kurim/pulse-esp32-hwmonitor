@@ -1,9 +1,4 @@
 name: ESP-IDF Build
-
-# Nur manuell ausloesbar (kein Trigger auf push/pull_request) - Build laeuft
-# in einem Docker-Container mit dem offiziellen espressif/idf-Image und
-# dauert entsprechend lange, das soll nicht bei jedem Commit automatisch
-# laufen.
 on:
   workflow_dispatch:
     inputs:
@@ -11,8 +6,9 @@ on:
         description: "Ziel-Chip (idf.py set-target)"
         required: true
         type: choice
-        default: esp32
+        default: all
         options:
+          - all
           - esp32
           - esp32s3
           - esp32c3
@@ -23,36 +19,45 @@ on:
         default: latest
 
 jobs:
-  build:
+  matrix-vorbereiten:
     runs-on: ubuntu-latest
+    outputs:
+      targets: ${{ steps.set.outputs.targets }}
+    steps:
+      - id: set
+        run: |
+          if [ "${{ inputs.target }}" = "all" ]; then
+            echo 'targets=["esp32","esp32s3","esp32c3"]' >> "$GITHUB_OUTPUT"
+          else
+            echo 'targets=["${{ inputs.target }}"]' >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    needs: matrix-vorbereiten
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJson(needs.matrix-vorbereiten.outputs.targets) }}
     steps:
       - name: Repo auschecken
         uses: actions/checkout@v4
 
-      # Baut die Firmware im offiziellen ESP-IDF-Docker-Image und fasst
-      # anschliessend Bootloader + Partitionstabelle + App-Image (ota_0) in
-      # EINE flashbare Datei zusammen (idf.py merge-bin), damit sie sich per
-      # Web-Flasher (z.B. ESP Web Tools/esptool-js) an Offset 0x0 in einem
-      # Rutsch schreiben laesst, statt drei einzelne Dateien an drei
-      # verschiedenen Offsets flashen zu muessen.
       - name: Build + merge-bin
         uses: espressif/esp-idf-ci-action@v1
         with:
           esp_idf_version: ${{ inputs.esp_idf_version }}
-          target: ${{ inputs.target }}
+          target: ${{ matrix.target }}
           command: >-
-            idf.py set-target ${{ inputs.target }} &&
+            idf.py set-target ${{ matrix.target }} &&
             idf.py build &&
             idf.py merge-bin -o merged.bin --fill-flash-size 4MB
 
       - name: Flashbare Datei benennen
         id: name
         run: |
-          # FW_VERSION traegt bereits ein "-idf"-Suffix (main/shared_state.h,
-          # z.B. "2.4.0-idf") - fuer den Dateinamen nur den numerischen Teil
-          # verwenden, sonst stuende "-idf" doppelt im Dateinamen.
           VERSION=$(grep -oP '(?<=FW_VERSION ")[0-9]+\.[0-9]+\.[0-9]+' main/shared_state.h)
-          TARGET="${{ inputs.target }}"
+          TARGET="${{ matrix.target }}"
           if [ "$TARGET" = "esp32" ]; then
             FNAME="esp32-hwmonitor-v${VERSION}-idf.bin"
           else

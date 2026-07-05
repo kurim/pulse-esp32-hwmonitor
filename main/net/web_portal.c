@@ -30,6 +30,7 @@ static const char *TAG = "web";
 
 static EventGroupHandle_t s_wifi_events;
 static int  s_retry;
+static bool s_sta_ever_connected;
 static bool s_ap_mode;
 static char s_ip[16]   = "0.0.0.0";
 static char s_ap_ssid[24];
@@ -394,7 +395,13 @@ static void wifi_event_handler(void *arg, esp_event_base_t base, int32_t id, voi
         esp_wifi_connect();
     } else if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
         wifi_connected = false;
-        if (s_retry < STA_MAX_RETRY) {
+        // Nach der ersten erfolgreichen Verbindung nie aufgeben: ein Router-
+        // Reboot/Aussetzer, der laenger als STA_MAX_RETRY-Versuche dauert,
+        // durfte vorher dazu fuehren dass s_retry das Limit erreicht und der
+        // Handler danach fuer den Rest der Laufzeit gar keinen
+        // esp_wifi_connect() mehr absetzt - das WLAN blieb dann dauerhaft tot,
+        // bis man manuell in den Setup-AP wechselt.
+        if (s_sta_ever_connected || s_retry < STA_MAX_RETRY) {
             s_retry++;
             esp_wifi_connect();
         } else {
@@ -404,6 +411,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t base, int32_t id, voi
         ip_event_got_ip_t *evt = (ip_event_got_ip_t *)data;
         snprintf(s_ip, sizeof(s_ip), IPSTR, IP2STR(&evt->ip_info.ip));
         wifi_connected = true;
+        s_sta_ever_connected = true;
         s_retry = 0;
         xEventGroupSetBits(s_wifi_events, WIFI_CONNECTED_BIT);
     }
@@ -418,6 +426,13 @@ static void wifi_common_init(void)
 
     wifi_init_config_t ic = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&ic));
+
+    // ESP-IDF aktiviert modem sleep (WIFI_PS_MIN_MODEM) standardmaessig - das
+    // ist auf dem ESP32-C3 eine haeufige Ursache fuer instabile Verbindungen
+    // (verpasste Beacons, zaehe Reconnects). Der Arduino-Core (u.a. bei
+    // WiFiManager-basierten Projekten) deaktiviert Power-Save von Haus aus,
+    // ESP-IDF-Projekte muessen das explizit tun.
+    ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
 
     ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID,
                                                         wifi_event_handler, NULL, NULL));

@@ -94,6 +94,11 @@ void build_round_ui(void)
     lv_obj_set_style_arc_rounded(round_arc_cpu, true, LV_PART_MAIN);
     lv_obj_set_style_arc_color(round_arc_cpu, COL_CPU_BAR_A, LV_PART_INDICATOR);
     lv_obj_set_style_arc_width(round_arc_cpu, ARC_FG_W, LV_PART_INDICATOR);
+    int cpu_pad = (ARC_BG_W - ARC_FG_W) / 2; 
+    lv_obj_set_style_pad_left(round_arc_cpu, cpu_pad, LV_PART_INDICATOR);
+    lv_obj_set_style_pad_right(round_arc_cpu, cpu_pad, LV_PART_INDICATOR);
+    lv_obj_set_style_pad_top(round_arc_cpu, cpu_pad, LV_PART_INDICATOR);
+    lv_obj_set_style_pad_bottom(round_arc_cpu, cpu_pad, LV_PART_INDICATOR);
     lv_obj_set_style_arc_rounded(round_arc_cpu, true, LV_PART_INDICATOR);
     lv_obj_remove_flag(round_arc_cpu, LV_OBJ_FLAG_CLICKABLE);
     // LVGL-Arcs sind eigentlich Schieberegler und zeichnen deshalb per
@@ -116,6 +121,11 @@ void build_round_ui(void)
     lv_obj_set_style_arc_rounded(round_arc_gpu, true, LV_PART_MAIN);
     lv_obj_set_style_arc_color(round_arc_gpu, COL_GPU_BAR_A, LV_PART_INDICATOR);
     lv_obj_set_style_arc_width(round_arc_gpu, ARC_FG_W, LV_PART_INDICATOR);
+    int gpu_pad = (ARC_BG_W - ARC_FG_W) / 2;
+    lv_obj_set_style_pad_left(round_arc_gpu, gpu_pad, LV_PART_INDICATOR);
+    lv_obj_set_style_pad_right(round_arc_gpu, gpu_pad, LV_PART_INDICATOR);
+    lv_obj_set_style_pad_top(round_arc_gpu, gpu_pad, LV_PART_INDICATOR);
+    lv_obj_set_style_pad_bottom(round_arc_gpu, gpu_pad, LV_PART_INDICATOR);
     lv_obj_set_style_arc_rounded(round_arc_gpu, true, LV_PART_INDICATOR);
     lv_obj_remove_flag(round_arc_gpu, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_remove_style(round_arc_gpu, NULL, LV_PART_KNOB);

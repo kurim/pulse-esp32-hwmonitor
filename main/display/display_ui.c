@@ -344,11 +344,11 @@ static lv_display_t *lcd_init_mono_i2c(const board_profile_t *p)
 // RGB565-Parallel-Panel (nur Guition JC8048W550: ST7262, "auto-init" ohne
 // Kommando-Schnittstelle) - ESP32-S3-exklusiv (LCD_CAM-Peripherie), siehe
 // SOC_LCD_RGB_SUPPORTED-Guard oben. Anders als die SPI-Panels oben braucht
-// dieses Board kein esp_lcd_panel_io_handle_t (kein Command-Bus) und nutzt
-// PSRAM fuer die Framebuffer (einziges Board in diesem Projekt mit PSRAM) -
-// dadurch sind zwei volle Framebuffer + "avoid_tearing" (Ping-Pong zwischen
-// beiden) moeglich, waehrend die uebrigen (PSRAM-losen) Panels oben mit
-// einem einzelnen kleinen SRAM-Flush-Puffer auskommen muessen.
+// dieses Board kein esp_lcd_panel_io_handle_t (kein Command-Bus). Der
+// Framebuffer liegt in PSRAM (einziges Board in diesem Projekt mit PSRAM),
+// gefuettert per Bounce-Buffer (kleiner SRAM-Zwischenpuffer, siehe panel_cfg
+// unten) - der LVGL-Flush selbst laeuft trotzdem wie bei den SPI-Panels
+// gepuffert/kachelweise (kein direct_mode, siehe Kommentar dort).
 // ------------------------------------------------------------------
 #if SOC_LCD_RGB_SUPPORTED
 static lv_display_t *lcd_init_rgb(const board_profile_t *p)
@@ -427,10 +427,19 @@ static lv_display_t *lcd_init_rgb(const board_profile_t *p)
     lvgl_port_cfg_t pcfg = ESP_LVGL_PORT_INIT_CONFIG();
     LCD_CHECK(lvgl_port_init(&pcfg));
 
+    // Normaler gepufferter LVGL-Flush (wie bei den SPI-Panels oben,
+    // esp_lcd_panel_draw_bitmap() schreibt die gerenderte Kachel in den PSRAM-
+    // Framebuffer) statt direct_mode: direct_mode setzt voraus, dass LVGL
+    // wechselnde Framebuffer synchron mitverwalten kann - auf realer
+    // JC8048W550(C)-Hardware fuehrte das sowohl mit zwei vollen Framebuffern
+    // (Ghosting) als auch mit nur einem (komplettes Schwarz/Weiss-Flackern +
+    // Bildfehler links) zu sichtbaren Stoerungen. Der Bounce-Buffer oben
+    // entkoppelt die LCD-DMA ohnehin unabhaengig vom LVGL-Flush-Modus vom
+    // PSRAM-Framebuffer, ein kleiner SRAM-Flush-Puffer reicht daher.
     lvgl_port_display_cfg_t dcfg = {
         .panel_handle = panel,
-        .buffer_size  = (uint32_t)p->h_res * (uint32_t)p->v_res,
-        .double_buffer = false, // nur ein Framebuffer (num_fbs=1 oben) - Bounce-Buffer entkoppelt DMA/CPU
+        .buffer_size  = (uint32_t)p->h_res * LCD_FLUSH_LINES,
+        .double_buffer = false,
         .hres = p->h_res,
         .vres = p->v_res,
         .monochrome = false,
@@ -439,13 +448,9 @@ static lv_display_t *lcd_init_rgb(const board_profile_t *p)
         .flags = {
             .buff_dma   = false,
             .swap_bytes = false,
-            .direct_mode = true, // LVGL zeichnet direkt in den einen Framebuffer
         },
     };
-    lvgl_port_display_rgb_cfg_t rgb_cfg = {
-        .flags = { .bb_mode = true, .avoid_tearing = false },
-    };
-    return lvgl_port_add_disp_rgb(&dcfg, &rgb_cfg);
+    return lvgl_port_add_disp(&dcfg);
 }
 #endif // SOC_LCD_RGB_SUPPORTED
 

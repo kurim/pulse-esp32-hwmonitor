@@ -58,7 +58,10 @@ typedef struct {
     // zeigen ohne Inversion einen hellen statt dunklen Hintergrund. Frueher
     // fest auf false verdrahtet (fuer ILI9341/CYD korrekt), jetzt im
     // Webportal umschaltbar, da andere Panels (z.B. GC9A01) das anders
-    // brauchen koennen.
+    // brauchen koennen. Gilt NICHT fuer das monochrome SSD1309-Panel - das
+    // ist in lcd_init_mono_i2c() (display_ui.c) fest auf Dark-Mode-Inversion
+    // verdrahtet (schont das selbstleuchtende OLED), dieses Feld wird dafuer
+    // ignoriert.
     bool color_invert;
 
     // Anzeigesprache des Geraete-Displays ("de"/"en", siehe main/ui_strings.h).

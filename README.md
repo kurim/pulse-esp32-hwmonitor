@@ -302,7 +302,33 @@ These points are board-dependent and couldn't be verified without a device:
    choose "on" there. If red/blue are swapped instead (a different symptom
    than light/dark background), `color_invert` won't help - adjust
    `board_profile_t.bgr` in `board_profiles.c` instead.
-2. **New panel driver components** — `main/idf_component.yml` references
+   **SSD1309 is the exception:** confirmed on real hardware that it showed a
+   light background with dark icons, and the web portal's invert toggle had
+   no effect (it was never wired up for the mono/I2C init path). Since a
+   light background isn't just wrong but actively harmful (burn-in risk on a
+   self-lit OLED that's on continuously), `lcd_init_mono_i2c()` now calls
+   `esp_lcd_panel_invert_color(panel, true)` unconditionally instead of
+   reading `app_config.color_invert` - dark mode only, not user-switchable.
+   The web portal hides the "Invert colors" toggle for this display type
+   accordingly.
+2. **SSD1309 text/icon legibility** — also confirmed on real hardware: after
+   the background fix above, text, values and icons still didn't render.
+   Root cause was the font, not the panel or resolution: `display_ui_mono.c`
+   used anti-aliased (4bpp) fonts (`lv_font_montserrat_8`, and `mdi_icons_10`
+   generated with `--bpp 4`). LVGL dithers those gray levels down to the
+   panel's 1bpp framebuffer (`LV_COLOR_FORMAT_I1`), and at 8-10px font size
+   most glyph pixels have too little coverage to survive the dithering
+   threshold - they render as background instead of foreground. Card borders
+   stayed visible because they're drawn as solid, fully-opaque lines, not
+   anti-aliased glyphs. Fixed by switching to non-anti-aliased 1bpp fonts,
+   which is what LVGL recommends for monochrome displays: LVGL's built-in
+   `lv_font_unscii_8` (`CONFIG_LV_FONT_UNSCII_8` in `sdkconfig.defaults`) for
+   all text, and `mdi_icons_10` regenerated with `--bpp 1` (see the updated
+   generation command in `main/display/mdi_icons_10.h`). `unscii_8` is
+   monospace and wider per character than the previous proportional font, so
+   the mono UI now shows time without seconds ("HH:MM") and date without
+   year ("TT.MM") to keep everything on one row at 128px width.
+3. **New panel driver components** — `main/idf_component.yml` references
    `atanisoft/esp_lcd_ili9488` (community component, no official
    `espressif/` namespace entry exists for it) as well as
    `espressif/esp_lcd_st7796` and `espressif/esp_lcd_gc9a01` (both official,
@@ -311,20 +337,20 @@ These points are board-dependent and couldn't be verified without a device:
    component (`esp_lcd_panel_vendor.h`). An earlier state of this branch
    incorrectly had a non-existent `espressif/esp_lcd_panel_ssd1306` entry
    that broke the build with "Version solving failed" - that's fixed.
-3. **SSD1309 over I2C** — `display_ui.c: lcd_init_mono_i2c()` uses the core
+4. **SSD1309 over I2C** — `display_ui.c: lcd_init_mono_i2c()` uses the core
    SSD1306 driver (SSD1309 speaks the same protocol, but possibly with
    different contrast/multiplex defaults) via the new `i2c_master` driver
    (`driver/i2c_master.h`, `i2c_new_master_bus()` +
    `esp_lcd_new_panel_io_i2c(i2c_master_bus_handle_t, ...)`) - the old
    `driver/i2c.h` API no longer provides the expected bus handle type on
    ESP-IDF ≥5.2/6.x. Not yet verified on hardware.
-4. **GC9A01 round layout** — `display_ui.c: build_round_ui()` is
+5. **GC9A01 round layout** — `display_ui.c: build_round_ui()` is
    deliberately a simple placeholder (arcs/text, two screens, see section
    above), not a polished round design. Confirmed on a first test setup
    (180° correction needed, see point 5, and layout/screens/boot button
    fundamentally working) - polish (font sizes, icons on the weather
    screen, possibly more screens) still open.
-5. **Display rotation / mirroring** — `app_config.rotation` has a different
+6. **Display rotation / mirroring** — `app_config.rotation` has a different
    meaning depending on panel shape; the web portal only shows the values
    that make sense per display type (`renderRotationOptions()` in
    `web_portal.c`):
@@ -343,16 +369,16 @@ These points are board-dependent and couldn't be verified without a device:
      necessarily mean "right way up", it depends on the scan direction of
      the particular panel). Simply try 0-3, no reflashing needed (only a
      reboot after saving).
-6. **Touch calibration** — `touch_xpt2046.c`: `TOUCH_RAW_*` bounds and the
+7. **Touch calibration** — `touch_xpt2046.c`: `TOUCH_RAW_*` bounds and the
    axis mapping per `rotation`, relevant only for the ESP32-2432S028
    profile. Until recently, `rotation=3` (180°) mapped touch coordinates
    identically to `rotation=1` - the touch point was therefore swapped
    top/bottom and left/right relative to the rotated text. Both axes for
    `rotation=3` are now inverted relative to `rotation=1`.
-7. **LVGL component versions** — `main/idf_component.yml`. If the component
+8. **LVGL component versions** — `main/idf_component.yml`. If the component
    manager expects different versions, adjust the ranges there. The UI is
    written against the LVGL 9 API.
-8. **Icons (Material Design Icons)** — `main/display/font_mdi_icons_20.c` +
+9. **Icons (Material Design Icons)** — `main/display/font_mdi_icons_20.c` +
    `main/display/mdi_icons.h`, only used by the tile UI. Verified on ESP32-2432S028
    hardware (see "Icons" section below).
 

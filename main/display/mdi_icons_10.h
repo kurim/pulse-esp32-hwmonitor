@@ -13,10 +13,19 @@
 // stummen lv_font_conv-Cmap-/Kompressions-Bug siehe Kommentar in
 // mdi_icons.h.
 //
+// --bpp 1 statt der sonst ueblichen 4 (siehe mdi_icons.h/font_mdi_icons_20.c):
+// dieses Font wird NUR auf dem monochromen SSD1309 (LV_COLOR_FORMAT_I1)
+// verwendet. Anti-aliased 4bpp-Glyphen werden dort beim Dithern auf 1 Bit
+// pro Pixel groesstenteils weggerechnet (die duennen Konturen liegen unter
+// der Deckkraft-Schwelle) und waren dadurch auf echter Hardware praktisch
+// unsichtbar. Reine 1bpp-Bitmap-Glyphen (kein Anti-Aliasing) sind exakt der
+// von LVGL fuer monochrome Displays empfohlene Weg und bleiben zuverlaessig
+// sichtbar.
+//
 // Erzeugt mit:
 //   npx lv_font_conv --font materialdesignicons-webfont.ttf
 //     -r '0xF061A=>0xE001,0xF0241=>0xE002,0xF050F=>0xE003,0xF0599=>0xE004'
-//     --size 10 --bpp 4 --format lvgl --lv-font-name mdi_icons_10
+//     --size 10 --bpp 1 --format lvgl --lv-font-name mdi_icons_10
 //     --no-compress --no-prefilter -o font_mdi_icons_10.c
 //
 // Verwendung: make_label(parent, MDI10_CHIP, &mdi_icons_10, farbe);

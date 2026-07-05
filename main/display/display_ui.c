@@ -309,6 +309,17 @@ static lv_display_t *lcd_init_mono_i2c(const board_profile_t *p)
     LCD_CHECK(esp_lcd_new_panel_ssd1306(io, &panel_cfg, &panel));
     LCD_CHECK(esp_lcd_panel_reset(panel));
     LCD_CHECK(esp_lcd_panel_init(panel));
+    // LVGLs I1-Farbformat bildet unsere schwarze Standard-Hintergrundfarbe
+    // (COL_BG) auf Bit 0 ab, das die SSD1306/1309-GRAM im Normalmodus (Cmd
+    // 0xA6) als "Pixel AUS" (dunkel) interpretiert - in der Praxis zeigte
+    // sich auf echter Hardware trotzdem ein hell leuchtender Hintergrund mit
+    // dunklen Icons (Kontrollpanel-Fensterinversion o.ae., siehe Issue-Foto).
+    // app_config.color_invert (Webportal-Toggle "Farben invertieren") wurde
+    // hier nie ausgewertet, hatte also nie eine Wirkung - deshalb fest
+    // verdrahtet statt konfigurierbar: fuer dieses selbstleuchtende OLED-Panel
+    // ist ein dunkler Hintergrund die einzig sinnvolle Betriebsart (schont das
+    // Panel vor Einbrennen durch dauerhaft helle Flaechen).
+    LCD_CHECK(esp_lcd_panel_invert_color(panel, true));
     LCD_CHECK(esp_lcd_panel_disp_on_off(panel, true));
 
     s_hres = p->h_res;

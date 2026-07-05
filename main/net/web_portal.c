@@ -117,7 +117,7 @@ static const char INDEX_HTML[] =
 "<select id=\"language\"><option value=\"de\">Deutsch</option><option value=\"en\">English</option></select></div><div></div></div>"
 "<label data-i18n=\"lbl_standby\">Standby nach (Sekunden ohne Hardwaredaten, 0 = deaktiviert)</label>"
 "<input type=\"number\" id=\"standby_timeout_s\" min=\"0\" max=\"65535\">"
-"<div class=\"toggle\"><input type=\"checkbox\" id=\"color_invert\"><label style=\"margin:0\" data-i18n=\"lbl_invert\">Farben invertieren (Dark Mode, falls Hintergrund hell statt dunkel ist)</label></div></div>"
+"<div class=\"toggle\" id=\"invertRow\"><input type=\"checkbox\" id=\"color_invert\"><label style=\"margin:0\" data-i18n=\"lbl_invert\">Farben invertieren (Dark Mode, falls Hintergrund hell statt dunkel ist)</label></div></div>"
 "<div class=\"card\" id=\"pinCard\"><h2 data-i18n=\"card_pins\">Pin-Belegung (optional anpassen)</h2>"
 "<div class=\"hint\" data-i18n=\"hint_pins\">Leer lassen = Standard-Pin f&uuml;r den oben gew&auml;hlten Displaytyp verwenden (siehe Tabelle "
 "oben). Nur bei abweichender eigener Verdrahtung &auml;ndern. Wechselt der Displaytyp, werden alle Pin-Overrides "
@@ -253,6 +253,11 @@ static const char INDEX_HTML[] =
 "document.getElementById('pinGroupTouch').style.display=d.has_touch?'':'none';"
 "document.getElementById('pinGroupI2c').style.display=d.bus==='i2c'?'':'none';"
 "document.getElementById('pinGroupNav').style.display=d.shape==='round'?'':'none';"
+// SSD1309 (mono) ist fest auf Dark Mode verdrahtet (siehe
+// lcd_init_mono_i2c() in display_ui.c) - der Invertieren-Toggle hatte dort
+// nie eine Wirkung, deshalb hier ausblenden statt eine wirkungslose Option
+// anzuzeigen.
+"document.getElementById('invertRow').style.display=d.shape==='mono'?'none':'';"
 "PIN_FIELDS.forEach(f=>{const el=document.getElementById('pin_'+f);if(!el)return;"
 "const srcKey=PIN_KEY_MAP[f]||f;"
 "el.placeholder=(d.pins[srcKey]!==undefined)?('Default: '+d.pins[srcKey]):'Default';"

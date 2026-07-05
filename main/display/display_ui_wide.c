@@ -16,8 +16,8 @@
 #include <string.h>
 #include <stdio.h>
 
-#define TOPBAR_H 70
-#define CARD_Y   78
+#define TOPBAR_H 84
+#define CARD_Y   92
 #define CARD_H   380
 
 typedef struct {
@@ -194,8 +194,13 @@ static void build_tile(lv_obj_t *parent, int x, int w, const char *title, wide_t
     lv_obj_set_size(tile->chart, w - 24, CARD_H - 170 - 12);
     lv_obj_set_style_bg_color(tile->chart, COL_BG, 0);
     lv_obj_set_style_bg_opa(tile->chart, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(tile->chart, 0, 0);
     lv_obj_set_style_border_color(tile->chart, COL_SUB, 0);
     lv_obj_set_style_border_width(tile->chart, 1, 0);
+    // Nur linker/rechter Rand - oben/unten (0%/100%) keine eigene Linie, die
+    // stiess sonst (kombiniert mit der Default-Eckenrundung) am Rand vorbei
+    // ueber den Rahmen hinaus.
+    lv_obj_set_style_border_side(tile->chart, LV_BORDER_SIDE_LEFT | LV_BORDER_SIDE_RIGHT, 0);
     lv_obj_set_style_pad_all(tile->chart, 2, 0);
     lv_obj_set_style_size(tile->chart, 0, 0, LV_PART_INDICATOR);
     lv_chart_set_type(tile->chart, LV_CHART_TYPE_LINE);
@@ -219,40 +224,45 @@ static void build_wide_main(void)
     lv_obj_set_style_bg_color(bar, COL_CARD, 0);
     lv_obj_set_style_bg_opa(bar, LV_OPA_COVER, 0);
     lv_obj_set_style_radius(bar, 0, 0);
-    lv_obj_set_style_border_width(bar, 0, 0);
+    // Blaue Linie unten, wie bei den beiden Kacheln (COL_CARD_BORDER-Rahmen).
+    lv_obj_set_style_border_color(bar, COL_CARD_BORDER, 0);
+    lv_obj_set_style_border_width(bar, 2, 0);
+    lv_obj_set_style_border_side(bar, LV_BORDER_SIDE_BOTTOM, 0);
     lv_obj_set_style_pad_all(bar, 0, 0);
     lv_obj_clear_flag(bar, LV_OBJ_FLAG_SCROLLABLE);
 
     w_lbl_time = make_label(bar, "--:--:--", &lv_font_montserrat_28, COL_TEXT);
     lv_obj_set_pos(w_lbl_time, 12, 6);
     w_lbl_date = make_label(bar, "", &lv_font_montserrat_16, COL_SUB);
-    lv_obj_set_pos(w_lbl_date, 12, 42);
+    lv_obj_set_pos(w_lbl_date, 12, 50);
 
+    // Wetter-Haupttemperatur auf Uhrzeit-Schriftgroesse gebracht (macht die
+    // Navbar insgesamt hoeher, siehe TOPBAR_H oben).
     lv_obj_t *sun = make_label(bar, MDI_SUN, &mdi_icons_20, COL_YELLOW);
-    lv_obj_set_pos(sun, 230, 8);
-    w_lbl_weather = make_label(bar, "--C", &lv_font_montserrat_20, COL_TEXT);
+    lv_obj_set_pos(sun, 230, 10);
+    w_lbl_weather = make_label(bar, "--C", &lv_font_montserrat_28, COL_TEXT);
     lv_obj_set_pos(w_lbl_weather, 254, 6);
-    lv_obj_set_width(w_lbl_weather, 60);
+    lv_obj_set_width(w_lbl_weather, 80);
     lv_label_set_long_mode(w_lbl_weather, LV_LABEL_LONG_MODE_CLIP);
 
     lv_obj_t *hu = make_label(bar, MDI_HUMIDITY, &mdi_icons_20, COL_RAIN);
-    lv_obj_set_pos(hu, 230, 40);
+    lv_obj_set_pos(hu, 230, 50);
     w_lbl_humidity = make_label(bar, "--", &lv_font_montserrat_14, COL_SUB);
-    lv_obj_set_pos(w_lbl_humidity, 254, 42);
+    lv_obj_set_pos(w_lbl_humidity, 254, 52);
     lv_obj_set_width(w_lbl_humidity, 44);
     lv_label_set_long_mode(w_lbl_humidity, LV_LABEL_LONG_MODE_CLIP);
 
     lv_obj_t *wi = make_label(bar, MDI_WIND, &mdi_icons_20, COL_SUB);
-    lv_obj_set_pos(wi, 400, 8);
+    lv_obj_set_pos(wi, 420, 10);
     w_lbl_wind = make_label(bar, "--", &lv_font_montserrat_14, COL_SUB);
-    lv_obj_set_pos(w_lbl_wind, 424, 10);
+    lv_obj_set_pos(w_lbl_wind, 444, 12);
     lv_obj_set_width(w_lbl_wind, 220);
     lv_label_set_long_mode(w_lbl_wind, LV_LABEL_LONG_MODE_CLIP);
 
     lv_obj_t *ri = make_label(bar, MDI_RAIN, &mdi_icons_20, COL_RAIN);
-    lv_obj_set_pos(ri, 400, 40);
+    lv_obj_set_pos(ri, 420, 50);
     w_lbl_rain = make_label(bar, "--", &lv_font_montserrat_14, COL_SUB);
-    lv_obj_set_pos(w_lbl_rain, 424, 42);
+    lv_obj_set_pos(w_lbl_rain, 444, 52);
     lv_obj_set_width(w_lbl_rain, 100);
     lv_label_set_long_mode(w_lbl_rain, LV_LABEL_LONG_MODE_CLIP);
 

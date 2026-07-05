@@ -53,7 +53,13 @@ esp_lcd_touch_handle_t touch_gt911_init(const board_profile_t *profile)
         .y_max = profile->v_res,
         .rst_gpio_num = profile->touch_rst,
         .int_gpio_num = profile->touch_int,
-        .levels = { .reset = 1, .interrupt = 0 },
+        // reset=0: der esp_lcd_touch-Reset-Ablauf legt den Pin zuerst auf
+        // levels.reset (Reset AKTIV), danach auf !levels.reset (Reset
+        // freigegeben) - GT911-Module sind ueblicherweise aktiv-LOW resettet.
+        // Der vorherige Wert (1, aus einem GT1151-Beispiel uebernommen, dort
+        // ohne echten RST-Pin getestet) hielt den Chip vermutlich dauerhaft im
+        // Reset - erklaert, warum Touch bisher gar nicht reagierte.
+        .levels = { .reset = 0, .interrupt = 0 },
         .flags = { .swap_xy = 0, .mirror_x = mirror_x, .mirror_y = mirror_y },
     };
 

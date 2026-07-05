@@ -33,6 +33,7 @@ typedef enum {
     UI_STR_CONNECTED,           // "verbunden"
     UI_STR_DISCONNECTED,        // "getrennt"
     UI_STR_MQTT_FMT,            // "MQTT: %s"
+    UI_STR_USB_FMT,             // "USB/Seriell: %s"
     UI_STR_FREE_HEAP_FMT,       // "Freier Speicher: %u KB"
     UI_STR_SETTINGS_HINT,       // "WLAN/MQTT/Wetter werden weiterhin ueber das Webportal konfiguriert."
     UI_STR_AP_BTN_IDLE,         // "Neustart in Setup-AP"

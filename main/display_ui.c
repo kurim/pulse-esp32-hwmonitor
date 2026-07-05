@@ -1022,7 +1022,13 @@ static void build_round_ui(void)
     // gemeinsamer, in CPU/GPU-Haelften geteilter Ring). Rechte Haelfte (CPU,
     // rotation=270) und linke Haelfte (GPU, rotation=90) grenzen exakt
     // aneinander (0/180° Uebergang), ueberschneiden sich also nicht.
-    int arc_d = d - 16;
+    // Nur 2px Rand statt vorher 8px - nutzt die runde Panelflaeche fast bis
+    // zum Rand aus (mehr Abstand liess auf dem physischen Panel unnoetig viel
+    // schwarzen Rand stehen).
+    int arc_d = d - 4;
+    // Feste Strichbreite statt Theme-Default, damit arc_d oben gezielt darauf
+    // abgestimmt werden kann.
+    const int ARC_W = 14;
 
     round_arc_cpu = lv_arc_create(scr_main);
     lv_obj_set_size(round_arc_cpu, arc_d, arc_d);
@@ -1031,6 +1037,13 @@ static void build_round_ui(void)
     lv_arc_set_bg_angles(round_arc_cpu, 0, 180);
     lv_arc_set_range(round_arc_cpu, 0, 100);
     lv_obj_set_style_arc_color(round_arc_cpu, COL_CPU_BAR_A, LV_PART_INDICATOR);
+    lv_obj_set_style_arc_width(round_arc_cpu, ARC_W, LV_PART_MAIN);
+    lv_obj_set_style_arc_width(round_arc_cpu, ARC_W, LV_PART_INDICATOR);
+    // Abgerundete Strichenden (LVGL-Default) erzeugen an den beiden Enden
+    // jedes Halbkreises (unten, bei 0/180°) einen ueberstehenden "Knubbel" -
+    // fuer einen sauberen, glatten Halbring-Abschluss deaktiviert.
+    lv_obj_set_style_arc_rounded(round_arc_cpu, false, LV_PART_MAIN);
+    lv_obj_set_style_arc_rounded(round_arc_cpu, false, LV_PART_INDICATOR);
     lv_obj_remove_flag(round_arc_cpu, LV_OBJ_FLAG_CLICKABLE);
     // LVGL-Arcs sind eigentlich Schieberegler und zeichnen deshalb per
     // Default einen Knob (dicker Punkt an der aktuellen Werteposition) -
@@ -1045,6 +1058,10 @@ static void build_round_ui(void)
     lv_arc_set_bg_angles(round_arc_gpu, 0, 180);
     lv_arc_set_range(round_arc_gpu, 0, 100);
     lv_obj_set_style_arc_color(round_arc_gpu, COL_GPU_BAR_A, LV_PART_INDICATOR);
+    lv_obj_set_style_arc_width(round_arc_gpu, ARC_W, LV_PART_MAIN);
+    lv_obj_set_style_arc_width(round_arc_gpu, ARC_W, LV_PART_INDICATOR);
+    lv_obj_set_style_arc_rounded(round_arc_gpu, false, LV_PART_MAIN);
+    lv_obj_set_style_arc_rounded(round_arc_gpu, false, LV_PART_INDICATOR);
     lv_obj_remove_flag(round_arc_gpu, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_remove_style(round_arc_gpu, NULL, LV_PART_KNOB);
 

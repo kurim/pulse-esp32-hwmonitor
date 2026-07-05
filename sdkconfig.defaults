@@ -31,7 +31,14 @@ CONFIG_LV_USE_ARC=y
 # der geringen Aufloesung zusaetzlich eine kleinere Schrift als die sonst
 # genutzten 14-48px (das MDI-Icon-Pendant dazu ist font_mdi_icons_10.c, kein
 # Kconfig-Font).
-CONFIG_LV_FONT_MONTSERRAT_8=y
+#
+# UNSCII 8 statt Montserrat 8 fuer das SSD1309-Minimal-UI: Montserrat ist
+# anti-aliased (4bpp) und wird beim Dithern auf das 1bpp-Framebuffer des
+# monochromen Panels (LV_COLOR_FORMAT_I1) fast vollstaendig weggerechnet -
+# auf echter Hardware praktisch unlesbar. UNSCII 8 ist ein reines 1bpp-
+# Bitmap-Font (kein Anti-Aliasing) und der von LVGL fuer monochrome Displays
+# empfohlene Weg.
+CONFIG_LV_FONT_UNSCII_8=y
 CONFIG_LV_FONT_MONTSERRAT_14=y
 CONFIG_LV_FONT_MONTSERRAT_16=y
 CONFIG_LV_FONT_MONTSERRAT_20=y

@@ -4,6 +4,16 @@
 // schmale Rahmen-Karten (CPU/GPU) mit je drei Icon+Wert-Zeilen (Auslastung/
 // Leistung/Temperatur). Layout in einem ESPHome-LVGL-Designer entworfen und
 // hier 1:1 als lv_obj/lv_label-Aufrufe nachgebaut.
+//
+// Text-Font ist lv_font_unscii_8 (monospace, 8px breit) statt der sonst
+// genutzten anti-aliased Montserrat-Fonts - auf dem monochromen I1-
+// Framebuffer werden Anti-Aliasing-Graustufen beim Dithern auf 1 Bit
+// groesstenteils weggerechnet und waren auf echter Hardware praktisch
+// unsichtbar (siehe CHANGELOG). Monospace-8px braucht mehr horizontalen
+// Platz als die vorherige proportionale Schrift, deshalb Uhrzeit ohne
+// Sekunden ("HH:MM") und Datum ohne Jahr ("TT.MM" statt "TT.MM.JJJJ") -
+// beides passt bei 128px Breite sonst nicht mehr neben Wetter-Icon und
+// -Temperatur in eine Zeile.
 // ------------------------------------------------------------------
 #include "display_ui_internal.h"
 
@@ -28,7 +38,7 @@ static lv_obj_t *mono_card(lv_obj_t *parent, int x, int y, int w, int h, const c
     lv_obj_set_style_pad_all(c, 0, 0);
     lv_obj_clear_flag(c, LV_OBJ_FLAG_SCROLLABLE);
 
-    lv_obj_t *hdr = make_label(c, title, &lv_font_montserrat_8, COL_TEXT);
+    lv_obj_t *hdr = make_label(c, title, &lv_font_unscii_8, COL_TEXT);
     lv_obj_set_width(hdr, w - 2);
     lv_obj_set_style_text_align(hdr, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_pos(hdr, 0, 0);
@@ -41,7 +51,7 @@ static void mono_metric_row(lv_obj_t *card, const char *icon, int y, lv_obj_t **
     lv_obj_t *ic = make_label(card, icon, &mdi_icons_10, COL_TEXT);
     lv_obj_set_pos(ic, 6, y);
 
-    lv_obj_t *val = make_label(card, "", &lv_font_montserrat_8, COL_TEXT);
+    lv_obj_t *val = make_label(card, "", &lv_font_unscii_8, COL_TEXT);
     lv_obj_set_pos(val, 20, y);
     lv_obj_set_width(val, 32);
     lv_obj_set_style_text_align(val, LV_TEXT_ALIGN_RIGHT, 0);
@@ -53,10 +63,10 @@ void build_mono_ui(void)
     scr_main = lv_obj_create(NULL);
     style_screen(scr_main);
 
-    mono_lbl_time = make_label(scr_main, "--:--:--", &lv_font_montserrat_8, COL_TEXT);
+    mono_lbl_time = make_label(scr_main, "--:--", &lv_font_unscii_8, COL_TEXT);
     lv_obj_set_pos(mono_lbl_time, 2, 0);
 
-    mono_lbl_date = make_label(scr_main, "--.--.----", &lv_font_montserrat_8, COL_TEXT);
+    mono_lbl_date = make_label(scr_main, "--.--", &lv_font_unscii_8, COL_TEXT);
     lv_obj_set_width(mono_lbl_date, 40);
     lv_obj_set_style_text_align(mono_lbl_date, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_align(mono_lbl_date, LV_ALIGN_TOP_RIGHT, -2, 0);
@@ -66,7 +76,7 @@ void build_mono_ui(void)
     mono_icon_weather = make_label(scr_main, MDI10_SUN, &mdi_icons_10, COL_TEXT);
     lv_obj_set_pos(mono_icon_weather, 47, 0);
     lv_obj_add_flag(mono_icon_weather, LV_OBJ_FLAG_HIDDEN);
-    mono_lbl_weather = make_label(scr_main, "", &lv_font_montserrat_8, COL_TEXT);
+    mono_lbl_weather = make_label(scr_main, "", &lv_font_unscii_8, COL_TEXT);
     lv_obj_set_pos(mono_lbl_weather, 57, 0);
     lv_obj_add_flag(mono_lbl_weather, LV_OBJ_FLAG_HIDDEN);
 
@@ -89,9 +99,9 @@ void refresh_mono_ui(void)
     struct tm ti;
     localtime_r(&now, &ti);
     if (ti.tm_year > 100) {
-        strftime(buf, sizeof(buf), "%H:%M:%S", &ti);
+        strftime(buf, sizeof(buf), "%H:%M", &ti);
         lv_label_set_text(mono_lbl_time, buf);
-        strftime(buf, sizeof(buf), "%d.%m.%Y", &ti);
+        strftime(buf, sizeof(buf), "%d.%m", &ti);
         lv_label_set_text(mono_lbl_date, buf);
     }
 

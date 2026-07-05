@@ -13,6 +13,17 @@ follows [Keep a Changelog](https://keepachangelog.com/), versioning follows
   burn-in on a self-lit OLED, the panel now always initializes in inverted
   (dark-background) mode, hardwired rather than user-switchable; the invert
   toggle is hidden in the web portal for this display type.
+- **Fix: SSD1309 text/icons invisible on real hardware**: after fixing the
+  background above, labels, values and icons still didn't show up. Cause:
+  the mono UI used anti-aliased (4bpp) fonts (`lv_font_montserrat_8`,
+  `mdi_icons_10`), and LVGL dithers those gray levels down to the panel's
+  1bpp framebuffer (`LV_COLOR_FORMAT_I1`) - at 8-10px size, most glyph
+  pixels have too little coverage to survive and get dithered away.
+  Switched to non-anti-aliased 1bpp fonts (LVGL's built-in `lv_font_unscii_8`
+  for text, `mdi_icons_10` regenerated with `--bpp 1`), the path LVGL
+  recommends for monochrome displays. The wider monospace font needed a bit
+  more horizontal room, so the mono UI now shows time without seconds
+  ("HH:MM") and date without year ("TT.MM").
 - **USB/serial hardware data source**: hardware data (CPU/GPU load, temp,
   power) can now be received over USB/serial (UART0, 115200 baud) as an
   alternative to MQTT, switchable via a dropdown in the web portal - no

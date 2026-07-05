@@ -281,8 +281,6 @@ static const char INDEX_HTML[] =
 "const sel=document.getElementById('rotation');const prev=sel.value;"
 "const opts=(d&&d.shape==='rect')"
 "?[[1,'Standard'],[3,t('rotated_180')+(d.has_touch?t('touch_also_rotated'):'')]]"
-":(d&&d.shape==='wide')"
-"?[[0,'Standard'],[2,t('rotated_180')+(d.has_touch?t('touch_also_rotated'):'')]]"
 ":[[0,'Rotation 0'],[1,'Rotation 1'],[2,'Rotation 2'],[3,'Rotation 3']];"
 "sel.innerHTML='';opts.forEach(o=>{const el=document.createElement('option');el.value=o[0];el.textContent=o[1];sel.appendChild(el);});"
 "if(opts.some(o=>String(o[0])===prev))sel.value=prev;}"

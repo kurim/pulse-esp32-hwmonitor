@@ -405,22 +405,24 @@ static lv_display_t *lcd_init_rgb(const board_profile_t *p)
     LCD_CHECK(esp_lcd_panel_init(panel));
     LCD_CHECK(esp_lcd_panel_invert_color(panel, app_config.color_invert));
 
-    // Nur 0/2 (normal/180 Grad) unterstuetzt: swap_xy liesse sich bei einem
-    // RGB-Parallel-Panel nicht per Software-Kommando umsetzen (anders als bei
-    // den SPI-Panels oben) - es muesste die komplette Sync-Timing-Konfiguration
-    // fuer Hoch-/Querformat tauschen. Fuer das JC8048W550 (fest verbautes
-    // 800x480-Landscape-Modul) ist das nicht vorgesehen; touch_gt911_init()
-    // spiegelt die Touch-Koordinaten passend mit.
-    //
-    // mirror_x=true ist hier die feste Grundkorrektur (nicht optional!): auf
-    // realer Hardware erschien das Bild in Rotation 0 seitenverkehrt (CPU-/
-    // GPU-Kachel und Topbar-Inhalte vertauscht links/rechts) - der
-    // Scan-Richtung dieses Panels entspricht offenbar nicht der Annahme "erstes
-    // Pixel im Framebuffer = physisch links". Rotation 2 (180 Grad) kehrt
-    // beide Achsen zusaetzlich um.
-    bool rotated180 = (app_config.rotation == 2);
-    bool mirror_x = !rotated180;
-    bool mirror_y = rotated180;
+    // Kein swap_xy (siehe unten), aber alle vier Mirror-Kombinationen zum
+    // Durchprobieren freigegeben - analog zu LCD_SHAPE_ROUND oben in
+    // lcd_init_color_spi(): welche Kombination auf reale Hardware "richtig
+    // herum" abbildet, ist nicht zuverlaessig vorhersagbar (haengt von der
+    // internen Scan-Richtung des jeweiligen Panels/Bausatzes ab). Auf dem
+    // JC8048W550(C) erwies sich sowohl "keine Korrektur" als auch die zunaechst
+    // angenommene mirror_x=true beide als falsch - daher hier wie beim runden
+    // UI alle vier Werte ueber die Rotation-Auswahl im Webportal anbieten,
+    // statt im Code zu raten. touch_gt911_init() spiegelt die Touch-
+    // Koordinaten passend zur selben Zuordnung mit.
+    bool mirror_x = false, mirror_y = false;
+    switch (app_config.rotation) {
+        case 1:  mirror_x = true;  mirror_y = false; break;
+        case 2:  mirror_x = false; mirror_y = true;  break;
+        case 3:  mirror_x = true;  mirror_y = true;  break;
+        case 0:
+        default: mirror_x = false; mirror_y = false; break;
+    }
     s_hres = p->h_res;
     s_vres = p->v_res;
 

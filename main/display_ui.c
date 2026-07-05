@@ -1136,6 +1136,7 @@ static void build_round_ui(void)
     // duennen Ring aus. Fuer reine Anzeige-Ringe weg damit.
     lv_obj_remove_style(round_arc_cpu, NULL, LV_PART_KNOB);
 
+    int arc_d_gpu = arc_d - 2 * (arc_width + arc_ring_gap);
     round_arc_gpu = lv_arc_create(scr_main);
     lv_obj_set_size(round_arc_gpu, inner_d, inner_d);
     lv_obj_center(round_arc_gpu);

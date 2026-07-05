@@ -3,11 +3,13 @@
 #include "shared_state.h"
 #include "board_profiles.h"
 #include "touch_xpt2046.h"
+#include "touch_gt911.h"
 
 #include "driver/spi_master.h"
 #include "driver/i2c_master.h"
 #include "driver/gpio.h"
 #include "driver/ledc.h"
+#include "soc/soc_caps.h"
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_panel_ops.h"
 #include "esp_lcd_panel_vendor.h" // Core esp_lcd: SSD1306/SSD1309 (esp_lcd_new_panel_ssd1306)
@@ -15,6 +17,10 @@
 #include "esp_lcd_ili9488.h"      // Community component atanisoft/esp_lcd_ili9488
 #include "esp_lcd_st7796.h"
 #include "esp_lcd_gc9a01.h"
+#if SOC_LCD_RGB_SUPPORTED
+#include "esp_lcd_panel_rgb.h"    // Guition JC8048W550: RGB565-Parallelbus (nur ESP32-S3)
+#include "esp_idf_version.h"
+#endif
 #include "esp_lvgl_port.h"
 #include "esp_log.h"
 #include "lvgl.h"
@@ -98,7 +104,7 @@ static void enter_standby(void)
 {
     if (s_standby) return;
     s_standby = true;
-    if (s_profile->shape == LCD_SHAPE_RECT) {
+    if (s_profile->shape == LCD_SHAPE_RECT || s_profile->shape == LCD_SHAPE_WIDE) {
         lv_screen_load(scr_standby);
     }
 }
@@ -112,6 +118,8 @@ static void exit_standby(void)
         if (s_screen == SCR_CPU || s_screen == SCR_GPU) target = scr_detail;
         else if (s_screen == SCR_SETTINGS)              target = scr_settings;
         lv_screen_load(target);
+    } else if (s_profile->shape == LCD_SHAPE_WIDE) {
+        lv_screen_load((s_screen == SCR_SETTINGS) ? scr_settings : scr_main);
     }
 }
 
@@ -332,6 +340,96 @@ static lv_display_t *lcd_init_mono_i2c(const board_profile_t *p)
     return lvgl_port_add_disp(&dcfg);
 }
 
+// ------------------------------------------------------------------
+// RGB565-Parallel-Panel (nur Guition JC8048W550: ST7262, "auto-init" ohne
+// Kommando-Schnittstelle) - ESP32-S3-exklusiv (LCD_CAM-Peripherie), siehe
+// SOC_LCD_RGB_SUPPORTED-Guard oben. Anders als die SPI-Panels oben braucht
+// dieses Board kein esp_lcd_panel_io_handle_t (kein Command-Bus) und nutzt
+// PSRAM fuer die Framebuffer (einziges Board in diesem Projekt mit PSRAM) -
+// dadurch sind zwei volle Framebuffer + "avoid_tearing" (Ping-Pong zwischen
+// beiden) moeglich, waehrend die uebrigen (PSRAM-losen) Panels oben mit
+// einem einzelnen kleinen SRAM-Flush-Puffer auskommen muessen.
+// ------------------------------------------------------------------
+#if SOC_LCD_RGB_SUPPORTED
+static lv_display_t *lcd_init_rgb(const board_profile_t *p)
+{
+    backlight_init(p->bl);
+
+    esp_lcd_rgb_panel_config_t panel_cfg = {
+        .clk_src = LCD_CLK_SRC_PLL160M,
+#if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(5, 3, 0)
+        .psram_trans_align = 64,
+#else
+        .dma_burst_size = 64,
+#endif
+        .data_width = 16,
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(6, 0, 0)
+        .in_color_format = LCD_COLOR_FMT_RGB565,
+#else
+        .bits_per_pixel = 16,
+#endif
+        .de_gpio_num = p->rgb_de,
+        .pclk_gpio_num = p->rgb_pclk,
+        .vsync_gpio_num = p->rgb_vsync,
+        .hsync_gpio_num = p->rgb_hsync,
+        .disp_gpio_num = -1, // kein separater Panel-Enable-Pin verdrahtet
+        .timings = {
+            .pclk_hz = p->rgb_pclk_hz,
+            .h_res = p->h_res,
+            .v_res = p->v_res,
+            .hsync_pulse_width = p->rgb_hsync_pulse_width,
+            .hsync_back_porch  = p->rgb_hsync_back_porch,
+            .hsync_front_porch = p->rgb_hsync_front_porch,
+            .vsync_pulse_width = p->rgb_vsync_pulse_width,
+            .vsync_back_porch  = p->rgb_vsync_back_porch,
+            .vsync_front_porch = p->rgb_vsync_front_porch,
+            .flags.pclk_active_neg = true,
+        },
+        .flags.fb_in_psram = 1,
+        .num_fbs = 2, // zusammen mit rgb_cfg.flags.avoid_tearing (s.u.): Ping-Pong-Framebuffer
+    };
+    for (int i = 0; i < 16; i++) panel_cfg.data_gpio_nums[i] = p->rgb_data[i];
+
+    esp_lcd_panel_handle_t panel = NULL;
+    LCD_CHECK(esp_lcd_new_rgb_panel(&panel_cfg, &panel));
+    LCD_CHECK(esp_lcd_panel_init(panel));
+    LCD_CHECK(esp_lcd_panel_invert_color(panel, app_config.color_invert));
+
+    // Nur 0/2 (normal/180 Grad) unterstuetzt: swap_xy liesse sich bei einem
+    // RGB-Parallel-Panel nicht per Software-Kommando umsetzen (anders als bei
+    // den SPI-Panels oben) - es muesste die komplette Sync-Timing-Konfiguration
+    // fuer Hoch-/Querformat tauschen. Fuer das JC8048W550 (fest verbautes
+    // 800x480-Landscape-Modul) ist das nicht vorgesehen; touch_gt911_init()
+    // spiegelt die Touch-Koordinaten passend mit.
+    bool mirror = (app_config.rotation == 2);
+    s_hres = p->h_res;
+    s_vres = p->v_res;
+
+    lvgl_port_cfg_t pcfg = ESP_LVGL_PORT_INIT_CONFIG();
+    LCD_CHECK(lvgl_port_init(&pcfg));
+
+    lvgl_port_display_cfg_t dcfg = {
+        .panel_handle = panel,
+        .buffer_size  = (uint32_t)p->h_res * (uint32_t)p->v_res,
+        .double_buffer = false, // Doppelpufferung erfolgt ueber num_fbs=2 oben, nicht hier
+        .hres = p->h_res,
+        .vres = p->v_res,
+        .monochrome = false,
+        .color_format = LV_COLOR_FORMAT_RGB565,
+        .rotation = { .swap_xy = false, .mirror_x = mirror, .mirror_y = mirror },
+        .flags = {
+            .buff_dma   = false,
+            .swap_bytes = false,
+            .direct_mode = true, // LVGL zeichnet direkt in einen der beiden Framebuffer
+        },
+    };
+    lvgl_port_display_rgb_cfg_t rgb_cfg = {
+        .flags = { .bb_mode = false, .avoid_tearing = true },
+    };
+    return lvgl_port_add_disp_rgb(&dcfg, &rgb_cfg);
+}
+#endif // SOC_LCD_RGB_SUPPORTED
+
 static lv_display_t *lcd_init(void)
 {
     if (app_config.display_type == DISPLAY_NONE) {
@@ -347,6 +445,11 @@ static lv_display_t *lcd_init(void)
     if (s_profile->bus == LCD_BUS_I2C) {
         return lcd_init_mono_i2c(s_profile);
     }
+#if SOC_LCD_RGB_SUPPORTED
+    if (s_profile->bus == LCD_BUS_RGB) {
+        return lcd_init_rgb(s_profile);
+    }
+#endif
     return lcd_init_color_spi(s_profile);
 }
 
@@ -363,6 +466,34 @@ static void touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
         // Erster Touch nach dem Standby weckt nur das Display auf und loest
         // keine Aktion aus (verhindert versehentliches Navigieren/Antippen
         // von Kacheln beim Aufwecken).
+        exit_standby();
+        data->state = LV_INDEV_STATE_RELEASED;
+        return;
+    }
+
+    if (touched) {
+        data->point.x = x;
+        data->point.y = y;
+        data->state   = LV_INDEV_STATE_PRESSED;
+    } else {
+        data->state = LV_INDEV_STATE_RELEASED;
+    }
+}
+
+// GT911-Pendant zu touch_read_cb oben: gleiche Standby-Aufweck-Semantik
+// (erster Touch weckt nur auf, loest keine Aktion aus), aber ueber die
+// esp_lcd_touch-Abstraktion statt eines eigenen SPI-Registerzugriffs.
+static esp_lcd_touch_handle_t s_gt911_tp;
+
+static void touch_gt911_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
+{
+    (void)indev;
+    uint16_t x = 0, y = 0;
+    uint8_t cnt = 0;
+    esp_lcd_touch_read_data(s_gt911_tp);
+    bool touched = esp_lcd_touch_get_coordinates(s_gt911_tp, &x, &y, NULL, &cnt, 1) && cnt > 0;
+
+    if (touched && s_standby) {
         exit_standby();
         data->state = LV_INDEV_STATE_RELEASED;
         return;
@@ -444,6 +575,7 @@ static void tick_cb(lv_timer_t *t)
     switch (s_profile->shape) {
         case LCD_SHAPE_MONO:  refresh_mono_ui();  break;
         case LCD_SHAPE_ROUND: refresh_round_ui(); break;
+        case LCD_SHAPE_WIDE:  refresh_wide_ui();  break;
         default:              refresh_now();      break;
     }
 }
@@ -465,8 +597,13 @@ void display_ui_begin(void)
         return;
     }
 
+    esp_lcd_touch_handle_t gt911 = NULL;
     if (s_profile->has_touch) {
-        touch_xpt2046_init(s_profile);
+        if (s_profile->bus == LCD_BUS_RGB) {
+            gt911 = touch_gt911_init(s_profile);
+        } else {
+            touch_xpt2046_init(s_profile);
+        }
     }
     nav_button_init(s_profile);
 
@@ -478,7 +615,15 @@ void display_ui_begin(void)
     // Ab hier LVGL-Objekte nur unter Lock anlegen (esp_lvgl_port-Task laeuft).
     lvgl_port_lock(0);
 
-    if (s_profile->has_touch) {
+    if (s_profile->bus == LCD_BUS_RGB) {
+        if (gt911) {
+            s_gt911_tp = gt911;
+            lv_indev_t *indev = lv_indev_create();
+            lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);
+            lv_indev_set_read_cb(indev, touch_gt911_read_cb);
+            lv_indev_set_display(indev, disp);
+        }
+    } else if (s_profile->has_touch) {
         lv_indev_t *indev = lv_indev_create();
         lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);
         lv_indev_set_read_cb(indev, touch_read_cb);
@@ -492,6 +637,10 @@ void display_ui_begin(void)
             break;
         case LCD_SHAPE_ROUND:
             build_round_ui();
+            lv_screen_load(scr_main);
+            break;
+        case LCD_SHAPE_WIDE:
+            build_wide_ui();
             lv_screen_load(scr_main);
             break;
         default:

@@ -142,6 +142,9 @@ static const char INDEX_HTML[] =
 "<div class=\"row\"><div><label>SDA</label><input type=\"number\" id=\"pin_i2c_sda\" min=\"0\" max=\"48\"></div>"
 "<div><label>SCL</label><input type=\"number\" id=\"pin_i2c_scl\" min=\"0\" max=\"48\"></div></div>"
 "<label data-i18n=\"lbl_i2c_addr\">I2C-Adresse (dezimal, z.B. 60 f&uuml;r 0x3C)</label><input type=\"number\" id=\"pin_i2c_addr\" min=\"1\" max=\"127\"></div>"
+"<div id=\"pinGroupTouchI2c\">"
+"<div class=\"row\"><div><label>Touch RESET</label><input type=\"number\" id=\"pin_touch_rst\" min=\"0\" max=\"48\"></div>"
+"<div><label>Touch INT</label><input type=\"number\" id=\"pin_touch_int\" min=\"0\" max=\"48\"></div></div></div>"
 "<div id=\"pinGroupNav\">"
 "<label data-i18n=\"lbl_nav_button\">Navigationstaste (BOOT-Button, -1 = keine)</label><input type=\"number\" id=\"pin_nav_button\" min=\"-1\" max=\"48\"></div>"
 "</div>"
@@ -224,7 +227,7 @@ static const char INDEX_HTML[] =
 "const key=document.getElementById('display_type').value;"
 "const d=displays.find(x=>x.key===key);const el=document.getElementById('displayInfo');"
 "if(!d||d.bus==='none'){el.innerHTML='';return;}"
-"let rows='<tr><td>Bus</td><td>'+d.bus.toUpperCase()+(d.has_touch?' + Touch (XPT2046)':'')+'</td></tr>'"
+"let rows='<tr><td>Bus</td><td>'+d.bus.toUpperCase()+(d.has_touch?(d.bus==='rgb'?' + Touch (GT911)':' + Touch (XPT2046)'):'')+'</td></tr>'"
 "+'<tr><td>'+t('resolution')+'</td><td>'+d.h_res+'x'+d.v_res+(d.shape==='round'?t('shape_round'):d.shape==='mono'?t('shape_mono'):'')+'</td></tr>';"
 "if(d.bus==='spi'){rows+='<tr><td>MOSI/MISO/SCLK</td><td>GPIO'+d.pins.mosi+' / GPIO'+d.pins.miso+' / GPIO'+d.pins.sclk+'</td></tr>'"
 "+'<tr><td>CS / DC</td><td>GPIO'+d.pins.cs+' / GPIO'+d.pins.dc+'</td></tr>'"
@@ -232,12 +235,16 @@ static const char INDEX_HTML[] =
 "+'<tr><td>Backlight</td><td>'+(d.pins.bl<0?t('no_pin_self_lit'):'GPIO'+d.pins.bl)+'</td></tr>';"
 "if(d.has_touch){rows+='<tr><td>Touch CS/IRQ</td><td>GPIO'+d.pins.touch_cs+' / GPIO'+d.pins.touch_irq+'</td></tr>'"
 "+'<tr><td>Touch MOSI/MISO/CLK</td><td>GPIO'+d.pins.touch_mosi+' / GPIO'+d.pins.touch_miso+' / GPIO'+d.pins.touch_clk+'</td></tr>';}"
+"}else if(d.bus==='rgb'){rows+='<tr><td>'+t('fixed_wiring')+'</td><td>RGB565, 16-bit (800x480)</td></tr>'"
+"+'<tr><td>Touch SDA/SCL</td><td>GPIO'+d.pins.sda+' / GPIO'+d.pins.scl+'</td></tr>'"
+"+'<tr><td>Touch '+t('i2c_address')+'</td><td>0x'+d.pins.addr.toString(16).toUpperCase()+'</td></tr>'"
+"+'<tr><td>Touch RESET/INT</td><td>GPIO'+d.pins.touch_rst+' / GPIO'+d.pins.touch_int+'</td></tr>';"
 "}else{rows+='<tr><td>SDA / SCL</td><td>GPIO'+d.pins.sda+' / GPIO'+d.pins.scl+'</td></tr>'"
 "+'<tr><td>'+t('i2c_address')+'</td><td>0x'+d.pins.addr.toString(16).toUpperCase()+'</td></tr>'"
 "+'<tr><td>VCC / GND</td><td>3.3V / GND</td></tr>';}"
 "el.innerHTML='<table class=\"pintable\">'+rows+'</table>';}"
 "let activeKey='';"
-"const PIN_FIELDS=['mosi','miso','sclk','cs','dc','rst','bl','touch_cs','touch_irq','touch_mosi','touch_miso','touch_clk','i2c_sda','i2c_scl','i2c_addr','nav_button'];"
+"const PIN_FIELDS=['mosi','miso','sclk','cs','dc','rst','bl','touch_cs','touch_irq','touch_mosi','touch_miso','touch_clk','i2c_sda','i2c_scl','i2c_addr','nav_button','touch_rst','touch_int'];"
 "const PIN_KEY_MAP={i2c_sda:'sda',i2c_scl:'scl',i2c_addr:'addr'};"
 // cyd_ili9341 ist die feste Werksverdrahtung des ESP32-2432S028 - dort gibt
 // es (anders als bei generisch verdrahteten Profilen) nichts anzupassen,
@@ -250,8 +257,9 @@ static const char INDEX_HTML[] =
 "const fixed=(key===FIXED_WIRING_KEY)||(d.bus==='none');"
 "document.getElementById('pinCard').style.display=fixed?'none':'';"
 "document.getElementById('pinGroupSpi').style.display=d.bus==='spi'?'':'none';"
-"document.getElementById('pinGroupTouch').style.display=d.has_touch?'':'none';"
-"document.getElementById('pinGroupI2c').style.display=d.bus==='i2c'?'':'none';"
+"document.getElementById('pinGroupTouch').style.display=(d.has_touch&&d.bus==='spi')?'':'none';"
+"document.getElementById('pinGroupI2c').style.display=(d.bus==='i2c'||d.bus==='rgb')?'':'none';"
+"document.getElementById('pinGroupTouchI2c').style.display=(d.bus==='rgb'&&d.has_touch)?'':'none';"
 "document.getElementById('pinGroupNav').style.display=d.shape==='round'?'':'none';"
 "PIN_FIELDS.forEach(f=>{const el=document.getElementById('pin_'+f);if(!el)return;"
 "const srcKey=PIN_KEY_MAP[f]||f;"
@@ -273,6 +281,8 @@ static const char INDEX_HTML[] =
 "const sel=document.getElementById('rotation');const prev=sel.value;"
 "const opts=(d&&d.shape==='rect')"
 "?[[1,'Standard'],[3,t('rotated_180')+(d.has_touch?t('touch_also_rotated'):'')]]"
+":(d&&d.shape==='wide')"
+"?[[0,'Standard'],[2,t('rotated_180')+(d.has_touch?t('touch_also_rotated'):'')]]"
 ":[[0,'Rotation 0'],[1,'Rotation 1'],[2,'Rotation 2'],[3,'Rotation 3']];"
 "sel.innerHTML='';opts.forEach(o=>{const el=document.createElement('option');el.value=o[0];el.textContent=o[1];sel.appendChild(el);});"
 "if(opts.some(o=>String(o[0])===prev))sel.value=prev;}"
@@ -627,6 +637,8 @@ static esp_err_t h_config_get(httpd_req_t *req)
     if (ov->i2c_addr == 0) cJSON_AddNullToObject(d, "pin_i2c_addr");
     else cJSON_AddNumberToObject(d, "pin_i2c_addr", ov->i2c_addr);
     add_pin_or_null(d, "pin_nav_button", ov->nav_button);
+    add_pin_or_null(d, "pin_touch_rst", ov->touch_rst);
+    add_pin_or_null(d, "pin_touch_int", ov->touch_int);
 
     char *out = cJSON_PrintUnformatted(d);
     httpd_resp_set_type(req, "application/json");
@@ -653,9 +665,11 @@ static esp_err_t h_displays(httpd_req_t *req)
         cJSON *d = cJSON_CreateObject();
         cJSON_AddStringToObject(d, "key", board_profile_key((display_type_t)i));
         cJSON_AddStringToObject(d, "name", p->name);
-        cJSON_AddStringToObject(d, "bus", i == DISPLAY_NONE ? "none" : (p->bus == LCD_BUS_I2C ? "i2c" : "spi"));
+        cJSON_AddStringToObject(d, "bus", i == DISPLAY_NONE ? "none"
+            : (p->bus == LCD_BUS_I2C ? "i2c" : (p->bus == LCD_BUS_RGB ? "rgb" : "spi")));
         cJSON_AddStringToObject(d, "shape",
-            p->shape == LCD_SHAPE_ROUND ? "round" : (p->shape == LCD_SHAPE_MONO ? "mono" : "rect"));
+            p->shape == LCD_SHAPE_ROUND ? "round" : (p->shape == LCD_SHAPE_MONO ? "mono"
+            : (p->shape == LCD_SHAPE_WIDE ? "wide" : "rect")));
         cJSON_AddBoolToObject(d, "has_touch", p->has_touch);
         cJSON_AddNumberToObject(d, "h_res", p->h_res);
         cJSON_AddNumberToObject(d, "v_res", p->v_res);
@@ -668,6 +682,16 @@ static esp_err_t h_displays(httpd_req_t *req)
             cJSON_AddNumberToObject(pins, "sda", p->i2c_sda);
             cJSON_AddNumberToObject(pins, "scl", p->i2c_scl);
             cJSON_AddNumberToObject(pins, "addr", p->i2c_addr);
+        } else if (p->bus == LCD_BUS_RGB) {
+            // Der 20-Pin-RGB-Datenbus selbst wird bewusst nicht einzeln
+            // aufgelistet (werksseitig fest verdrahtetes Komplettmodul, siehe
+            // board_profiles.h: pin_override_t-Kommentar) - nur der GT911-
+            // Touch-I2C-Bus (ueberschreibbar) taucht in der Pin-Tabelle auf.
+            cJSON_AddNumberToObject(pins, "sda", p->i2c_sda);
+            cJSON_AddNumberToObject(pins, "scl", p->i2c_scl);
+            cJSON_AddNumberToObject(pins, "addr", p->i2c_addr);
+            cJSON_AddNumberToObject(pins, "touch_rst", p->touch_rst);
+            cJSON_AddNumberToObject(pins, "touch_int", p->touch_int);
         } else {
             cJSON_AddNumberToObject(pins, "mosi", p->mosi);
             cJSON_AddNumberToObject(pins, "miso", p->miso);
@@ -807,6 +831,8 @@ static esp_err_t h_config_post(httpd_req_t *req)
     cfg_pin(root, "pin_i2c_scl", &ov->i2c_scl);
     cfg_pin_addr(root, "pin_i2c_addr", &ov->i2c_addr);
     cfg_pin(root, "pin_nav_button", &ov->nav_button);
+    cfg_pin(root, "pin_touch_rst", &ov->touch_rst);
+    cfg_pin(root, "pin_touch_int", &ov->touch_int);
 
     cJSON_Delete(root);
 

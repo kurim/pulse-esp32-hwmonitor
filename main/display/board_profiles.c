@@ -83,6 +83,35 @@
 #define GC9A01_NAV_BUTTON BOOT_BUTTON_GPIO
 #endif
 
+// ------------------------------------------------------------------
+// Guition JC8048W550(C): ESP32-S3, ST7262-Controller (16-bit RGB565
+// Parallelbus, "auto-init", keine Kommando-Schnittstelle noetig) + GT911-
+// Kapazitiv-Touch ueber I2C. Werksverdrahtung, identisch zur breiteren
+// Sunton/CYD-"8048S050C"-Boardfamilie (baugleiche RGB-TFT-Module) - Pins und
+// Timings unten aus der dort verbreiteten ESPHome/esp32-smartdisplay-
+// Referenzverdrahtung uebernommen, siehe Kommentare je Feld.
+//
+// PCLK: 12.5-16MHz sind in Community-Configs fuer diese Boardfamilie
+// gebraeuchlich; fuer das JC8048W550(C) speziell wurde ein sichtbares
+// Bildzittern erst bei ca. 15-15.4MHz behoben (siehe rzeldent/esp32-
+// smartdisplay Diskussion #185) - daher 15MHz statt der oft zitierten 16MHz
+// als Default hier.
+// ------------------------------------------------------------------
+#define JC8048_DE     40
+#define JC8048_VSYNC  41
+#define JC8048_HSYNC  39
+#define JC8048_PCLK   42
+#define JC8048_BL     2
+// Bit-Reihenfolge D0..D15 = B0..B4, G0..G5, R0..R4 (RGB565: 5+6+5 Bit) - vgl.
+// esp_lcd_rgb_panel_config_t.data_gpio_nums in esp_lcd_panel_rgb.h.
+#define JC8048_DATA { 8, 3, 46, 9, 1, 5, 6, 7, 15, 16, 4, 45, 48, 47, 21, 14 }
+
+#define JC8048_TOUCH_SDA 19
+#define JC8048_TOUCH_SCL 20
+#define JC8048_TOUCH_INT 18
+#define JC8048_TOUCH_RST 38
+#define JC8048_TOUCH_ADDR 0x5D
+
 static const board_profile_t s_profiles[DISPLAY_TYPE_COUNT] = {
     [DISPLAY_CYD_ILI9341] = {
         .name = "ESP32-2432S028 - ILI9341 320x240, SPI + XPT2046-Touch",
@@ -128,6 +157,23 @@ static const board_profile_t s_profiles[DISPLAY_TYPE_COUNT] = {
         .nav_button = -1,
         .h_res = 128, .v_res = 64, .bgr = false, .color_16bit = false,
     },
+    [DISPLAY_GUITION_JC8048W550] = {
+        .name = "Guition JC8048W550(C) - ST7262 800x480 RGB-Parallel + GT911-Touch",
+        .bus = LCD_BUS_RGB, .shape = LCD_SHAPE_WIDE, .has_touch = true,
+        .bl = JC8048_BL,
+        .rgb_data = JC8048_DATA,
+        .rgb_hsync = JC8048_HSYNC, .rgb_vsync = JC8048_VSYNC, .rgb_de = JC8048_DE, .rgb_pclk = JC8048_PCLK,
+        .rgb_pclk_hz = 15 * 1000 * 1000,
+        .rgb_hsync_pulse_width = 4, .rgb_hsync_back_porch = 8, .rgb_hsync_front_porch = 8,
+        .rgb_vsync_pulse_width = 4, .rgb_vsync_back_porch = 8, .rgb_vsync_front_porch = 8,
+        // Touch-I2C-Bus (siehe board_profiles.h: bei LCD_BUS_RGB doppelt
+        // genutzte i2c_sda/i2c_scl/i2c_addr-Felder).
+        .i2c_sda = JC8048_TOUCH_SDA, .i2c_scl = JC8048_TOUCH_SCL, .i2c_addr = JC8048_TOUCH_ADDR,
+        .i2c_hz = 400 * 1000,
+        .touch_rst = JC8048_TOUCH_RST, .touch_int = JC8048_TOUCH_INT,
+        .nav_button = -1,
+        .h_res = 800, .v_res = 480, .bgr = false, .color_16bit = true,
+    },
     // Platzhalter-Eintrag - Werte werden nie an esp_lcd/SPI/I2C uebergeben,
     // lcd_init() in display_ui.c bricht fuer DISPLAY_NONE vorher ab.
     [DISPLAY_NONE] = {
@@ -143,6 +189,16 @@ bool board_profile_is_available(display_type_t type)
 {
     // "Kein Display" ist immer waehlbar, unabhaengig vom Zielchip.
     if (type == DISPLAY_NONE) return true;
+    // RGB-Parallel-LCD (esp_lcd_new_rgb_panel/LCD_CAM-Peripherie) gibt es in
+    // diesem Build-Target-Satz nur auf dem ESP32-S3 - auf klassischem ESP32/
+    // C3 existiert die Peripherie schlicht nicht.
+    if (type == DISPLAY_GUITION_JC8048W550) {
+#if CONFIG_IDF_TARGET_ESP32S3
+        return true;
+#else
+        return false;
+#endif
+    }
 #if CONFIG_IDF_TARGET_ESP32
     // Klassischer ESP32: nur das CYD-Profil (feste Werksverdrahtung des
     // ESP32-2432S028) - die generischen Profile sind hier nicht gemeint,
@@ -178,6 +234,7 @@ void pin_override_set_defaults(pin_override_t *ov)
     ov->i2c_sda = ov->i2c_scl = PIN_UNSET;
     ov->i2c_addr = 0;
     ov->nav_button = PIN_UNSET;
+    ov->touch_rst = ov->touch_int = PIN_UNSET;
 }
 
 static int apply_pin(int16_t override, int base)
@@ -209,6 +266,9 @@ board_profile_t board_profile_apply_overrides(const board_profile_t *base, const
     p.i2c_addr = (ov->i2c_addr == 0) ? base->i2c_addr : ov->i2c_addr;
 
     p.nav_button = apply_pin(ov->nav_button, base->nav_button);
+
+    p.touch_rst = apply_pin(ov->touch_rst, base->touch_rst);
+    p.touch_int = apply_pin(ov->touch_int, base->touch_int);
     return p;
 }
 
@@ -218,6 +278,7 @@ static const char *s_keys[DISPLAY_TYPE_COUNT] = {
     [DISPLAY_ST7796S]     = "st7796s",
     [DISPLAY_GC9A01]      = "gc9a01",
     [DISPLAY_SSD1309_I2C] = "ssd1309_i2c",
+    [DISPLAY_GUITION_JC8048W550] = "guition_jc8048w550",
     [DISPLAY_NONE]        = "none",
 };
 

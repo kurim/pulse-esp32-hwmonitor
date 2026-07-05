@@ -25,6 +25,14 @@ dependencies:
   atanisoft/esp_lcd_ili9488: "^1.1.0"
   espressif/esp_lcd_st7796: "^1"
   espressif/esp_lcd_gc9a01: "^2"
+  # GT911-Kapazitiv-Touch fuers Guition JC8048W550 (RGB-Parallel-Profil,
+  # display_ui.c: lcd_init_rgb()/touch_gt911.c). esp_lcd_touch ist die
+  # Basis-Abstraktion (esp_lcd_touch_handle_t/esp_lcd_touch_read_data/...),
+  # von esp_lcd_touch_gt911 zwar bereits als eigene Abhaengigkeit gezogen,
+  # hier aber zusaetzlich explizit aufgefuehrt, da touch_gt911.h/.c sie direkt
+  # einbinden.
+  espressif/esp_lcd_touch: "^1"
+  espressif/esp_lcd_touch_gt911: "^1"
   # SSD1306/SSD1309 sind bereits Teil des Core-esp_lcd-Components
   # (esp_lcd_panel_vendor.h -> esp_lcd_panel_ssd1306.h, esp_lcd_new_panel_ssd1306()),
   # brauchen daher KEINEN separaten Registry-Eintrag - anders als hier zuvor

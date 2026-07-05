@@ -1017,33 +1017,33 @@ static void build_round_ui(void)
     style_screen(scr_main);
 
     int d = s_hres < s_vres ? s_hres : s_vres; // Durchmesser = kleinere Kante
-    // Beide Arcs auf demselben Radius (vorher d-8 vs. d-28 - dadurch wirkten
-    // sie als zwei ineinander verschachtelte Halbkreise statt als ein
-    // gemeinsamer, in CPU/GPU-Haelften geteilter Ring). Rechte Haelfte (CPU,
-    // rotation=270) und linke Haelfte (GPU, rotation=90) grenzen exakt
-    // aneinander (0/180° Uebergang), ueberschneiden sich also nicht.
-    // Nur 2px Rand statt vorher 8px - nutzt die runde Panelflaeche fast bis
-    // zum Rand aus (mehr Abstand liess auf dem physischen Panel unnoetig viel
-    // schwarzen Rand stehen).
-    int arc_d = d - 4;
-    // Feste Strichbreite statt Theme-Default, damit arc_d oben gezielt darauf
-    // abgestimmt werden kann.
-    const int ARC_W = 14;
+    // Zwei konzentrische Ringe (aussen CPU, innen GPU) statt nebeneinander-
+    // liegender Halbkreise: beide ueber denselben Winkelbereich 120-60 Grad
+    // im Uhrzeigersinn (= 300 Grad Bogen, 60 Grad Luecke unten bei 6 Uhr statt
+    // eines kompletten Kreises), duenner heller Indikator-Bogen auf einer
+    // dickeren, transluzenten Hintergrundspur - Layout an ein per ESPHome-
+    // LVGL-Designer gebautes Referenzbild angelehnt.
+    const int ARC_START = 120, ARC_END = 60;
+    const int ARC_BG_W = 20, ARC_FG_W = 10;
+    int outer_d = d - 4;         // CPU, fast randlos aussen
+    int inner_d = outer_d - 40;  // GPU, mit sichtbarem Abstand zum aeusseren Ring
 
     round_arc_cpu = lv_arc_create(scr_main);
-    lv_obj_set_size(round_arc_cpu, arc_d, arc_d);
+    lv_obj_set_size(round_arc_cpu, outer_d, outer_d);
     lv_obj_center(round_arc_cpu);
-    lv_arc_set_rotation(round_arc_cpu, 270);
-    lv_arc_set_bg_angles(round_arc_cpu, 0, 180);
+    lv_arc_set_bg_angles(round_arc_cpu, ARC_START, ARC_END);
     lv_arc_set_range(round_arc_cpu, 0, 100);
+    // Eigentlicher Hintergrund-Rect des Arc-Widgets (nicht die Bogenlinie)
+    // aus, sonst blieb ein dezentes helles Kreis-Panel hinter dem Ring stehen.
+    lv_obj_set_style_bg_opa(round_arc_cpu, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_border_width(round_arc_cpu, 0, LV_PART_MAIN);
+    lv_obj_set_style_arc_color(round_arc_cpu, COL_CPU_BAR_A, LV_PART_MAIN);
+    lv_obj_set_style_arc_opa(round_arc_cpu, LV_OPA_20, LV_PART_MAIN);
+    lv_obj_set_style_arc_width(round_arc_cpu, ARC_BG_W, LV_PART_MAIN);
+    lv_obj_set_style_arc_rounded(round_arc_cpu, true, LV_PART_MAIN);
     lv_obj_set_style_arc_color(round_arc_cpu, COL_CPU_BAR_A, LV_PART_INDICATOR);
-    lv_obj_set_style_arc_width(round_arc_cpu, ARC_W, LV_PART_MAIN);
-    lv_obj_set_style_arc_width(round_arc_cpu, ARC_W, LV_PART_INDICATOR);
-    // Abgerundete Strichenden (LVGL-Default) erzeugen an den beiden Enden
-    // jedes Halbkreises (unten, bei 0/180°) einen ueberstehenden "Knubbel" -
-    // fuer einen sauberen, glatten Halbring-Abschluss deaktiviert.
-    lv_obj_set_style_arc_rounded(round_arc_cpu, false, LV_PART_MAIN);
-    lv_obj_set_style_arc_rounded(round_arc_cpu, false, LV_PART_INDICATOR);
+    lv_obj_set_style_arc_width(round_arc_cpu, ARC_FG_W, LV_PART_INDICATOR);
+    lv_obj_set_style_arc_rounded(round_arc_cpu, true, LV_PART_INDICATOR);
     lv_obj_remove_flag(round_arc_cpu, LV_OBJ_FLAG_CLICKABLE);
     // LVGL-Arcs sind eigentlich Schieberegler und zeichnen deshalb per
     // Default einen Knob (dicker Punkt an der aktuellen Werteposition) -
@@ -1052,16 +1052,19 @@ static void build_round_ui(void)
     lv_obj_remove_style(round_arc_cpu, NULL, LV_PART_KNOB);
 
     round_arc_gpu = lv_arc_create(scr_main);
-    lv_obj_set_size(round_arc_gpu, arc_d, arc_d);
+    lv_obj_set_size(round_arc_gpu, inner_d, inner_d);
     lv_obj_center(round_arc_gpu);
-    lv_arc_set_rotation(round_arc_gpu, 90);
-    lv_arc_set_bg_angles(round_arc_gpu, 0, 180);
+    lv_arc_set_bg_angles(round_arc_gpu, ARC_START, ARC_END);
     lv_arc_set_range(round_arc_gpu, 0, 100);
+    lv_obj_set_style_bg_opa(round_arc_gpu, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_border_width(round_arc_gpu, 0, LV_PART_MAIN);
+    lv_obj_set_style_arc_color(round_arc_gpu, COL_GPU_BAR_A, LV_PART_MAIN);
+    lv_obj_set_style_arc_opa(round_arc_gpu, LV_OPA_20, LV_PART_MAIN);
+    lv_obj_set_style_arc_width(round_arc_gpu, ARC_BG_W, LV_PART_MAIN);
+    lv_obj_set_style_arc_rounded(round_arc_gpu, true, LV_PART_MAIN);
     lv_obj_set_style_arc_color(round_arc_gpu, COL_GPU_BAR_A, LV_PART_INDICATOR);
-    lv_obj_set_style_arc_width(round_arc_gpu, ARC_W, LV_PART_MAIN);
-    lv_obj_set_style_arc_width(round_arc_gpu, ARC_W, LV_PART_INDICATOR);
-    lv_obj_set_style_arc_rounded(round_arc_gpu, false, LV_PART_MAIN);
-    lv_obj_set_style_arc_rounded(round_arc_gpu, false, LV_PART_INDICATOR);
+    lv_obj_set_style_arc_width(round_arc_gpu, ARC_FG_W, LV_PART_INDICATOR);
+    lv_obj_set_style_arc_rounded(round_arc_gpu, true, LV_PART_INDICATOR);
     lv_obj_remove_flag(round_arc_gpu, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_remove_style(round_arc_gpu, NULL, LV_PART_KNOB);
 

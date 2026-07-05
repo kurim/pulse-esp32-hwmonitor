@@ -37,6 +37,11 @@ void config_store_load(app_config_t *cfg)
 
     get_str(h, "wifi_ssid",  cfg->wifi_ssid,  sizeof(cfg->wifi_ssid));
     get_str(h, "wifi_pass",  cfg->wifi_pass,  sizeof(cfg->wifi_pass));
+
+    uint8_t hw_src = (uint8_t)cfg->hw_source;
+    nvs_get_u8(h, "hw_src", &hw_src);
+    cfg->hw_source = (hw_source_t)hw_src;
+
     get_str(h, "mqtt_host",  cfg->mqtt_host,  sizeof(cfg->mqtt_host));
     nvs_get_u16(h, "mqtt_port", &cfg->mqtt_port);
     get_str(h, "mqtt_user",  cfg->mqtt_user,  sizeof(cfg->mqtt_user));
@@ -97,6 +102,7 @@ void config_store_save(const app_config_t *cfg)
 
     nvs_set_str(h, "wifi_ssid",  cfg->wifi_ssid);
     nvs_set_str(h, "wifi_pass",  cfg->wifi_pass);
+    nvs_set_u8 (h, "hw_src",     (uint8_t)cfg->hw_source);
     nvs_set_str(h, "mqtt_host",  cfg->mqtt_host);
     nvs_set_u16(h, "mqtt_port",  cfg->mqtt_port);
     nvs_set_str(h, "mqtt_user",  cfg->mqtt_user);

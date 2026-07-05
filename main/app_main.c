@@ -3,6 +3,7 @@
 #include "display_ui.h"
 #include "web_portal.h"
 #include "mqtt_handler.h"
+#include "serial_handler.h"
 #include "time_service.h"
 #include "weather_service.h"
 
@@ -30,7 +31,15 @@ void app_main(void)
 
     web_portal_begin();      // WLAN verbinden bzw. Setup-AP + Webserver
     time_service_begin();    // SNTP + Zeitzone
-    mqtt_handler_begin();    // MQTT-Hardwaredaten
+
+    // Hardwaredaten-Quelle: nur einer der beiden Wege gleichzeitig aktiv,
+    // umschaltbar per Dropdown im Webportal (app_config.hw_source).
+    if (app_config.hw_source == HW_SOURCE_USB) {
+        serial_handler_begin(); // Hardwaredaten per USB/UART0
+    } else {
+        mqtt_handler_begin();   // Hardwaredaten per MQTT
+    }
+
     weather_service_begin(); // optionaler Wetter-Abruf
 
     ESP_LOGI(TAG, "Setup abgeschlossen.");

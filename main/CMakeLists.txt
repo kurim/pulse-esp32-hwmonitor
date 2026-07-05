@@ -3,6 +3,7 @@ idf_component_register(
         "app_main.c"
         "config_store.c"
         "shared_state.c"
+        "hw_data.c"
         "display/board_profiles.c"
         "display/display_ui.c"
         "display/display_ui_rect.c"
@@ -14,6 +15,7 @@ idf_component_register(
         "display/touch_xpt2046.c"
         "net/web_portal.c"
         "net/mqtt_handler.c"
+        "net/serial_handler.c"
         "net/time_service.c"
         "net/weather_service.c"
     # "." fuer app_main.c/config_store.h/shared_state.h; "display"/"net"
@@ -39,6 +41,8 @@ idf_component_register(
         esp_driver_spi
         esp_driver_gpio
         esp_driver_ledc
+        # serial_handler.c (USB/UART0-Empfang als Alternative zu MQTT)
+        esp_driver_uart
         # display_ui.c (SSD1309-Profil) nutzt den neuen i2c_master-Treiber
         # (driver/i2c_master.h) statt der alten driver/i2c.h-API - letztere
         # liefert auf ESP-IDF 6.0.2 nicht mehr den von esp_lcd_new_panel_io_i2c

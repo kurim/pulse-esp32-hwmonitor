@@ -12,12 +12,22 @@ extern "C" {
 // Ringpuffer-Laenge fuer Verlaufsdiagramme (60 Samples = ~1 Min bei 1 Wert/Sek)
 #define HIST_LEN 60
 
+// Quelle der Hardwaredaten (CPU/GPU-Werte): entweder vom MQTT-Broker oder
+// direkt per USB/UART0 vom PC-Client (siehe main/net/serial_handler.c).
+// Nur einer der beiden Wege ist gleichzeitig aktiv (siehe app_main.c).
+typedef enum {
+    HW_SOURCE_MQTT = 0,
+    HW_SOURCE_USB  = 1,
+} hw_source_t;
+
 // ----------------------------------------------------------------
 // Konfiguration (per Webportal gesetzt, in NVS persistiert)
 // ----------------------------------------------------------------
 typedef struct {
     char     wifi_ssid[33];
     char     wifi_pass[65];
+
+    hw_source_t hw_source;   // MQTT (Default) oder USB/Seriell
 
     char     mqtt_host[65];
     uint16_t mqtt_port;
@@ -102,6 +112,7 @@ extern history_t      cpu_history;
 extern history_t      gpu_history;
 extern volatile bool  wifi_connected;
 extern volatile bool  mqtt_connected;
+extern volatile bool  serial_connected;  // true nach der ersten gueltigen Zeile per USB/UART0
 
 // Millisekunden seit Boot (Arduino-millis()-Aequivalent).
 int64_t now_ms(void);

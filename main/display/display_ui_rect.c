@@ -302,8 +302,13 @@ void build_main(void)
     build_tile(scr_main, margin + tile_w + gap, tile_w, "GPU", &gpu_tile, SCR_GPU, true, COL_GPU_BAR_A, COL_GPU_BAR_B);
 
     // "Warte auf Daten"-Hinweis, ueberlagert die Kachel-Unterkante bis zur
-    // ersten MQTT-Nachricht (danach ausgeblendet).
-    lbl_waiting = make_label(scr_main, ui_str(UI_STR_WAITING_MQTT), &lv_font_montserrat_14, COL_SUB);
+    // ersten Nachricht der konfigurierten Quelle (danach ausgeblendet). Text
+    // wird einmalig beim Boot passend zu app_config.hw_source gewaehlt - ein
+    // Quellenwechsel greift ohnehin erst nach einem Neustart (gleiches Muster
+    // wie Sprache/Displaytyp/Rotation).
+    lbl_waiting = make_label(scr_main,
+        (app_config.hw_source == HW_SOURCE_USB) ? ui_str(UI_STR_WAITING_DATA) : ui_str(UI_STR_WAITING_MQTT),
+        &lv_font_montserrat_14, COL_SUB);
     lv_obj_set_width(lbl_waiting, s_hres - 12);
     lv_obj_set_style_text_align(lbl_waiting, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_style_bg_color(lbl_waiting, COL_BG, 0);
@@ -554,8 +559,9 @@ void refresh_now(void)
         lv_label_set_text(standby_lbl_weather, "");
     }
 
-    // --- WLAN/MQTT-Statusicon ---
-    lv_color_t sc = (wifi_connected && mqtt_connected) ? COL_GREEN
+    // --- WLAN/Hardwaredaten-Statusicon (Quelle: MQTT oder USB/Seriell) ---
+    bool data_source_ok = (app_config.hw_source == HW_SOURCE_USB) ? serial_connected : mqtt_connected;
+    lv_color_t sc = (wifi_connected && data_source_ok) ? COL_GREEN
                     : (wifi_connected ? COL_YELLOW : COL_WARN);
     lv_obj_set_style_bg_color(icon_wifi, sc, 0);
 
@@ -606,7 +612,13 @@ void refresh_now(void)
         snprintf(buf, sizeof(buf), ui_str(UI_STR_WIFI_FMT),
                  web_portal_ap_mode() ? ui_str(UI_STR_WIFI_SETUP_AP) : (wifi_connected ? ui_str(UI_STR_CONNECTED) : ui_str(UI_STR_DISCONNECTED)));
         lv_label_set_text(set_wifi, buf);
-        snprintf(buf, sizeof(buf), ui_str(UI_STR_MQTT_FMT), mqtt_connected ? ui_str(UI_STR_CONNECTED) : ui_str(UI_STR_DISCONNECTED));
+        if (app_config.hw_source == HW_SOURCE_USB) {
+            snprintf(buf, sizeof(buf), ui_str(UI_STR_USB_FMT),
+                     serial_connected ? ui_str(UI_STR_CONNECTED) : ui_str(UI_STR_DISCONNECTED));
+        } else {
+            snprintf(buf, sizeof(buf), ui_str(UI_STR_MQTT_FMT),
+                     mqtt_connected ? ui_str(UI_STR_CONNECTED) : ui_str(UI_STR_DISCONNECTED));
+        }
         lv_label_set_text(set_mqtt, buf);
         snprintf(buf, sizeof(buf), ui_str(UI_STR_FREE_HEAP_FMT), (unsigned)(esp_get_free_heap_size() / 1024));
         lv_label_set_text(set_heap, buf);

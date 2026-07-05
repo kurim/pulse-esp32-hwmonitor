@@ -1,23 +1,27 @@
 """
 Beispiel-Bridge: liest CPU-Werte (und optional GPU via pynvml/pyadl) aus und
-published sie als JSON per MQTT an das ESP32-CYD-Board.
+sendet sie als JSON entweder per MQTT oder per USB/Seriell an das ESP32-Board
+(umschaltbar im Webportal des Geräts, siehe README.md).
 
 Dies ist nur ein Startpunkt - für echte CPU/GPU-Temperaturen und Leistungsaufnahme
 unter Windows i.d.R. LibreHardwareMonitor (mit aktivierter Remote-Web-API) oder
 HWiNFO64 (Shared Memory Support) als Datenquelle nutzen statt psutil.
 
 Abhängigkeiten:
-    pip install paho-mqtt psutil requests
+    pip install paho-mqtt psutil requests pyserial
 
-Nutzung:
+Nutzung (MQTT, Standard):
     python pc_bridge_example.py --host 192.168.1.50 --topic pulsemqtt/hwinfo
+
+Nutzung (USB/Seriell, Gerät muss im Webportal auf "USB/Seriell" gestellt sein):
+    python pc_bridge_example.py --serial COM3
+    python pc_bridge_example.py --serial /dev/ttyUSB0
 """
 import argparse
 import json
 import time
 
 import psutil
-import paho.mqtt.client as mqtt
 
 
 def read_metrics():
@@ -47,15 +51,8 @@ def read_metrics():
     }
 
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--host", required=True, help="MQTT-Broker-Adresse")
-    parser.add_argument("--port", type=int, default=1883)
-    parser.add_argument("--topic", default="pulsemqtt/hwinfo")
-    parser.add_argument("--user", default=None)
-    parser.add_argument("--password", default=None)
-    parser.add_argument("--interval", type=float, default=2.0, help="Sekunden zwischen Updates")
-    args = parser.parse_args()
+def run_mqtt(args):
+    import paho.mqtt.client as mqtt
 
     client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
     if args.user:
@@ -74,6 +71,40 @@ def main():
     finally:
         client.loop_stop()
         client.disconnect()
+
+
+def run_serial(args):
+    import serial
+
+    # Baudrate ist auf dem Geraet fest auf 115200 verdrahtet (siehe
+    # main/net/serial_handler.c), Format: ein JSON-Objekt pro Zeile.
+    with serial.Serial(args.serial, 115200) as ser:
+        print(f"Verbunden mit {args.serial} (115200 Baud), sende alle {args.interval}s")
+        try:
+            while True:
+                line = json.dumps(read_metrics()) + "\n"
+                ser.write(line.encode("utf-8"))
+                time.sleep(args.interval)
+        except KeyboardInterrupt:
+            pass
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("--host", help="MQTT-Broker-Adresse")
+    source.add_argument("--serial", help="Serieller Port (z.B. COM3 oder /dev/ttyUSB0) statt MQTT")
+    parser.add_argument("--port", type=int, default=1883, help="MQTT-Broker-Port")
+    parser.add_argument("--topic", default="pulsemqtt/hwinfo", help="MQTT-Topic")
+    parser.add_argument("--user", default=None, help="MQTT-Benutzername")
+    parser.add_argument("--password", default=None, help="MQTT-Passwort")
+    parser.add_argument("--interval", type=float, default=2.0, help="Sekunden zwischen Updates")
+    args = parser.parse_args()
+
+    if args.serial:
+        run_serial(args)
+    else:
+        run_mqtt(args)
 
 
 if __name__ == "__main__":

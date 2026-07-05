@@ -4,6 +4,14 @@ All notable changes to this project are documented here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/), versioning follows
 `vX.Y.Z-idf` tags (see `.github/workflows/build-idf.yml`).
 
+## [Unreleased]
+
+- **USB/serial hardware data source**: hardware data (CPU/GPU load, temp,
+  power) can now be received over USB/serial (UART0, 115200 baud) as an
+  alternative to MQTT, switchable via a dropdown in the web portal - no
+  broker/WiFi required for this path. `tools/pc_bridge_example.py` gained a
+  `--serial` option to send data this way instead of `--host` (MQTT).
+
 ## [v1.0.0-idf] - First release
 
 First official release of the ESP-IDF port. One firmware image per target

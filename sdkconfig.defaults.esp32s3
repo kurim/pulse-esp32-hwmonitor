@@ -1,0 +1,25 @@
+# Zusaetzlich zu sdkconfig.defaults automatisch von idf.py fuer
+# "idf.py set-target esp32s3" gemergt (Datei-Namenskonvention
+# "sdkconfig.defaults.<target>" - kein manuelles Einbinden noetig).
+#
+# --- PSRAM (nur fuers Guition JC8048W550-Profil noetig) ---
+# Die RGB-Parallel-Panel-Init (display_ui.c: lcd_init_rgb(), esp_lcd_new_rgb_panel
+# mit flags.fb_in_psram=1, num_fbs=2) braucht zwei volle 800x480x16bit-
+# Framebuffer (~1.5 MB zusammen) - das passt in keinen internen SRAM eines
+# ESP32-S3 (nur einige hundert KB), sondern ausschliesslich in PSRAM. Ohne
+# CONFIG_SPIRAM schlaegt esp_lcd_new_rgb_panel() mit ESP_ERR_NO_MEM fehl
+# ("no mem for frame buffer"), das Panel bleibt aus (siehe Kommentar in
+# display_ui_begin() - Webportal bleibt trotzdem erreichbar).
+#
+# Modus OCTAL (nicht QUAD): das JC8048W550 nutzt ein ESP32-S3-WROOM-1-Modul
+# mit 8MB Octal-PSRAM (die "R8"-Variante).
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+# Generische ESP32-S3-Profile (ILI9488/ST7796S/GC9A01, siehe board_profiles.c)
+# laufen typischerweise auf PSRAM-losen Devboards - CONFIG_SPIRAM=y wuerde
+# dort ohne dieses Flag beim PSRAM-Init hart abbrechen (Boot-Schleife). Mit
+# IGNORE_NOTFOUND faellt die Firmware auf "kein PSRAM" zurueck (nur die
+# JC8048W550-RGB-Framebuffer-Allokation braucht es dann zwingend), statt
+# das Geraet unbrauchbar zu machen.
+CONFIG_SPIRAM_IGNORE_NOTFOUND=y

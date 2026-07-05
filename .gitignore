@@ -1,6 +1,10 @@
 managed_components/
 build/
 sdkconfig*
+# Ausnahme: sdkconfig.defaults* sind versionierte Projekt-Defaults (siehe
+# main/CMakeLists.txt/sdkconfig.defaults.esp32s3), kein generiertes
+# Build-Artefakt wie das eigentliche "sdkconfig".
+!sdkconfig.defaults*
 dependencies.lock
 settings.json
 .clangd

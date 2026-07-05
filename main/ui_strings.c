@@ -35,8 +35,9 @@ static const char *STR_DE[UI_STR_COUNT] = {
     [UI_STR_AP_BTN_IDLE]       = "Neustart in Setup-AP",
     [UI_STR_AP_BTN_CONFIRM]    = "Wirklich? Nochmal tippen",
     [UI_STR_AP_BTN_SWITCHING]  = "Wechsle in Setup-AP...",
-    [UI_STR_MONO_CPU_FMT]      = "CPU %d%% %dC",
-    [UI_STR_MONO_GPU_FMT]      = "GPU %d%% %dC",
+    [UI_STR_MONO_PCT_FMT]      = "%d%%",
+    [UI_STR_MONO_POWER_FMT]    = "%dW",
+    [UI_STR_MONO_TEMP_FMT]     = "%dC",
     [UI_STR_ROUND_CPU_FMT]     = "CPU %d%%",
     [UI_STR_ROUND_GPU_FMT]     = "GPU %d%%",
 };
@@ -69,8 +70,9 @@ static const char *STR_EN[UI_STR_COUNT] = {
     [UI_STR_AP_BTN_IDLE]       = "Restart into setup AP",
     [UI_STR_AP_BTN_CONFIRM]    = "Really? Tap again",
     [UI_STR_AP_BTN_SWITCHING]  = "Switching to setup AP...",
-    [UI_STR_MONO_CPU_FMT]      = "CPU %d%% %dC",
-    [UI_STR_MONO_GPU_FMT]      = "GPU %d%% %dC",
+    [UI_STR_MONO_PCT_FMT]      = "%d%%",
+    [UI_STR_MONO_POWER_FMT]    = "%dW",
+    [UI_STR_MONO_TEMP_FMT]     = "%dC",
     [UI_STR_ROUND_CPU_FMT]     = "CPU %d%%",
     [UI_STR_ROUND_GPU_FMT]     = "GPU %d%%",
 };

@@ -436,6 +436,10 @@ static lv_display_t *lcd_init_rgb(const board_profile_t *p)
     // Bildfehler links) zu sichtbaren Stoerungen. Der Bounce-Buffer oben
     // entkoppelt die LCD-DMA ohnehin unabhaengig vom LVGL-Flush-Modus vom
     // PSRAM-Framebuffer, ein kleiner SRAM-Flush-Puffer reicht daher.
+    //
+    // lvgl_port_add_disp_rgb() (nicht das generische lvgl_port_add_disp()!)
+    // ist hier Pflicht: Letzteres asserted intern auf disp_cfg->io_handle !=
+    // NULL, das dieses Panel (kein Kommando-Bus) nie hat.
     lvgl_port_display_cfg_t dcfg = {
         .panel_handle = panel,
         .buffer_size  = (uint32_t)p->h_res * LCD_FLUSH_LINES,
@@ -450,7 +454,10 @@ static lv_display_t *lcd_init_rgb(const board_profile_t *p)
             .swap_bytes = false,
         },
     };
-    return lvgl_port_add_disp(&dcfg);
+    lvgl_port_display_rgb_cfg_t rgb_cfg = {
+        .flags = { .bb_mode = true, .avoid_tearing = false },
+    };
+    return lvgl_port_add_disp_rgb(&dcfg, &rgb_cfg);
 }
 #endif // SOC_LCD_RGB_SUPPORTED
 

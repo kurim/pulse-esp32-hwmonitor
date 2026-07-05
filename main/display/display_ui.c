@@ -440,8 +440,17 @@ static lv_display_t *lcd_init_rgb(const board_profile_t *p)
     // lvgl_port_add_disp_rgb() (nicht das generische lvgl_port_add_disp()!)
     // ist hier Pflicht: Letzteres asserted intern auf disp_cfg->io_handle !=
     // NULL, das dieses Panel (kein Kommando-Bus) nie hat.
+    //
+    // control_handle: esp_lvgl_port ruft esp_lcd_panel_mirror()/_swap_xy()
+    // NICHT auf panel_handle auf, sondern auf dieses separate Feld (fuer
+    // Panels, deren Rotationskommandos ueber einen anderen Bus laufen als die
+    // eigentlichen Pixeldaten, z.B. RGB-Panels mit zusaetzlichem 3-Wire-SPI-
+    // Init). Ohne dieses Feld (NULL) wird mirror_x/mirror_y unten schlicht
+    // NICHT angewendet - genau das fehlte in den vorherigen Versuchen.
+    // Unser Panel hat keinen separaten Kommandobus, also derselbe Handle.
     lvgl_port_display_cfg_t dcfg = {
         .panel_handle = panel,
+        .control_handle = panel,
         .buffer_size  = (uint32_t)p->h_res * LCD_FLUSH_LINES,
         .double_buffer = false,
         .hres = p->h_res,

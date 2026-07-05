@@ -9,6 +9,7 @@ history_t      cpu_history;
 history_t      gpu_history;
 volatile bool  wifi_connected = false;
 volatile bool  mqtt_connected = false;
+volatile bool  serial_connected = false;
 
 int64_t now_ms(void)
 {
@@ -18,6 +19,7 @@ int64_t now_ms(void)
 void config_set_defaults(app_config_t *cfg)
 {
     memset(cfg, 0, sizeof(*cfg));
+    cfg->hw_source = HW_SOURCE_MQTT; // = 0, explizit fuer Lesbarkeit
     cfg->mqtt_port = 1883;
     strcpy(cfg->mqtt_topic, "pulsemqtt/hwinfo");
     strcpy(cfg->tz, "CET-1CEST,M3.5.0,M10.5.0/3");   // Europe/Berlin

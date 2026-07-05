@@ -87,11 +87,16 @@ static const char INDEX_HTML[] =
 "<button type=\"button\" id=\"advToggle\" onclick=\"toggleAdvanced()\" data-i18n=\"show_advanced\" style=\"background:var(--card);color:var(--text);border:1px solid var(--border)\">Erweiterte Einstellungen anzeigen</button>"
 "<div id=\"advancedWrap\" style=\"display:none;margin-top:16px\">"
 "<form id=\"cfgForm\">"
-"<div class=\"card\"><h2 data-i18n=\"card_mqtt\">MQTT (Hardwaredaten vom PC)</h2><label>Broker-Host</label><input type=\"text\" id=\"mqtt_host\" maxlength=\"64\">"
+"<div class=\"card\"><h2 data-i18n=\"card_mqtt\">Hardwaredaten-Quelle (MQTT / USB)</h2>"
+"<label data-i18n=\"lbl_hw_source\">Quelle</label><select id=\"hw_source\">"
+"<option value=\"0\" data-i18n=\"opt_hw_source_mqtt\">MQTT</option>"
+"<option value=\"1\" data-i18n=\"opt_hw_source_usb\">USB/Seriell</option></select>"
+"<div id=\"mqttFields\"><label>Broker-Host</label><input type=\"text\" id=\"mqtt_host\" maxlength=\"64\">"
 "<div class=\"row\"><div><label>Port</label><input type=\"number\" id=\"mqtt_port\" min=\"1\" max=\"65535\"></div>"
 "<div><label>Topic</label><input type=\"text\" id=\"mqtt_topic\" maxlength=\"64\"></div></div>"
 "<div class=\"row\"><div><label data-i18n=\"lbl_username\">Benutzer</label><input type=\"text\" id=\"mqtt_user\" maxlength=\"32\"></div>"
 "<div><label data-i18n=\"lbl_password\">Passwort</label><input type=\"password\" id=\"mqtt_pass\" maxlength=\"64\" data-i18n-ph=\"ph_keep_empty\" placeholder=\"unver&auml;ndert lassen = leer\"></div></div></div>"
+"<div id=\"usbHint\" class=\"hint\" style=\"display:none\" data-i18n=\"hint_usb_source\">Sendet JSON-Zeilen (gleiches Format wie MQTT) per USB/Seriell an 115200 Baud, z.B. mit tools/pc_bridge_example.py --serial COM3.</div></div>"
 "<div class=\"card\"><h2 data-i18n=\"card_time\">Zeit</h2><label>NTP-Server</label><input type=\"text\" id=\"ntp_server\" maxlength=\"64\">"
 "<label data-i18n=\"lbl_posix_tz\">POSIX-Zeitzone</label><input type=\"text\" id=\"tz\" maxlength=\"64\"></div>"
 "<div class=\"card\"><h2 data-i18n=\"card_weather\">Wetter (optional, OpenWeatherMap)</h2>"
@@ -110,7 +115,7 @@ static const char INDEX_HTML[] =
 "<div><label data-i18n=\"lbl_rotation\">Rotation/Spiegelung</label><select id=\"rotation\"></select></div></div>"
 "<div class=\"row\"><div><label data-i18n=\"lbl_language\">Sprache (Ger&auml;t-Display)</label>"
 "<select id=\"language\"><option value=\"de\">Deutsch</option><option value=\"en\">English</option></select></div><div></div></div>"
-"<label data-i18n=\"lbl_standby\">Standby nach (Sekunden ohne MQTT-Daten, 0 = deaktiviert)</label>"
+"<label data-i18n=\"lbl_standby\">Standby nach (Sekunden ohne Hardwaredaten, 0 = deaktiviert)</label>"
 "<input type=\"number\" id=\"standby_timeout_s\" min=\"0\" max=\"65535\">"
 "<div class=\"toggle\"><input type=\"checkbox\" id=\"color_invert\"><label style=\"margin:0\" data-i18n=\"lbl_invert\">Farben invertieren (Dark Mode, falls Hintergrund hell statt dunkel ist)</label></div></div>"
 "<div class=\"card\" id=\"pinCard\"><h2 data-i18n=\"card_pins\">Pin-Belegung (optional anpassen)</h2>"
@@ -157,12 +162,14 @@ static const char INDEX_HTML[] =
 "de:{sub_title:'Konfiguration (ESP-IDF)',loading_status:'Lade Status...',card_wifi:'WLAN',"
 "btn_scan_wifi:'WLAN-Netzwerke suchen',lbl_password:'Passwort',ph_keep_empty:'unver\\u00e4ndert lassen = leer',"
 "btn_save_wifi:'WLAN speichern & Neustart',show_advanced:'Erweiterte Einstellungen anzeigen',"
-"hide_advanced:'Erweiterte Einstellungen ausblenden',card_mqtt:'MQTT (Hardwaredaten vom PC)',"
+"hide_advanced:'Erweiterte Einstellungen ausblenden',card_mqtt:'Hardwaredaten-Quelle (MQTT / USB)',"
+"lbl_hw_source:'Quelle',opt_hw_source_mqtt:'MQTT',opt_hw_source_usb:'USB/Seriell',"
+"hint_usb_source:'Sendet JSON-Zeilen (gleiches Format wie MQTT) per USB/Seriell an 115200 Baud, z.B. mit tools/pc_bridge_example.py --serial COM3.',"
 "lbl_username:'Benutzer',card_time:'Zeit',lbl_posix_tz:'POSIX-Zeitzone',card_weather:'Wetter (optional, OpenWeatherMap)',"
 "lbl_enable:'Aktivieren',lbl_location:'Ort (Stadt,Land)',lbl_unit:'Einheit',card_display:'Display',"
 "lbl_display_type:'Displaytyp',hint_display_reboot:'Nach dem Speichern startet das Ger\\u00e4t neu und initialisiert das gew\\u00e4hlte Panel. Verdrahtung wie oben angezeigt oder weiter unten die PINs anpassen.',"
 "lbl_brightness:'Helligkeit (0-255)',lbl_rotation:'Rotation/Spiegelung',lbl_language:'Sprache (Ger\\u00e4t-Display)',"
-"lbl_standby:'Standby nach (Sekunden ohne MQTT-Daten, 0 = deaktiviert)',lbl_invert:'Farben invertieren (Dark Mode, falls Hintergrund hell statt dunkel ist)',"
+"lbl_standby:'Standby nach (Sekunden ohne Hardwaredaten, 0 = deaktiviert)',lbl_invert:'Farben invertieren (Dark Mode, falls Hintergrund hell statt dunkel ist)',"
 "card_pins:'Pin-Belegung (optional anpassen)',hint_pins:'Leer lassen = Standard-Pin f\\u00fcr den oben gew\\u00e4hlten Displaytyp verwenden (siehe Tabelle oben). Nur bei abweichender eigener Verdrahtung \\u00e4ndern. Wechselt der Displaytyp, werden alle Pin-Overrides zur\\u00fcckgesetzt.',"
 "lbl_miso:'MISO (-1 = kein Pin)',lbl_reset_pin:'RESET (-1 = kein Pin)',lbl_backlight_pin:'Backlight (-1 = kein Pin)',"
 "lbl_i2c_addr:'I2C-Adresse (dezimal, z.B. 60 f\\u00fcr 0x3C)',lbl_nav_button:'Navigationstaste (BOOT-Button, -1 = keine)',"
@@ -179,12 +186,14 @@ static const char INDEX_HTML[] =
 "en:{sub_title:'Configuration (ESP-IDF)',loading_status:'Loading status...',card_wifi:'WiFi',"
 "btn_scan_wifi:'Scan for WiFi networks',lbl_password:'Password',ph_keep_empty:'leave empty = unchanged',"
 "btn_save_wifi:'Save WiFi & restart',show_advanced:'Show advanced settings',"
-"hide_advanced:'Hide advanced settings',card_mqtt:'MQTT (hardware data from PC)',"
+"hide_advanced:'Hide advanced settings',card_mqtt:'Hardware data source (MQTT / USB)',"
+"lbl_hw_source:'Source',opt_hw_source_mqtt:'MQTT',opt_hw_source_usb:'USB/Serial',"
+"hint_usb_source:'Sends JSON lines (same format as MQTT) over USB/serial at 115200 baud, e.g. with tools/pc_bridge_example.py --serial COM3.',"
 "lbl_username:'Username',card_time:'Time',lbl_posix_tz:'POSIX timezone',card_weather:'Weather (optional, OpenWeatherMap)',"
 "lbl_enable:'Enable',lbl_location:'Location (city,country)',lbl_unit:'Unit',card_display:'Display',"
 "lbl_display_type:'Display type',hint_display_reboot:'After saving, the device restarts and initializes the selected panel. Wire it as shown above, or adjust the PINs below.',"
 "lbl_brightness:'Brightness (0-255)',lbl_rotation:'Rotation/mirroring',lbl_language:'Language (device display)',"
-"lbl_standby:'Standby after (seconds without MQTT data, 0 = disabled)',lbl_invert:'Invert colors (dark mode, if background is light instead of dark)',"
+"lbl_standby:'Standby after (seconds without hardware data, 0 = disabled)',lbl_invert:'Invert colors (dark mode, if background is light instead of dark)',"
 "card_pins:'Pin assignment (optional)',hint_pins:'Leave empty = use the default pin for the display type selected above (see table above). Only change for different custom wiring. Changing the display type resets all pin overrides.',"
 "lbl_miso:'MISO (-1 = no pin)',lbl_reset_pin:'RESET (-1 = no pin)',lbl_backlight_pin:'Backlight (-1 = no pin)',"
 "lbl_i2c_addr:'I2C address (decimal, e.g. 60 for 0x3C)',lbl_nav_button:'Navigation button (BOOT button, -1 = none)',"
@@ -286,11 +295,16 @@ static const char INDEX_HTML[] =
 "activeKey=document.getElementById('display_type').value;"
 "renderRotationOptions();"
 "for(const k in c){const el=document.getElementById(k);if(!el)continue;if(el.type==='checkbox')el.checked=!!c[k];else el.value=(c[k]===null?'':c[k]);}"
-"renderDisplayInfo();updatePinFields();}"
+"renderDisplayInfo();updatePinFields();updateHwSourceVisibility();}"
+"function updateHwSourceVisibility(){const v=document.getElementById('hw_source').value;"
+"document.getElementById('mqttFields').style.display=(v==='1')?'none':'';"
+"document.getElementById('usbHint').style.display=(v==='1')?'':'none';}"
+"document.getElementById('hw_source').addEventListener('change',updateHwSourceVisibility);"
 "async function loadStatus(){try{const r=await fetch('/api/status');const s=await r.json();"
 "document.getElementById('fwVersion').innerText=s.fw_version+t('free_memory_suffix')+Math.round(s.free_heap/1024)+' KB)';"
+"const hwOk=(s.hw_source===1)?s.serial:s.mqtt;const hwLabel=(s.hw_source===1)?'USB':'MQTT';"
 "document.getElementById('livebar').innerHTML='<span><span class=\"dot\" style=\"background:'+(s.wifi?'#3fd0e0':'#e05a5a')+'\"></span>'+t('card_wifi')+'</span>'+"
-"'<span><span class=\"dot\" style=\"background:'+(s.mqtt?'#3fd0e0':'#e05a5a')+'\"></span>MQTT</span>'+"
+"'<span><span class=\"dot\" style=\"background:'+(hwOk?'#3fd0e0':'#e05a5a')+'\"></span>'+hwLabel+'</span>'+"
 "'<span>CPU '+s.cpu_load.toFixed(0)+'%</span><span>GPU '+s.gpu_load.toFixed(0)+'%</span><span>IP '+s.ip+'</span>';}catch(e){}}"
 "document.getElementById('wifiForm').addEventListener('submit',async(e)=>{e.preventDefault();"
 "const payload={wifi_ssid:document.getElementById('wifi_ssid').value,wifi_pass:document.getElementById('wifi_pass').value};"
@@ -320,7 +334,7 @@ static const char INDEX_HTML[] =
 "s.innerText=list.length?list.length+' '+t('networks_found'):t('no_networks_found');"
 "}catch(e){s.innerText=t('search_error');}}"
 "document.getElementById('cfgForm').addEventListener('submit',async(e)=>{e.preventDefault();"
-"const ids=['mqtt_host','mqtt_port','mqtt_user','mqtt_pass','mqtt_topic','ntp_server','tz','weather_enabled','weather_api_key','weather_city','weather_units','brightness','rotation','language','display_type','standby_timeout_s','color_invert'];"
+"const ids=['hw_source','mqtt_host','mqtt_port','mqtt_user','mqtt_pass','mqtt_topic','ntp_server','tz','weather_enabled','weather_api_key','weather_city','weather_units','brightness','rotation','language','display_type','standby_timeout_s','color_invert'];"
 "PIN_FIELDS.forEach(f=>ids.push('pin_'+f));"
 "const payload={};ids.forEach(id=>{const el=document.getElementById(id);if(!el)return;"
 "if(el.type==='checkbox')payload[id]=el.checked;"
@@ -329,7 +343,7 @@ static const char INDEX_HTML[] =
 "else if(el.type==='number')payload[id]=(el.value===''?null:Number(el.value));"
 // rotation ist ein <select> (id==='number' greift hier nicht) - der Server
 // erwartet trotzdem eine JSON-Zahl, nicht den String, den el.value liefert.
-"else if(id==='rotation')payload[id]=Number(el.value);"
+"else if(id==='rotation'||id==='hw_source')payload[id]=Number(el.value);"
 "else payload[id]=el.value;});"
 "document.getElementById('status').innerText=t('saving');"
 "await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});"
@@ -501,10 +515,11 @@ static esp_err_t h_status(httpd_req_t *req)
 {
     char buf[320];
     int n = snprintf(buf, sizeof(buf),
-        "{\"wifi\":%s,\"mqtt\":%s,\"ip\":\"%s\",\"cpu_load\":%.1f,\"gpu_load\":%.1f,"
+        "{\"wifi\":%s,\"mqtt\":%s,\"serial\":%s,\"hw_source\":%d,\"ip\":\"%s\",\"cpu_load\":%.1f,\"gpu_load\":%.1f,"
         "\"cpu_temp\":%.1f,\"gpu_temp\":%.1f,\"cpu_power\":%.1f,\"gpu_power\":%.1f,"
         "\"fw_version\":\"%s\",\"free_heap\":%u}",
-        wifi_connected ? "true" : "false", mqtt_connected ? "true" : "false", s_ip,
+        wifi_connected ? "true" : "false", mqtt_connected ? "true" : "false",
+        serial_connected ? "true" : "false", (int)app_config.hw_source, s_ip,
         hw_info.cpu_load, hw_info.gpu_load, hw_info.cpu_temp, hw_info.gpu_temp,
         hw_info.cpu_power, hw_info.gpu_power, FW_VERSION,
         (unsigned)esp_get_free_heap_size());
@@ -575,6 +590,7 @@ static esp_err_t h_config_get(httpd_req_t *req)
     cJSON *d = cJSON_CreateObject();
     cJSON_AddStringToObject(d, "wifi_ssid", app_config.wifi_ssid);
     cJSON_AddStringToObject(d, "wifi_pass", "");        // Passwoerter nie zuruecksenden
+    cJSON_AddNumberToObject(d, "hw_source", (int)app_config.hw_source);
     cJSON_AddStringToObject(d, "mqtt_host", app_config.mqtt_host);
     cJSON_AddNumberToObject(d, "mqtt_port", app_config.mqtt_port);
     cJSON_AddStringToObject(d, "mqtt_user", app_config.mqtt_user);
@@ -737,6 +753,8 @@ static esp_err_t h_config_post(httpd_req_t *req)
 
     cfg_str(root, "wifi_ssid",  app_config.wifi_ssid,  sizeof(app_config.wifi_ssid),  false);
     cfg_str(root, "wifi_pass",  app_config.wifi_pass,  sizeof(app_config.wifi_pass),  true);
+    cJSON *hs = cJSON_GetObjectItem(root, "hw_source");
+    if (cJSON_IsNumber(hs)) app_config.hw_source = (hw_source_t)(int)hs->valuedouble;
     cfg_str(root, "mqtt_host",  app_config.mqtt_host,  sizeof(app_config.mqtt_host),  false);
     cJSON *port = cJSON_GetObjectItem(root, "mqtt_port");
     if (cJSON_IsNumber(port)) app_config.mqtt_port = (uint16_t)port->valuedouble;

@@ -1,44 +1,14 @@
 #include "mqtt_handler.h"
 #include "shared_state.h"
+#include "hw_data.h"
 #include "mqtt_client.h"
 #include "esp_mac.h"
 #include "esp_log.h"
-#include "cJSON.h"
 #include <string.h>
 #include <stdio.h>
 
 static const char *TAG = "mqtt";
 static esp_mqtt_client_handle_t s_client;
-static int64_t s_last_history_push;
-#define HISTORY_PUSH_INTERVAL_MS 1000
-
-static void parse_payload(const char *data, int len)
-{
-    cJSON *root = cJSON_ParseWithLength(data, len);
-    if (!root) {
-        ESP_LOGW(TAG, "JSON parse error");
-        return;
-    }
-
-    cJSON *v;
-    if (cJSON_IsNumber((v = cJSON_GetObjectItem(root, "cpu_load"))))  hw_info.cpu_load  = (float)v->valuedouble;
-    if (cJSON_IsNumber((v = cJSON_GetObjectItem(root, "cpu_temp"))))  hw_info.cpu_temp  = (float)v->valuedouble;
-    if (cJSON_IsNumber((v = cJSON_GetObjectItem(root, "cpu_power")))) hw_info.cpu_power = (float)v->valuedouble;
-    if (cJSON_IsNumber((v = cJSON_GetObjectItem(root, "gpu_load"))))  hw_info.gpu_load  = (float)v->valuedouble;
-    if (cJSON_IsNumber((v = cJSON_GetObjectItem(root, "gpu_temp"))))  hw_info.gpu_temp  = (float)v->valuedouble;
-    if (cJSON_IsNumber((v = cJSON_GetObjectItem(root, "gpu_power")))) hw_info.gpu_power = (float)v->valuedouble;
-    cJSON_Delete(root);
-
-    hw_info.last_update_ms = now_ms();
-    hw_info.ever_received  = true;
-
-    // Verlauf hoechstens 1x/Sek aktualisieren (unabhaengig von Publish-Rate).
-    if (now_ms() - s_last_history_push >= HISTORY_PUSH_INTERVAL_MS) {
-        s_last_history_push = now_ms();
-        history_push(&cpu_history, hw_info.cpu_load, hw_info.cpu_temp, hw_info.cpu_power);
-        history_push(&gpu_history, hw_info.gpu_load, hw_info.gpu_temp, hw_info.gpu_power);
-    }
-}
 
 static void mqtt_event_handler(void *args, esp_event_base_t base, int32_t event_id, void *event_data)
 {
@@ -53,7 +23,7 @@ static void mqtt_event_handler(void *args, esp_event_base_t base, int32_t event_
             mqtt_connected = false;
             break;
         case MQTT_EVENT_DATA:
-            parse_payload(event->data, event->data_len);
+            hw_data_apply_json(event->data, event->data_len);
             break;
         case MQTT_EVENT_ERROR:
             ESP_LOGW(TAG, "MQTT_EVENT_ERROR");

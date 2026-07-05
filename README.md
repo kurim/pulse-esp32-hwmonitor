@@ -2,8 +2,9 @@
 
 Pure **ESP-IDF** firmware (no Arduino core) for a small WiFi hardware
 monitor: time/date, optional weather, plus CPU/GPU load, temperature and
-power, delivered via MQTT from a PC client. WiFi setup via an open access
-point with a config web portal and OTA update.
+power, delivered from a PC client via MQTT or USB/serial (switchable in the
+web portal). WiFi setup via an open access point with a config web portal
+and OTA update.
 
 > This is a dedicated long-lived branch for the ESP-IDF variant, separate
 > from the Arduino/PlatformIO variant on `main` (there, the Arduino firmware
@@ -380,7 +381,7 @@ bars, weather/wind/rain display, trend arrows, settings button):
   10 measurements ago (`compute_trend()` in `display_ui.c`); threshold ±3
   percentage points for rising/falling, otherwise "stable" (dash).
 - **Standby** (`display_ui.c`, `check_standby()`/`enter_standby()`/
-  `exit_standby()`): kicks in when no new MQTT hardware data has arrived for
+  `exit_standby()`): kicks in when no new hardware data (MQTT or USB/serial) has arrived for
   `app_config.standby_timeout_s` (configurable in the web portal, default
   120s, 0 = disabled). On panels with a backlight pin, the backlight goes
   to duty 0 via LEDC; on panels without a backlight pin (GC9A01, SSD1309)
@@ -435,10 +436,20 @@ npx lv_font_conv --font package/fonts/materialdesignicons-webfont.ttf \
 Afterwards, replace the `#ifdef LV_LVGL_H_INCLUDE_SIMPLE` include block with
 a plain `#include "lvgl.h"` (matching the rest of the project).
 
-## MQTT data format
+## Hardware data source: MQTT or USB/serial
 
-The PC client publishes a JSON object on the configured topic (default:
-`pulsemqtt/hwinfo`):
+Hardware data (CPU/GPU load, temperature, power) can be delivered either via
+MQTT (default) or directly over USB/serial - switchable in the web portal
+("Hardware data source" dropdown, no separate build needed). Only one source
+is active at a time.
+
+USB/serial mode reads from UART0 - the same line already exposed over USB by
+the onboard USB-serial chip used for flashing/log output - at a fixed
+**115200 baud**. No broker/WiFi is required for this path; the PC just needs
+a serial connection to the board.
+
+Both paths use the same JSON payload format - a JSON object with any of the
+following fields (all optional - only included values get updated):
 
 ```json
 {
@@ -451,9 +462,18 @@ The PC client publishes a JSON object on the configured topic (default:
 }
 ```
 
-All fields are optional - only values that are included get updated.
-`tools/pc_bridge_example.py` shows an example of how a Python script on the
-PC can publish values via MQTT.
+- **MQTT**: published as the payload on the configured topic (default:
+  `pulsemqtt/hwinfo`).
+- **USB/serial**: sent as one JSON object per line (`\n`-terminated) over the
+  serial port at 115200 baud.
+
+`tools/pc_bridge_example.py` shows an example Python script that sends values
+either way:
+
+```
+python pc_bridge_example.py --host 192.168.1.50 --topic pulsemqtt/hwinfo   # MQTT
+python pc_bridge_example.py --serial COM3                                  # USB/serial
+```
 
 ## Structure
 
@@ -463,9 +483,11 @@ main/
   app_main.c           boot/wiring
   shared_state.[ch]    global state, ring buffers
   config_store.[ch]    NVS persistence
+  hw_data.[ch]         shared JSON parsing for hardware data (used by MQTT + serial)
   board_profiles.[ch]  display type enum + pin/bus/UI profiles (core of multi-display support)
-  web_portal.[ch]      WiFi (STA/open AP) + HTTP portal (incl. display selection) + OTA
-  mqtt_handler.[ch]    esp-mqtt + JSON parsing
+  web_portal.[ch]      WiFi (STA/open AP) + HTTP portal (incl. display/source selection) + OTA
+  mqtt_handler.[ch]    esp-mqtt hardware data source
+  serial_handler.[ch]  USB/UART0 hardware data source (alternative to MQTT)
   time_service.[ch]    SNTP + timezone
   weather_service.[ch] OpenWeatherMap fetch
   display_ui.[ch]      esp_lcd (multiple panel drivers) + LVGL UI (tile/mono/round UI)
@@ -473,5 +495,5 @@ main/
   mdi_icons.h          font declaration + MDI_* character macros
   touch_xpt2046.[ch]   XPT2046 SPI driver (ESP32-2432S028 profile only)
 tools/
-  pc_bridge_example.py example PC->MQTT bridge
+  pc_bridge_example.py example PC->device bridge (MQTT or USB/serial)
 ```

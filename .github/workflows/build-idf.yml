@@ -73,7 +73,7 @@ jobs:
           cp build/merged.bin "dist/${FNAME}"
           # esp32-hwmonitor.bin: nur das App-Image (~1.4 MB), passt in eine
           # OTA-Partition - das ist die Datei fuers Webportal-Update
-          # (h_update() in main/web_portal.c schreibt den Request-Body 1:1
+          # (h_update() in main/net/web_portal.c schreibt den Request-Body 1:1
           # per esp_ota_write(), merged.bin ist dafuer zu gross/falsch
           # aufgebaut und liess sich dort nicht flashen).
           cp build/esp32-hwmonitor.bin "dist/${OTA_FNAME}"

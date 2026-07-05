@@ -3,20 +3,24 @@ idf_component_register(
         "app_main.c"
         "config_store.c"
         "shared_state.c"
-        "board_profiles.c"
-        "display_ui.c"
-        "display_ui_rect.c"
-        "display_ui_round.c"
-        "display_ui_mono.c"
-        "ui_strings.c"
-        "font_mdi_icons_20.c"
-        "font_mdi_icons_10.c"
-        "touch_xpt2046.c"
-        "web_portal.c"
-        "mqtt_handler.c"
-        "time_service.c"
-        "weather_service.c"
-    INCLUDE_DIRS "."
+        "display/board_profiles.c"
+        "display/display_ui.c"
+        "display/display_ui_rect.c"
+        "display/display_ui_round.c"
+        "display/display_ui_mono.c"
+        "display/ui_strings.c"
+        "display/font_mdi_icons_20.c"
+        "display/font_mdi_icons_10.c"
+        "display/touch_xpt2046.c"
+        "net/web_portal.c"
+        "net/mqtt_handler.c"
+        "net/time_service.c"
+        "net/weather_service.c"
+    # "." fuer app_main.c/config_store.h/shared_state.h; "display"/"net"
+    # zusaetzlich, damit die bestehenden #include "foo.h"-Zeilen (bare
+    # Dateiname, kein Unterordner-Praefix) unveraendert weiter aufloesen -
+    # jeder Ordner wird dem Compiler als eigener -I-Include-Pfad uebergeben.
+    INCLUDE_DIRS "." "display" "net"
     # Nur Core-/Built-in-Komponenten hier auffuehren. Managed Components
     # (lvgl, esp_lvgl_port, esp_lcd_ili9341/ili9488/st7796/gc9a01,
     # espressif/mqtt, espressif/cjson) werden ueber main/idf_component.yml

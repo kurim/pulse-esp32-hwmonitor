@@ -21,7 +21,7 @@ installed is chosen **after flashing, in the web portal** (card "Display" →
 "Display type" dropdown); the choice is stored in NVS, the device then
 reboots and initializes the selected panel. The web portal automatically
 shows the matching pin table for the selected option (`GET /api/displays`,
-generated from `main/board_profiles.c` - no duplicate maintenance of pin
+generated from `main/display/board_profiles.c` - no duplicate maintenance of pin
 assignments).
 
 **The selection is filtered per build** (`board_profile_is_available()` in
@@ -214,7 +214,7 @@ mid-way through the long form and jumping back to the SSID field.
 - `esp32-hwmonitor-vX.X.X-idf[-<target>]-ota.bin` - just the app image
   (`build/esp32-hwmonitor.bin`, no bootloader/partition table), sized to fit
   a single OTA partition (~1.4 MB). **Use this one for the web portal's
-  Firmware-Update (OTA) upload** - `h_update()` in `main/web_portal.c` writes
+  Firmware-Update (OTA) upload** - `h_update()` in `main/net/web_portal.c` writes
   the uploaded body 1:1 via `esp_ota_write()` into an OTA partition, so
   uploading the merged image there fails/bricks the upload.
 
@@ -351,8 +351,8 @@ These points are board-dependent and couldn't be verified without a device:
 7. **LVGL component versions** — `main/idf_component.yml`. If the component
    manager expects different versions, adjust the ranges there. The UI is
    written against the LVGL 9 API.
-8. **Icons (Material Design Icons)** — `main/font_mdi_icons_20.c` +
-   `main/mdi_icons.h`, only used by the tile UI. Verified on ESP32-2432S028
+8. **Icons (Material Design Icons)** — `main/display/font_mdi_icons_20.c` +
+   `main/display/mdi_icons.h`, only used by the tile UI. Verified on ESP32-2432S028
    hardware (see "Icons" section below).
 
 ## Design
@@ -392,11 +392,11 @@ bars, weather/wind/rain display, trend arrows, settings button):
 
 ## Icons (Material Design Icons)
 
-`main/font_mdi_icons_20.c` is an LVGL font generated with
+`main/display/font_mdi_icons_20.c` is an LVGL font generated with
 [`lv_font_conv`](https://github.com/lvgl/lv_font_conv) from the npm package
 `@mdi/font` (Material Design Icons, Pictogrammers, Apache-2.0 license) —
 **only the 9 glyphs actually used** at 20px/4bpp, not the full icon set
-(which would be several MB). `main/mdi_icons.h` declares the font
+(which would be several MB). `main/display/mdi_icons.h` declares the font
 (`extern const lv_font_t mdi_icons_20;`) as well as a `#define MDI_<NAME>`
 per icon (UTF-8-encoded codepoint as a C string), usable analogous to
 LVGL's own `LV_SYMBOL_*` macros: `make_label(parent, MDI_COG, &mdi_icons_20,

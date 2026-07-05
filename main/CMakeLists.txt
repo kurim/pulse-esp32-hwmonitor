@@ -7,6 +7,7 @@ idf_component_register(
         "display_ui.c"
         "ui_strings.c"
         "font_mdi_icons_20.c"
+        "font_mdi_icons_10.c"
         "touch_xpt2046.c"
         "web_portal.c"
         "mqtt_handler.c"

@@ -5,6 +5,7 @@
 #include "web_portal.h"
 #include "weather_service.h"
 #include "mdi_icons.h"
+#include "mdi_icons_10.h"
 #include "ui_strings.h"
 
 #include "driver/spi_master.h"
@@ -123,7 +124,10 @@ static bool s_ap_confirm_armed = false;
 static lv_timer_t *s_ap_confirm_timer = NULL;
 
 // Widgets der Minimal-UIs (LCD_SHAPE_MONO / LCD_SHAPE_ROUND)
-static lv_obj_t *mono_lbl_cpu, *mono_lbl_gpu, *mono_lbl_time;
+static lv_obj_t *mono_lbl_time, *mono_lbl_date;
+static lv_obj_t *mono_icon_weather, *mono_lbl_weather;
+static lv_obj_t *mono_lbl_cpu_load, *mono_lbl_cpu_power, *mono_lbl_cpu_temp;
+static lv_obj_t *mono_lbl_gpu_load, *mono_lbl_gpu_power, *mono_lbl_gpu_temp;
 static lv_obj_t *round_arc_cpu, *round_arc_gpu, *round_lbl_time;
 static lv_obj_t *round_row_cpu, *round_lbl_cpu, *round_row_gpu, *round_lbl_gpu;
 // Wetterzeilen (Temp, Feuchte, Wind, Regen) - werden sowohl auf dem
@@ -943,22 +947,76 @@ static void build_standby(void)
 }
 
 // ------------------------------------------------------------------
-// Minimal-UI fuer monochrome Displays (SSD1309, 128x64) - kein Touch, kein
-// Farbverlauf/Balken (1bpp), nur Text. Platzhalter-Layout, das spaeter noch
-// verfeinert werden kann.
+// Minimal-UI fuer monochrome Displays (SSD1309, 128x64) - kein Touch.
+// Oben Uhrzeit/Datum + Wetter-Icon mit Aussentemperatur, darunter zwei
+// schmale Rahmen-Karten (CPU/GPU) mit je drei Icon+Wert-Zeilen (Auslastung/
+// Leistung/Temperatur). Layout in einem ESPHome-LVGL-Designer entworfen und
+// hier 1:1 als lv_obj/lv_label-Aufrufe nachgebaut.
 // ------------------------------------------------------------------
+static lv_obj_t *mono_card(lv_obj_t *parent, int x, int y, int w, int h, const char *title)
+{
+    lv_obj_t *c = lv_obj_create(parent);
+    lv_obj_set_pos(c, x, y);
+    lv_obj_set_size(c, w, h);
+    lv_obj_set_style_bg_opa(c, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_color(c, COL_TEXT, 0);
+    lv_obj_set_style_border_width(c, 1, 0);
+    lv_obj_set_style_radius(c, 2, 0);
+    lv_obj_set_style_pad_all(c, 0, 0);
+    lv_obj_clear_flag(c, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t *hdr = make_label(c, title, &lv_font_montserrat_8, COL_TEXT);
+    lv_obj_set_width(hdr, w - 2);
+    lv_obj_set_style_text_align(hdr, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_pos(hdr, 0, 0);
+    return c;
+}
+
+// Icon + rechtsbuendiger Wert in einer Zeile innerhalb einer mono_card().
+static void mono_metric_row(lv_obj_t *card, const char *icon, int y, lv_obj_t **out_val)
+{
+    lv_obj_t *ic = make_label(card, icon, &mdi_icons_10, COL_TEXT);
+    lv_obj_set_pos(ic, 6, y);
+
+    lv_obj_t *val = make_label(card, "", &lv_font_montserrat_8, COL_TEXT);
+    lv_obj_set_pos(val, 20, y);
+    lv_obj_set_width(val, 32);
+    lv_obj_set_style_text_align(val, LV_TEXT_ALIGN_RIGHT, 0);
+    *out_val = val;
+}
+
 static void build_mono_ui(void)
 {
     scr_main = lv_obj_create(NULL);
     style_screen(scr_main);
 
-    mono_lbl_time = make_label(scr_main, "--:--:--", &lv_font_montserrat_14, COL_TEXT);
+    mono_lbl_time = make_label(scr_main, "--:--:--", &lv_font_montserrat_8, COL_TEXT);
     lv_obj_set_pos(mono_lbl_time, 2, 0);
 
-    mono_lbl_cpu = make_label(scr_main, "", &lv_font_montserrat_14, COL_TEXT);
-    lv_obj_set_pos(mono_lbl_cpu, 2, 24);
-    mono_lbl_gpu = make_label(scr_main, "", &lv_font_montserrat_14, COL_TEXT);
-    lv_obj_set_pos(mono_lbl_gpu, 2, 44);
+    mono_lbl_date = make_label(scr_main, "--.--.----", &lv_font_montserrat_8, COL_TEXT);
+    lv_obj_set_width(mono_lbl_date, 40);
+    lv_obj_set_style_text_align(mono_lbl_date, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(mono_lbl_date, LV_ALIGN_TOP_RIGHT, -2, 0);
+
+    // Aussentemperatur (Wetter-Service) - nur sichtbar, wenn Wetter aktiv und
+    // schon mindestens einmal erfolgreich abgerufen (siehe refresh_mono_ui()).
+    mono_icon_weather = make_label(scr_main, MDI10_SUN, &mdi_icons_10, COL_TEXT);
+    lv_obj_set_pos(mono_icon_weather, 47, 0);
+    lv_obj_add_flag(mono_icon_weather, LV_OBJ_FLAG_HIDDEN);
+    mono_lbl_weather = make_label(scr_main, "", &lv_font_montserrat_8, COL_TEXT);
+    lv_obj_set_pos(mono_lbl_weather, 57, 0);
+    lv_obj_add_flag(mono_lbl_weather, LV_OBJ_FLAG_HIDDEN);
+
+    const int card_y = 17, card_w = 60, card_h = 45;
+    lv_obj_t *cpu_card = mono_card(scr_main, 2, card_y, card_w, card_h, "CPU");
+    mono_metric_row(cpu_card, MDI10_CHIP,        9, &mono_lbl_cpu_load);
+    mono_metric_row(cpu_card, MDI10_FLASH,       19, &mono_lbl_cpu_power);
+    mono_metric_row(cpu_card, MDI10_THERMOMETER, 29, &mono_lbl_cpu_temp);
+
+    lv_obj_t *gpu_card = mono_card(scr_main, 66, card_y, card_w, card_h, "GPU");
+    mono_metric_row(gpu_card, MDI10_CHIP,        9, &mono_lbl_gpu_load);
+    mono_metric_row(gpu_card, MDI10_FLASH,       19, &mono_lbl_gpu_power);
+    mono_metric_row(gpu_card, MDI10_THERMOMETER, 29, &mono_lbl_gpu_temp);
 }
 
 static void refresh_mono_ui(void)
@@ -970,11 +1028,33 @@ static void refresh_mono_ui(void)
     if (ti.tm_year > 100) {
         strftime(buf, sizeof(buf), "%H:%M:%S", &ti);
         lv_label_set_text(mono_lbl_time, buf);
+        strftime(buf, sizeof(buf), "%d.%m.%Y", &ti);
+        lv_label_set_text(mono_lbl_date, buf);
     }
-    snprintf(buf, sizeof(buf), ui_str(UI_STR_MONO_CPU_FMT), (int)(hw_info.cpu_load + 0.5f), (int)(hw_info.cpu_temp + 0.5f));
-    lv_label_set_text(mono_lbl_cpu, buf);
-    snprintf(buf, sizeof(buf), ui_str(UI_STR_MONO_GPU_FMT), (int)(hw_info.gpu_load + 0.5f), (int)(hw_info.gpu_temp + 0.5f));
-    lv_label_set_text(mono_lbl_gpu, buf);
+
+    if (weather_info.valid) {
+        lv_obj_remove_flag(mono_icon_weather, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_remove_flag(mono_lbl_weather, LV_OBJ_FLAG_HIDDEN);
+        snprintf(buf, sizeof(buf), ui_str(UI_STR_MONO_TEMP_FMT), (int)(weather_info.temp_c + 0.5f));
+        lv_label_set_text(mono_lbl_weather, buf);
+    } else {
+        lv_obj_add_flag(mono_icon_weather, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(mono_lbl_weather, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    snprintf(buf, sizeof(buf), ui_str(UI_STR_MONO_PCT_FMT), (int)(hw_info.cpu_load + 0.5f));
+    lv_label_set_text(mono_lbl_cpu_load, buf);
+    snprintf(buf, sizeof(buf), ui_str(UI_STR_MONO_POWER_FMT), (int)(hw_info.cpu_power + 0.5f));
+    lv_label_set_text(mono_lbl_cpu_power, buf);
+    snprintf(buf, sizeof(buf), ui_str(UI_STR_MONO_TEMP_FMT), (int)(hw_info.cpu_temp + 0.5f));
+    lv_label_set_text(mono_lbl_cpu_temp, buf);
+
+    snprintf(buf, sizeof(buf), ui_str(UI_STR_MONO_PCT_FMT), (int)(hw_info.gpu_load + 0.5f));
+    lv_label_set_text(mono_lbl_gpu_load, buf);
+    snprintf(buf, sizeof(buf), ui_str(UI_STR_MONO_POWER_FMT), (int)(hw_info.gpu_power + 0.5f));
+    lv_label_set_text(mono_lbl_gpu_power, buf);
+    snprintf(buf, sizeof(buf), ui_str(UI_STR_MONO_TEMP_FMT), (int)(hw_info.gpu_temp + 0.5f));
+    lv_label_set_text(mono_lbl_gpu_temp, buf);
 }
 
 // ------------------------------------------------------------------
@@ -1017,29 +1097,33 @@ static void build_round_ui(void)
     style_screen(scr_main);
 
     int d = s_hres < s_vres ? s_hres : s_vres; // Durchmesser = kleinere Kante
-    // Zwei konzentrische Ringe statt links/rechts geteilter Haelften: CPU
-    // ganz aussen, GPU nach innen versetzt auf derselben "Bahn". Beide
-    // nutzen denselben 320°-Bogen mit einer gemeinsamen 40°-Luecke unten
-    // (Suedpunkt = 90° im lokalen Arc-Frame), dort wo die CPU/GPU-Textzeilen
-    // sitzen - so bleibt der Bereich unter dem Text frei statt vom Ring
-    // durchquert zu werden.
-    const int arc_gap_deg = 40;             // Breite der Luecke unten
-    const int arc_span_deg = 360 - arc_gap_deg; // 320°
-    const int arc_rotation = 90 + arc_gap_deg / 2; // Start der Luecke bei Suedpunkt zentrieren
-    const int arc_width = 10;
-    const int arc_ring_gap = 4;              // radialer Abstand zwischen CPU- und GPU-Ring
-
-    int arc_d = d - 16;
+    // Zwei konzentrische Ringe (aussen CPU, innen GPU) statt nebeneinander-
+    // liegender Halbkreise: beide ueber denselben Winkelbereich 120-60 Grad
+    // im Uhrzeigersinn (= 300 Grad Bogen, 60 Grad Luecke unten bei 6 Uhr statt
+    // eines kompletten Kreises), duenner heller Indikator-Bogen auf einer
+    // dickeren, transluzenten Hintergrundspur - Layout an ein per ESPHome-
+    // LVGL-Designer gebautes Referenzbild angelehnt.
+    const int ARC_START = 120, ARC_END = 60;
+    const int ARC_BG_W = 20, ARC_FG_W = 10;
+    int outer_d = d - 4;         // CPU, fast randlos aussen
+    int inner_d = outer_d - 40;  // GPU, mit sichtbarem Abstand zum aeusseren Ring
 
     round_arc_cpu = lv_arc_create(scr_main);
-    lv_obj_set_size(round_arc_cpu, arc_d, arc_d);
+    lv_obj_set_size(round_arc_cpu, outer_d, outer_d);
     lv_obj_center(round_arc_cpu);
-    lv_arc_set_rotation(round_arc_cpu, arc_rotation);
-    lv_arc_set_bg_angles(round_arc_cpu, 0, arc_span_deg);
+    lv_arc_set_bg_angles(round_arc_cpu, ARC_START, ARC_END);
     lv_arc_set_range(round_arc_cpu, 0, 100);
-    lv_obj_set_style_arc_width(round_arc_cpu, arc_width, LV_PART_MAIN);
-    lv_obj_set_style_arc_width(round_arc_cpu, arc_width, LV_PART_INDICATOR);
+    // Eigentlicher Hintergrund-Rect des Arc-Widgets (nicht die Bogenlinie)
+    // aus, sonst blieb ein dezentes helles Kreis-Panel hinter dem Ring stehen.
+    lv_obj_set_style_bg_opa(round_arc_cpu, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_border_width(round_arc_cpu, 0, LV_PART_MAIN);
+    lv_obj_set_style_arc_color(round_arc_cpu, COL_CPU_BAR_A, LV_PART_MAIN);
+    lv_obj_set_style_arc_opa(round_arc_cpu, LV_OPA_20, LV_PART_MAIN);
+    lv_obj_set_style_arc_width(round_arc_cpu, ARC_BG_W, LV_PART_MAIN);
+    lv_obj_set_style_arc_rounded(round_arc_cpu, true, LV_PART_MAIN);
     lv_obj_set_style_arc_color(round_arc_cpu, COL_CPU_BAR_A, LV_PART_INDICATOR);
+    lv_obj_set_style_arc_width(round_arc_cpu, ARC_FG_W, LV_PART_INDICATOR);
+    lv_obj_set_style_arc_rounded(round_arc_cpu, true, LV_PART_INDICATOR);
     lv_obj_remove_flag(round_arc_cpu, LV_OBJ_FLAG_CLICKABLE);
     // LVGL-Arcs sind eigentlich Schieberegler und zeichnen deshalb per
     // Default einen Knob (dicker Punkt an der aktuellen Werteposition) -
@@ -1049,14 +1133,19 @@ static void build_round_ui(void)
 
     int arc_d_gpu = arc_d - 2 * (arc_width + arc_ring_gap);
     round_arc_gpu = lv_arc_create(scr_main);
-    lv_obj_set_size(round_arc_gpu, arc_d_gpu, arc_d_gpu);
+    lv_obj_set_size(round_arc_gpu, inner_d, inner_d);
     lv_obj_center(round_arc_gpu);
-    lv_arc_set_rotation(round_arc_gpu, arc_rotation);
-    lv_arc_set_bg_angles(round_arc_gpu, 0, arc_span_deg);
+    lv_arc_set_bg_angles(round_arc_gpu, ARC_START, ARC_END);
     lv_arc_set_range(round_arc_gpu, 0, 100);
-    lv_obj_set_style_arc_width(round_arc_gpu, arc_width, LV_PART_MAIN);
-    lv_obj_set_style_arc_width(round_arc_gpu, arc_width, LV_PART_INDICATOR);
+    lv_obj_set_style_bg_opa(round_arc_gpu, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_border_width(round_arc_gpu, 0, LV_PART_MAIN);
+    lv_obj_set_style_arc_color(round_arc_gpu, COL_GPU_BAR_A, LV_PART_MAIN);
+    lv_obj_set_style_arc_opa(round_arc_gpu, LV_OPA_20, LV_PART_MAIN);
+    lv_obj_set_style_arc_width(round_arc_gpu, ARC_BG_W, LV_PART_MAIN);
+    lv_obj_set_style_arc_rounded(round_arc_gpu, true, LV_PART_MAIN);
     lv_obj_set_style_arc_color(round_arc_gpu, COL_GPU_BAR_A, LV_PART_INDICATOR);
+    lv_obj_set_style_arc_width(round_arc_gpu, ARC_FG_W, LV_PART_INDICATOR);
+    lv_obj_set_style_arc_rounded(round_arc_gpu, true, LV_PART_INDICATOR);
     lv_obj_remove_flag(round_arc_gpu, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_remove_style(round_arc_gpu, NULL, LV_PART_KNOB);
 

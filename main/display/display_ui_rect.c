@@ -368,19 +368,11 @@ void build_detail(void)
 
     lv_obj_t *back = lv_button_create(scr_detail);
     lv_obj_set_pos(back, 6, 4);
-    lv_obj_set_size(back, 34, 28);
+    lv_obj_set_size(back, 44, 28);
     lv_obj_set_style_bg_color(back, COL_CARD, 0);
     lv_obj_add_event_cb(back, back_click_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_t *bl = make_label(back, MDI_ARROW_LEFT, &mdi_icons_20, COL_TEXT);
     lv_obj_center(bl);
-
-    lv_obj_t *gear = lv_button_create(scr_detail);
-    lv_obj_set_pos(gear, 44, 4);
-    lv_obj_set_size(gear, 34, 28);
-    lv_obj_set_style_bg_color(gear, COL_CARD, 0);
-    lv_obj_add_event_cb(gear, settings_click_cb, LV_EVENT_CLICKED, NULL);
-    lv_obj_t *gl = make_label(gear, MDI_COG, &mdi_icons_20, COL_TEXT);
-    lv_obj_center(gl);
 
     det_title = make_label(scr_detail, ui_str(UI_STR_HISTORY_TITLE), &lv_font_montserrat_20, COL_ACCENT);
     lv_obj_align(det_title, LV_ALIGN_TOP_RIGHT, -8, 6);
@@ -599,6 +591,14 @@ void refresh_now(void)
         snprintf(buf, sizeof(buf), ui_str(UI_STR_QUICK_GPU_FMT), hw_info.gpu_temp, hw_info.gpu_power, sym);
         lv_label_set_text(lbl_quick_gpu, buf);
         (void)unused_col;
+
+        if (is_cpu) {
+            lv_obj_clear_flag(lbl_quick_cpu, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(lbl_quick_gpu, LV_OBJ_FLAG_HIDDEN);
+        } else {
+            lv_obj_add_flag(lbl_quick_cpu, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(lbl_quick_gpu, LV_OBJ_FLAG_HIDDEN);
+        }
 
         update_chart(chart_load, ser_load, h->load, h->count);
         update_chart(chart_temp, ser_temp, h->temp, h->count);

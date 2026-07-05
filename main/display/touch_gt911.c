@@ -37,8 +37,10 @@ esp_lcd_touch_handle_t touch_gt911_init(const board_profile_t *profile)
     }
 
     // Rotation: nur 0/2 (normal/180 Grad) unterstuetzt, siehe Kommentar in
-    // display_ui.c: lcd_init_rgb() - mirror-Flags muessen zum Display passen.
-    bool mirror = (app_config.rotation == 2);
+    // display_ui.c: lcd_init_rgb() - mirror-Flags muessen zum Display passen
+    // (dort ist mirror_x in Rotation 0 die feste Grundkorrektur fuer die
+    // Scan-Richtung dieses Panels, Rotation 2 kehrt beide Achsen zusaetzlich um).
+    bool rotated180 = (app_config.rotation == 2);
 
     esp_lcd_touch_config_t tp_cfg = {
         .x_max = profile->h_res,
@@ -46,7 +48,7 @@ esp_lcd_touch_handle_t touch_gt911_init(const board_profile_t *profile)
         .rst_gpio_num = profile->touch_rst,
         .int_gpio_num = profile->touch_int,
         .levels = { .reset = 1, .interrupt = 0 },
-        .flags = { .swap_xy = 0, .mirror_x = mirror, .mirror_y = mirror },
+        .flags = { .swap_xy = 0, .mirror_x = !rotated180, .mirror_y = rotated180 },
     };
 
     esp_lcd_touch_handle_t tp = NULL;

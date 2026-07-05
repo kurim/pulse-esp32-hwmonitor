@@ -386,7 +386,17 @@ static lv_display_t *lcd_init_rgb(const board_profile_t *p)
             .flags.pclk_active_neg = true,
         },
         .flags.fb_in_psram = 1,
-        .num_fbs = 2, // zusammen mit rgb_cfg.flags.avoid_tearing (s.u.): Ping-Pong-Framebuffer
+        // Einzelner Framebuffer + Bounce-Buffer statt zweier voller PSRAM-
+        // Framebuffer (Ping-Pong/avoid_tearing): auf realer JC8048W550(C)-
+        // Hardware verursachte Letzteres sichtbare Bildstoerungen/Geisterbilder
+        // (PSRAM-Bandbreite reicht nicht, wenn CPU/LVGL und die LCD-DMA
+        // gleichzeitig auf zwei volle 800x480-Puffer zugreifen). Community-
+        // Configs fuer exakt dieses Boardmodell nutzen durchgehend einen
+        // kleinen Bounce-Buffer (Vielfaches von h_res=800) in internem SRAM,
+        // der zeilenweise aus dem einen PSRAM-Framebuffer nachgefuellt wird -
+        // das entkoppelt DMA- von CPU-Zugriffen auf den PSRAM-Bus.
+        .num_fbs = 1,
+        .bounce_buffer_size_px = (size_t)p->h_res * 10,
     };
     for (int i = 0; i < 16; i++) panel_cfg.data_gpio_nums[i] = p->rgb_data[i];
 
@@ -401,7 +411,16 @@ static lv_display_t *lcd_init_rgb(const board_profile_t *p)
     // fuer Hoch-/Querformat tauschen. Fuer das JC8048W550 (fest verbautes
     // 800x480-Landscape-Modul) ist das nicht vorgesehen; touch_gt911_init()
     // spiegelt die Touch-Koordinaten passend mit.
-    bool mirror = (app_config.rotation == 2);
+    //
+    // mirror_x=true ist hier die feste Grundkorrektur (nicht optional!): auf
+    // realer Hardware erschien das Bild in Rotation 0 seitenverkehrt (CPU-/
+    // GPU-Kachel und Topbar-Inhalte vertauscht links/rechts) - der
+    // Scan-Richtung dieses Panels entspricht offenbar nicht der Annahme "erstes
+    // Pixel im Framebuffer = physisch links". Rotation 2 (180 Grad) kehrt
+    // beide Achsen zusaetzlich um.
+    bool rotated180 = (app_config.rotation == 2);
+    bool mirror_x = !rotated180;
+    bool mirror_y = rotated180;
     s_hres = p->h_res;
     s_vres = p->v_res;
 
@@ -411,20 +430,20 @@ static lv_display_t *lcd_init_rgb(const board_profile_t *p)
     lvgl_port_display_cfg_t dcfg = {
         .panel_handle = panel,
         .buffer_size  = (uint32_t)p->h_res * (uint32_t)p->v_res,
-        .double_buffer = false, // Doppelpufferung erfolgt ueber num_fbs=2 oben, nicht hier
+        .double_buffer = false, // nur ein Framebuffer (num_fbs=1 oben) - Bounce-Buffer entkoppelt DMA/CPU
         .hres = p->h_res,
         .vres = p->v_res,
         .monochrome = false,
         .color_format = LV_COLOR_FORMAT_RGB565,
-        .rotation = { .swap_xy = false, .mirror_x = mirror, .mirror_y = mirror },
+        .rotation = { .swap_xy = false, .mirror_x = mirror_x, .mirror_y = mirror_y },
         .flags = {
             .buff_dma   = false,
             .swap_bytes = false,
-            .direct_mode = true, // LVGL zeichnet direkt in einen der beiden Framebuffer
+            .direct_mode = true, // LVGL zeichnet direkt in den einen Framebuffer
         },
     };
     lvgl_port_display_rgb_cfg_t rgb_cfg = {
-        .flags = { .bb_mode = false, .avoid_tearing = true },
+        .flags = { .bb_mode = true, .avoid_tearing = false },
     };
     return lvgl_port_add_disp_rgb(&dcfg, &rgb_cfg);
 }

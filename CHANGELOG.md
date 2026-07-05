@@ -6,6 +6,13 @@ follows [Keep a Changelog](https://keepachangelog.com/), versioning follows
 
 ## [Unreleased]
 
+- **Fix: SSD1309 stuck in light-background "normal mode"**: on real hardware
+  the mono OLED showed a light background with dark icons, and the web
+  portal's "Invert colors" toggle had no effect (it was never applied to the
+  SSD1306/1309 I2C init path). Since a permanently lit background risks
+  burn-in on a self-lit OLED, the panel now always initializes in inverted
+  (dark-background) mode, hardwired rather than user-switchable; the invert
+  toggle is hidden in the web portal for this display type.
 - **USB/serial hardware data source**: hardware data (CPU/GPU load, temp,
   power) can now be received over USB/serial (UART0, 115200 baud) as an
   alternative to MQTT, switchable via a dropdown in the web portal - no

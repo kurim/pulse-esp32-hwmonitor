@@ -302,6 +302,15 @@ These points are board-dependent and couldn't be verified without a device:
    choose "on" there. If red/blue are swapped instead (a different symptom
    than light/dark background), `color_invert` won't help - adjust
    `board_profile_t.bgr` in `board_profiles.c` instead.
+   **SSD1309 is the exception:** confirmed on real hardware that it showed a
+   light background with dark icons, and the web portal's invert toggle had
+   no effect (it was never wired up for the mono/I2C init path). Since a
+   light background isn't just wrong but actively harmful (burn-in risk on a
+   self-lit OLED that's on continuously), `lcd_init_mono_i2c()` now calls
+   `esp_lcd_panel_invert_color(panel, true)` unconditionally instead of
+   reading `app_config.color_invert` - dark mode only, not user-switchable.
+   The web portal hides the "Invert colors" toggle for this display type
+   accordingly.
 2. **New panel driver components** — `main/idf_component.yml` references
    `atanisoft/esp_lcd_ili9488` (community component, no official
    `espressif/` namespace entry exists for it) as well as

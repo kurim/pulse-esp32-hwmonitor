@@ -382,7 +382,7 @@ void build_detail(void)
     lbl_quick_cpu = make_label(scr_detail, "", &lv_font_montserrat_14, COL_ACCENT);
     lv_obj_align(lbl_quick_cpu, LV_ALIGN_TOP_RIGHT, -8, 30);
     lbl_quick_gpu = make_label(scr_detail, "", &lv_font_montserrat_14, COL_GPU);
-    lv_obj_align(lbl_quick_gpu, LV_ALIGN_TOP_RIGHT, -8, 46);
+    lv_obj_align(lbl_quick_gpu, LV_ALIGN_TOP_RIGHT, -8, 30);
 
     det_load  = make_label(scr_detail, "", &lv_font_montserrat_14, COL_TEXT);
     lv_obj_set_pos(det_load, 12, 50);

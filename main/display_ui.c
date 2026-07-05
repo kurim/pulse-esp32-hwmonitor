@@ -1112,6 +1112,11 @@ static void build_round_ui(void)
     lv_obj_set_size(round_arc_cpu, outer_d, outer_d);
     lv_obj_center(round_arc_cpu);
     lv_arc_set_bg_angles(round_arc_cpu, ARC_START, ARC_END);
+    // lv_arc_set_bg_angles() positioniert nur die Hintergrundspur - der
+    // Indikator (Wert-abhaengiger heller Bogen) folgt einem eigenen, sonst
+    // beim LVGL-Default (135/45 Grad) verbleibenden Winkelbereich und landet
+    // ohne diesen Aufruf an einer voellig anderen Stelle als die sichtbare Spur.
+    lv_arc_set_angles(round_arc_cpu, ARC_START, ARC_END);
     lv_arc_set_range(round_arc_cpu, 0, 100);
     // Eigentlicher Hintergrund-Rect des Arc-Widgets (nicht die Bogenlinie)
     // aus, sonst blieb ein dezentes helles Kreis-Panel hinter dem Ring stehen.
@@ -1135,6 +1140,7 @@ static void build_round_ui(void)
     lv_obj_set_size(round_arc_gpu, inner_d, inner_d);
     lv_obj_center(round_arc_gpu);
     lv_arc_set_bg_angles(round_arc_gpu, ARC_START, ARC_END);
+    lv_arc_set_angles(round_arc_gpu, ARC_START, ARC_END);
     lv_arc_set_range(round_arc_gpu, 0, 100);
     lv_obj_set_style_bg_opa(round_arc_gpu, LV_OPA_TRANSP, LV_PART_MAIN);
     lv_obj_set_style_border_width(round_arc_gpu, 0, LV_PART_MAIN);

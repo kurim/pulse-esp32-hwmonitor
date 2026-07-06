@@ -403,11 +403,15 @@ static lv_display_t *lcd_init_rgb(const board_profile_t *p)
     esp_lcd_panel_handle_t panel = NULL;
     LCD_CHECK(esp_lcd_new_rgb_panel(&panel_cfg, &panel));
     LCD_CHECK(esp_lcd_panel_init(panel));
-    // KEINE Polaritaets-Umkehr (frueherer Versuch war ein Fehlschluss - echte
-    // Hardware zeigte mit app_config.color_invert direkt durchgereicht
-    // korrekte Farben; die Negation hier fuehrte stattdessen zu einer
-    // komplett invertierten Darstellung, siehe Bugreport).
-    LCD_CHECK(esp_lcd_panel_invert_color(panel, app_config.color_invert));
+    // Panel-native Polaritaet ist bereits korrekt (auf echter Hardware
+    // bestaetigt) - KEINE Hardware-Invertierung ueber app_config.color_invert.
+    // Anders als bei den SPI-Panels oben (die dort tatsaechlich eine falsche
+    // Panel-Polaritaet ausgleicht) dreht eine blanke Hardware-Invertierung
+    // hier ausnahmslos ALLE Farben gleich um (z.B. gelbe Sonne -> blau) statt
+    // eines brauchbaren "Light Mode". app_config.color_invert wird fuer
+    // dieses Profil daher rein in Software als Light/Dark-Theme-Umschalter
+    // interpretiert, siehe display_ui_wide.c: init_wide_theme().
+    LCD_CHECK(esp_lcd_panel_invert_color(panel, false));
 
     // Kein swap_xy (siehe unten), aber alle vier Mirror-Kombinationen zum
     // Durchprobieren freigegeben - analog zu LCD_SHAPE_ROUND oben in

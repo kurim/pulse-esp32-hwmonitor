@@ -21,6 +21,8 @@
 #include "esp_lcd_panel_rgb.h"    // Guition JC8048W550: RGB565-Parallelbus (nur ESP32-S3)
 #include "esp_idf_version.h"
 #endif
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "esp_lvgl_port.h"
 #include "esp_log.h"
 #include "lvgl.h"
@@ -128,13 +130,14 @@ static void check_standby(void)
     if (app_config.standby_timeout_s == 0) {
         exit_standby(); // Standby deaktiviert - falls gerade aktiv, sofort aufwecken
         return;
-    }
-    uint32_t timeout_ms = (uint32_t)app_config.standby_timeout_s * 1000u;
+    }    if (s_screen == SCR_SETTINGS) {
+        return; // In den Einstellungen darf der Screensaver nicht erneut aktiv werden.
+    }    uint32_t timeout_ms = (uint32_t)app_config.standby_timeout_s * 1000u;
     bool no_data = (now_ms() - hw_info.last_update_ms) > timeout_ms;
     if (no_data) {
         enter_standby();
     } else {
-        exit_standby(); // Daten wieder da -> automatisch aufwecken
+        exit_standby();
     }
 }
 
@@ -402,7 +405,14 @@ static lv_display_t *lcd_init_rgb(const board_profile_t *p)
 
     esp_lcd_panel_handle_t panel = NULL;
     LCD_CHECK(esp_lcd_new_rgb_panel(&panel_cfg, &panel));
+
+    // Eine saubere Init-Sequenz, damit das oft zitternde JC8048W550-Panel
+    // nach Stromlos-Reboot sauber startet.
+    LCD_CHECK(esp_lcd_panel_reset(panel));
+    vTaskDelay(pdMS_TO_TICKS(50));
     LCD_CHECK(esp_lcd_panel_init(panel));
+    vTaskDelay(pdMS_TO_TICKS(50));
+
     // Panel-native Polaritaet ist bereits korrekt (auf echter Hardware
     // bestaetigt) - KEINE Hardware-Invertierung ueber app_config.color_invert.
     // Anders als bei den SPI-Panels oben (die dort tatsaechlich eine falsche
@@ -412,6 +422,9 @@ static lv_display_t *lcd_init_rgb(const board_profile_t *p)
     // dieses Profil daher rein in Software als Light/Dark-Theme-Umschalter
     // interpretiert, siehe display_ui_wide.c: init_wide_theme().
     LCD_CHECK(esp_lcd_panel_invert_color(panel, false));
+    if (panel_cfg.disp_gpio_num >= 0) {
+        LCD_CHECK(esp_lcd_panel_disp_on_off(panel, true));
+    }
 
     // Kein swap_xy (siehe unten), aber alle vier Mirror-Kombinationen zum
     // Durchprobieren freigegeben - analog zu LCD_SHAPE_ROUND oben in
@@ -513,12 +526,8 @@ static void touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
     bool touched = touch_xpt2046_read(&x, &y);
 
     if (touched && s_standby) {
-        // Erster Touch nach dem Standby weckt nur das Display auf und loest
-        // keine Aktion aus (verhindert versehentliches Navigieren/Antippen
-        // von Kacheln beim Aufwecken).
-        exit_standby();
-        data->state = LV_INDEV_STATE_RELEASED;
-        return;
+        // Im Screensaver-Modus reagiert Touch nicht als Aufwecken.
+        // Allow objects such as the settings button to still receive input.
     }
 
     if (touched) {
@@ -540,13 +549,18 @@ static void touch_gt911_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
     (void)indev;
     uint16_t x = 0, y = 0;
     uint8_t cnt = 0;
+    esp_lcd_touch_point_data_t touch_data;
+
     esp_lcd_touch_read_data(s_gt911_tp);
-    bool touched = esp_lcd_touch_get_coordinates(s_gt911_tp, &x, &y, NULL, &cnt, 1) && cnt > 0;
+    bool touched = esp_lcd_touch_get_data(s_gt911_tp, &touch_data, &cnt, 1) == ESP_OK && cnt > 0;
+    if (touched) {
+        x = touch_data.x;
+        y = touch_data.y;
+    }
 
     if (touched && s_standby) {
-        exit_standby();
-        data->state = LV_INDEV_STATE_RELEASED;
-        return;
+        // Im Screensaver-Modus reagiert Touch nicht als Aufwecken.
+        // Allow objects such as the settings button to still receive input.
     }
 
     if (touched) {

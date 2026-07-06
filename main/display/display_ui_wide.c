@@ -42,35 +42,39 @@ static lv_obj_t *w_set_fw, *w_set_ip, *w_set_wifi, *w_set_mqtt, *w_set_heap;
 static lv_obj_t *w_set_ap_btn, *w_set_ap_btn_lbl;
 static bool s_ap_confirm_armed = false;
 static lv_timer_t *s_ap_confirm_timer = NULL;
+static bool s_settings_from_standby = false;
 
 // Standby-Screen-Widgets
-static lv_obj_t *w_standby_lbl_time, *w_standby_lbl_date, *w_standby_lbl_weather;
+static lv_obj_t *w_standby_lbl_time, *w_standby_lbl_date;
+static lv_obj_t *w_standby_icon_temp, *w_standby_lbl_temp;
+static lv_obj_t *w_standby_icon_humidity, *w_standby_lbl_humidity;
+static lv_obj_t *w_standby_icon_wind, *w_standby_lbl_wind;
+static lv_obj_t *w_standby_icon_rain, *w_standby_lbl_rain;
 
 // ------------------------------------------------------------------
-// Software-"Light Mode" (app_config.color_invert wird fuer dieses Panel
+// Software-Themewechsel (app_config.color_invert wird fuer dieses Panel
 // NICHT als Hardware-Pixelinversion genutzt, siehe lcd_init_rgb() in
 // display_ui.c - eine blanke Hardware-Invertierung dreht alle Farben
 // gleichermassen um und macht z.B. aus der gelben Sonne ein Blau. Stattdessen
-// nur Hintergrund/Karten/Text/Sekundaertext hier per eigenem Mini-Theme
-// getauscht; Icon-/Akzentfarben (COL_YELLOW/COL_RAIN/COL_ACCENT/COL_GPU/...)
-// bleiben unverändert dieselben wie im Dark Mode. Wird einmalig beim
-// Bildschirmaufbau berechnet (Umschalten der Checkbox greift wie bei
-// Displaytyp/Rotation/Sprache erst nach einem Neustart).
+// wird hier das Light/Dark-Theme softwareseitig geschaltet; Icon-/Akzentfarben
+// (COL_YELLOW/COL_RAIN/COL_ACCENT/COL_GPU/...) bleiben unverändert.
+// Wird einmalig beim Bildschirmaufbau berechnet (Umschalten der Checkbox
+// greift wie bei Displaytyp/Rotation/Sprache erst nach einem Neustart).
 // ------------------------------------------------------------------
 static lv_color_t W_BG, W_CARD, W_TEXT, W_SUB;
 
 static void init_wide_theme(void)
 {
     if (app_config.color_invert) {
-        W_BG   = lv_color_hex(0xEDEFF3);
-        W_CARD = lv_color_hex(0xFFFFFF);
-        W_TEXT = lv_color_hex(0x12151B);
-        W_SUB  = lv_color_hex(0x4B5566);
-    } else {
         W_BG   = COL_BG;
         W_CARD = COL_CARD;
         W_TEXT = COL_TEXT;
         W_SUB  = COL_SUB;
+    } else {
+        W_BG   = lv_color_hex(0xEDEFF3);
+        W_CARD = lv_color_hex(0xFFFFFF);
+        W_TEXT = lv_color_hex(0x12151B);
+        W_SUB  = lv_color_hex(0x4B5566);
     }
 }
 
@@ -120,6 +124,7 @@ static void compute_trend(const history_t *h, const char **sym, lv_color_t *col)
 static void settings_click_cb(lv_event_t *e)
 {
     (void)e;
+    s_settings_from_standby = false;
     s_screen = SCR_SETTINGS;
     lv_screen_load(scr_settings);
     refresh_wide_ui();
@@ -128,8 +133,25 @@ static void settings_click_cb(lv_event_t *e)
 static void settings_back_cb(lv_event_t *e)
 {
     (void)e;
-    s_screen = SCR_MAIN;
-    lv_screen_load(scr_main);
+    if (s_settings_from_standby) {
+        s_screen = SCR_MAIN;
+        s_standby = true;
+        lv_screen_load(scr_standby);
+        s_settings_from_standby = false;
+    } else {
+        s_screen = SCR_MAIN;
+        lv_screen_load(scr_main);
+    }
+    refresh_wide_ui();
+}
+
+static void standby_settings_cb(lv_event_t *e)
+{
+    (void)e;
+    s_settings_from_standby = true;
+    s_standby = false;
+    s_screen = SCR_SETTINGS;
+    lv_screen_load(scr_settings);
     refresh_wide_ui();
 }
 
@@ -220,7 +242,7 @@ static void build_tile(lv_obj_t *parent, int x, int w, const char *title, wide_t
     tile->chart = lv_chart_create(card);
     lv_obj_set_pos(tile->chart, 12, 170);
     lv_obj_set_size(tile->chart, w - 24, CARD_H - 170 - 12);
-    lv_obj_set_style_bg_color(tile->chart, W_BG, 0);
+    lv_obj_set_style_bg_color(tile->chart, W_BG, 0);    
     lv_obj_set_style_bg_opa(tile->chart, LV_OPA_COVER, 0);
     lv_obj_set_style_radius(tile->chart, 0, 0);
     lv_obj_set_style_border_color(tile->chart, W_SUB, 0);
@@ -229,11 +251,13 @@ static void build_tile(lv_obj_t *parent, int x, int w, const char *title, wide_t
     // Rasterlinien sonst mit einer eigenen Theme-Default-Farbe, die auf
     // realer Hardware im Light-Mode kaum sichtbar war.
     lv_obj_set_style_line_color(tile->chart, W_SUB, LV_PART_MAIN);
-    // Nur linker/rechter Rand - oben/unten (0%/100%) keine eigene Linie, die
-    // stiess sonst (kombiniert mit der Default-Eckenrundung) am Rand vorbei
-    // ueber den Rahmen hinaus.
-    lv_obj_set_style_border_side(tile->chart, LV_BORDER_SIDE_LEFT | LV_BORDER_SIDE_RIGHT, 0);
-    lv_obj_set_style_pad_all(tile->chart, 2, 0);
+    // Kompletten Rahmen zeichnen, damit die oberste 100%-Linie bündig am
+    // Charthintergrund sitzt und kein Rahmenversatz entsteht.
+    lv_obj_set_style_border_side(tile->chart, LV_BORDER_SIDE_FULL, 0);
+    lv_obj_set_style_pad_left(tile->chart, 2, 0);
+    lv_obj_set_style_pad_right(tile->chart, 2, 0);
+    lv_obj_set_style_pad_top(tile->chart, 0, 0);
+    lv_obj_set_style_pad_bottom(tile->chart, 0, 0);
     lv_obj_set_style_size(tile->chart, 0, 0, LV_PART_INDICATOR);
     lv_chart_set_type(tile->chart, LV_CHART_TYPE_LINE);
     lv_chart_set_point_count(tile->chart, HIST_LEN);
@@ -267,10 +291,10 @@ static void build_wide_main(void)
     lv_obj_set_style_pad_all(bar, 0, 0);
     lv_obj_clear_flag(bar, LV_OBJ_FLAG_SCROLLABLE);
 
-    w_lbl_time = make_label(bar, "--:--:--", &lv_font_montserrat_28, W_TEXT);
+    w_lbl_time = make_label(bar, "--:--:--", &lv_font_montserrat_36, W_TEXT);
     lv_obj_set_pos(w_lbl_time, 12, 8);
-    w_lbl_date = make_label(bar, "", &lv_font_montserrat_16, W_SUB);
-    lv_obj_set_pos(w_lbl_date, 12, 56);
+    w_lbl_date = make_label(bar, "", &lv_font_montserrat_20, W_SUB);
+    lv_obj_set_pos(w_lbl_date, 12, 52);
 
     // Alle vier Wetterwerte (Temperatur/Feuchte/Wind/Regen) einheitlich in
     // Uhrzeit-Schriftgroesse (28px Text + 28px MDI-Icons) statt der
@@ -394,13 +418,43 @@ static void build_wide_standby(void)
     w_standby_lbl_time = make_label(scr_standby, "--:--:--", &lv_font_montserrat_48, W_TEXT);
     lv_obj_align(w_standby_lbl_time, LV_ALIGN_CENTER, 0, -40);
 
-    w_standby_lbl_date = make_label(scr_standby, "", &lv_font_montserrat_20, W_SUB);
-    lv_obj_align(w_standby_lbl_date, LV_ALIGN_CENTER, 0, 30);
+    w_standby_lbl_date = make_label(scr_standby, "", &lv_font_montserrat_24, W_SUB);
+    lv_obj_align(w_standby_lbl_date, LV_ALIGN_CENTER, 0, 34);
 
-    w_standby_lbl_weather = make_label(scr_standby, "", &lv_font_montserrat_20, W_SUB);
-    lv_obj_set_width(w_standby_lbl_weather, s_hres - 40);
-    lv_obj_set_style_text_align(w_standby_lbl_weather, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_align(w_standby_lbl_weather, LV_ALIGN_CENTER, 0, 66);
+    const int xoff = 100;
+    const int yoff = 92;
+    const int ygap = 36;
+
+    w_standby_icon_temp = make_label(scr_standby, MDI_THERMOMETER, &mdi_icons_28, COL_THERMO);
+    lv_obj_align(w_standby_icon_temp, LV_ALIGN_CENTER, -xoff, yoff);
+    w_standby_lbl_temp = make_label(scr_standby, "--C", &lv_font_montserrat_20, W_SUB);
+    lv_obj_align_to(w_standby_lbl_temp, w_standby_icon_temp, LV_ALIGN_OUT_RIGHT_MID, 8, 0);
+
+    w_standby_icon_wind = make_label(scr_standby, MDI_WIND, &mdi_icons_28, W_SUB);
+    lv_obj_align(w_standby_icon_wind, LV_ALIGN_CENTER, xoff, yoff);
+    w_standby_lbl_wind = make_label(scr_standby, "--", &lv_font_montserrat_20, W_SUB);
+    lv_obj_align_to(w_standby_lbl_wind, w_standby_icon_wind, LV_ALIGN_OUT_RIGHT_MID, 8, 0);
+
+    w_standby_icon_humidity = make_label(scr_standby, MDI_HUMIDITY, &mdi_icons_28, COL_RAIN);
+    lv_obj_align(w_standby_icon_humidity, LV_ALIGN_CENTER, -xoff, yoff + ygap);
+    w_standby_lbl_humidity = make_label(scr_standby, "--%", &lv_font_montserrat_20, W_SUB);
+    lv_obj_align_to(w_standby_lbl_humidity, w_standby_icon_humidity, LV_ALIGN_OUT_RIGHT_MID, 8, 0);
+
+    w_standby_icon_rain = make_label(scr_standby, MDI_RAIN, &mdi_icons_28, COL_RAIN);
+    lv_obj_align(w_standby_icon_rain, LV_ALIGN_CENTER, xoff, yoff + ygap);
+    w_standby_lbl_rain = make_label(scr_standby, "--", &lv_font_montserrat_20, W_SUB);
+    lv_obj_align_to(w_standby_lbl_rain, w_standby_icon_rain, LV_ALIGN_OUT_RIGHT_MID, 8, 0);
+
+    lv_obj_t *settings_btn = lv_button_create(scr_standby);
+    lv_obj_set_size(settings_btn, 180, 50);
+    lv_obj_align(settings_btn, LV_ALIGN_BOTTOM_MID, 0, -20);
+    lv_obj_set_style_bg_color(settings_btn, W_CARD, 0);
+    lv_obj_set_style_border_width(settings_btn, 0, LV_PART_MAIN);
+    lv_obj_set_style_shadow_width(settings_btn, 0, LV_PART_MAIN);
+    lv_obj_set_style_radius(settings_btn, 14, 0);
+    lv_obj_add_event_cb(settings_btn, standby_settings_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_t *settings_lbl = make_label(settings_btn, ui_str(UI_STR_SETTINGS_TITLE), &lv_font_montserrat_16, W_TEXT);
+    lv_obj_center(settings_lbl);
 }
 
 void build_wide_ui(void)
@@ -462,29 +516,38 @@ void refresh_wide_ui(void)
     if (weather_info.valid) {
         snprintf(buf, sizeof(buf), "%.0fC", weather_info.temp_c);
         lv_label_set_text(w_lbl_weather, buf);
+        lv_label_set_text(w_standby_lbl_temp, buf);
+
         snprintf(buf, sizeof(buf), "%d%%", weather_info.humidity);
         lv_label_set_text(w_lbl_humidity, buf);
+        lv_label_set_text(w_standby_lbl_humidity, buf);
+
         snprintf(buf, sizeof(buf), "%.0fkm/h %s",
                  weather_info.wind_speed, weather_wind_compass(weather_info.wind_deg));
         lv_label_set_text(w_lbl_wind, buf);
+        lv_label_set_text(w_standby_lbl_wind, buf);
+
         snprintf(buf, sizeof(buf), "%.1fmm", weather_info.rain_1h);
         lv_label_set_text(w_lbl_rain, buf);
-        snprintf(buf, sizeof(buf), "%.0fC  %d%%  %.0fkm/h %s  %.1fmm",
-                 weather_info.temp_c, weather_info.humidity, weather_info.wind_speed,
-                 weather_wind_compass(weather_info.wind_deg), weather_info.rain_1h);
-        lv_label_set_text(w_standby_lbl_weather, buf);
+        lv_label_set_text(w_standby_lbl_rain, buf);
     } else if (app_config.weather_enabled) {
         lv_label_set_text(w_lbl_weather, "--C");
+        lv_label_set_text(w_standby_lbl_temp, "--C");
         lv_label_set_text(w_lbl_humidity, "--%");
+        lv_label_set_text(w_standby_lbl_humidity, "--%");
         lv_label_set_text(w_lbl_wind, "--");
+        lv_label_set_text(w_standby_lbl_wind, "--");
         lv_label_set_text(w_lbl_rain, "--");
-        lv_label_set_text(w_standby_lbl_weather, "--");
+        lv_label_set_text(w_standby_lbl_rain, "--");
     } else {
         lv_label_set_text(w_lbl_weather, "");
+        lv_label_set_text(w_standby_lbl_temp, "");
         lv_label_set_text(w_lbl_humidity, "");
+        lv_label_set_text(w_standby_lbl_humidity, "");
         lv_label_set_text(w_lbl_wind, "");
+        lv_label_set_text(w_standby_lbl_wind, "");
         lv_label_set_text(w_lbl_rain, "");
-        lv_label_set_text(w_standby_lbl_weather, "");
+        lv_label_set_text(w_standby_lbl_rain, "");
     }
 
     bool data_source_ok = (app_config.hw_source == HW_SOURCE_USB) ? serial_connected : mqtt_connected;

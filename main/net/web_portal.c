@@ -62,9 +62,6 @@ static const char INDEX_HTML[] =
 ".pintable td{padding:3px 6px;border-bottom:1px solid var(--border);}"
 ".pintable td:first-child{color:var(--sub);}"
 ".hint{font-size:.8rem;color:var(--sub);margin-top:8px;}"
-// Klickbare Liste statt <datalist> - <datalist>-Vorschlaege werden von
-// mobilen Browsern (Android Chrome/iOS Safari) inkonsistent bis gar nicht
-// angezeigt, eine simple Liste aus Buttons funktioniert dagegen ueberall.
 ".wifilist{margin-top:8px;border:1px solid var(--border);border-radius:8px;overflow:hidden;max-height:220px;overflow-y:auto;}"
 ".wifilist button{width:100%;text-align:left;background:#0d111a;color:var(--text);border:none;border-radius:0;"
 "border-bottom:1px solid var(--border);padding:10px 12px;margin:0;font-size:.9rem;font-weight:400;display:flex;justify-content:space-between;gap:10px;}"
@@ -157,10 +154,6 @@ static const char INDEX_HTML[] =
 "<div id=\"otaStatus\" style=\"margin-top:8px;font-size:.85rem;color:var(--sub)\"></div></div>"
 "</div></div>"
 "<script>"
-// I18N: reine Client-seitige WebUI-Sprache (Dropdown + Browser-Erkennung +
-// localStorage), unabhaengig vom Geraete-Display-Sprachfeld weiter unten im
-// Formular ("language" - das steuert main/ui_strings.c auf dem Geraet und
-// braucht einen Neustart, siehe app_config.language).
 "const I18N={"
 "de:{sub_title:'Konfiguration (ESP-IDF)',loading_status:'Lade Status...',card_wifi:'WLAN',"
 "btn_scan_wifi:'WLAN-Netzwerke suchen',lbl_password:'Passwort',ph_keep_empty:'unver\\u00e4ndert lassen = leer',"
@@ -279,8 +272,10 @@ static const char INDEX_HTML[] =
 "function renderRotationOptions(){"
 "const key=document.getElementById('display_type').value;const d=displays.find(x=>x.key===key);"
 "const sel=document.getElementById('rotation');const prev=sel.value;"
-"const opts=(d&&d.shape==='rect')"
+"const opts=(d&&(d.shape==='rect'))"
 "?[[1,'Standard'],[3,t('rotated_180')+(d.has_touch?t('touch_also_rotated'):'')]]"
+":(key==='guition_jc8048w550')"
+"?[[0,'Rotation 0'],[3,t('rotated_180')+(d.has_touch?t('touch_also_rotated'):'')]]"
 ":[[0,'Rotation 0'],[1,'Rotation 1'],[2,'Rotation 2'],[3,'Rotation 3']];"
 "sel.innerHTML='';opts.forEach(o=>{const el=document.createElement('option');el.value=o[0];el.textContent=o[1];sel.appendChild(el);});"
 "if(opts.some(o=>String(o[0])===prev))sel.value=prev;}"

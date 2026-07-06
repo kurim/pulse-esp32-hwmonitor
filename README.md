@@ -194,13 +194,15 @@ idf.py -p /dev/ttyUSB0 flash monitor
 ```
 
 > **PlatformIO/Arduino build (`platformio.ini`, `src/`):** use `pio run -e esp32`
-> / `pio run -e esp32 -t upload` instead. If the board was previously flashed
-> with OTA-capable firmware (e.g. this project's ESP-IDF build) and boot fails
-> right after flashing with `OTA app partition slot 1 is not bootable`, the
-> leftover `otadata` partition from that earlier firmware still points at a
-> slot the new build never wrote to. Fix once with a full chip erase before
-> reflashing: `pio run -e esp32 -t erase` followed by `pio run -e esp32 -t
-> upload`.
+> / `pio run -e esp32 -t upload` instead. Each build also produces
+> `.pio/build/esp32/merged-esp32.bin` (bootloader + partition table + otadata
+> initializer + app combined into one image, offsets from `extra_merge_bin.py`)
+> - flash this single file at offset `0x0` for the initial flash, e.g. via
+> [ESP Web Tools](https://esphome.github.io/esp-web-tools/)/esptool-js in the
+> browser, or `esptool.py write_flash 0x0 merged-esp32.bin`. If the board was
+> previously flashed with a *different* partition table/OTA scheme and boot
+> fails right after flashing (`OTA app partition slot 1 is not bootable`), do
+> one full chip erase first: `pio run -e esp32 -t erase` then reflash.
 
 Initial setup: open AP **`ESP32-HWMon-XXXX`** → `http://192.168.4.1` → enter
 WiFi → save → reboot. On first load, the web portal shows only the WiFi

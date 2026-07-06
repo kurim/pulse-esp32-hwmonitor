@@ -5,8 +5,16 @@
 # und kam je nach Zielchip auf bis zu ~1.62 MB - das passte in 1.5 MB nicht
 # mehr rein. 2x 1.75 MB + nvs/otadata/phy_init passen weiterhin komfortabel
 # in 4 MB (rechnerisch bleiben ~384 KB frei).
-nvs,        data, nvs,      0x9000,   0x6000,
-otadata,    data, ota,      0xf000,   0x2000,
+# otadata liegt bewusst bei 0xe000 (nicht 0xf000 wie im esp-idf-Original) -
+# der Arduino-ESP32-Core/pioarduino-Flash-Vorgang schreibt bei jedem Upload
+# automatisch boot_app0.bin (initialisiert otadata auf "boote App-Slot 0") an
+# der fest einprogrammierten Adresse 0xe000, unabhaengig vom tatsaechlichen
+# Inhalt dieser partitions.csv. Bei otadata=0xf000 ueberschrieb das die
+# letzten 4 KB von nvs (Preferences-Daten!) und traf otadata nur zur Haelfte -
+# das fuehrte bei jedem Flash zu Bootfehlern ("OTA app partition slot 1 is not
+# bootable") und kaputten Preferences. nvs ist deshalb um 4 KB verkleinert.
+nvs,        data, nvs,      0x9000,   0x5000,
+otadata,    data, ota,      0xe000,   0x2000,
 phy_init,   data, phy,      0x11000,  0x1000,
 ota_0,      app,  ota_0,    0x20000,  0x1C0000,
 ota_1,      app,  ota_1,    0x1E0000, 0x1C0000,

@@ -11,7 +11,12 @@
 void setup(void)
 {
     Serial.begin(115200);
-    log_i("=== ESP32 Hardware-Monitor (Arduino/pioarduino %s) ===", FW_VERSION);
+    log_i("#####    #    #        #####  ######");
+    log_i("#    #   #    #   #     #     #     ");
+    log_i("#####    #    #   #      #### #####");
+    log_i("#         #    #  #         # #     ");
+    log_i("#          #### ######  #####  ######");
+    log_i("=== Pulse ESP32 Hardware-Monitor (Version %s) ===", FW_VERSION);
 
     // Konfiguration laden (Defaults -> Preferences/NVS-Overrides).
     config_store_init();

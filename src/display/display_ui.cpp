@@ -32,14 +32,14 @@ static void disp_flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *px
     uint32_t w = area->x2 - area->x1 + 1;
     uint32_t h = area->y2 - area->y1 + 1;
 
-    // swap=true, da LVGL RGB565-Puffer in Little-Endian-Byte-Reihenfolge
-    // liefert - auf echter Hardware verifizieren (siehe Migrationsplan,
-    // Risiko "LVGL9 + LovyanGFX Flush-Byteorder"); falls das Bild
-    // rot/blau-vertauscht oder mit falscher Byte-Reihenfolge erscheint, hier
-    // auf false umstellen.
+    // swap=false: mit swap=true (urspruengliche Annahme) zeigte echte
+    // Hardware ein von TV-Rauschen ueberlagertes Bild (klassisches Symptom
+    // von falscher RGB565-Byte-Reihenfolge beim Flush) - LVGLs Renderpuffer
+    // liegt bereits in der von LovyanGFX/SPI erwarteten Reihenfolge, ein
+    // zusaetzlicher Swap zerstoert die Daten.
     s_lcd.startWrite();
     s_lcd.setAddrWindow(area->x1, area->y1, w, h);
-    s_lcd.writePixels((lgfx::rgb565_t *)px_map, w * h, true);
+    s_lcd.writePixels((lgfx::rgb565_t *)px_map, w * h, false);
     s_lcd.endWrite();
 
     lv_display_flush_ready(disp);
@@ -50,6 +50,15 @@ static void touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
     (void)indev;
     int32_t x, y;
     bool touched = s_lcd.getTouch(&x, &y);
+
+    // Temporäres Debug-Log, um bei Touch-Problemen zu unterscheiden, ob
+    // getTouch() ueberhaupt Ereignisse liefert (XPT2046-Verkabelung/SPI-Bus)
+    // oder ob die Koordinaten falsch auf den Bildschirm gemappt werden.
+    static bool s_was_touched = false;
+    if (touched != s_was_touched) {
+        log_i("touch %s x=%d y=%d", touched ? "PRESS" : "RELEASE", (int)x, (int)y);
+        s_was_touched = touched;
+    }
 
     if (touched) {
         data->point.x = x;

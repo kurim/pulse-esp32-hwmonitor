@@ -1,16 +1,19 @@
-# ESP32 Hardware Monitor (ESP-IDF)
+# Pulse ESP32 Hardware Monitor (PlatformIO/Arduino)
 
-Pure **ESP-IDF** firmware (no Arduino core) for a small WiFi hardware
-monitor: time/date, optional weather, plus CPU/GPU load, temperature and
-power, delivered from a PC client via MQTT or USB/serial (switchable in the
-web portal). WiFi setup via an open access point with a config web portal
-and OTA update.
+PlatformIO/[pioarduino](https://github.com/pioarduino/platform-espressif32)
+(Arduino core on ESP-IDF 5.5.4) firmware for a small WiFi hardware monitor:
+time/date, optional weather, plus CPU/GPU load, temperature and power,
+delivered from a PC client via MQTT or USB/serial (switchable in the web
+portal). WiFi setup via an open access point with a config web portal and
+OTA update.
 
-> This is a dedicated long-lived branch for the ESP-IDF variant, separate
-> from the Arduino/PlatformIO variant on `main` (there, the Arduino firmware
-> and the ESP-IDF port live side by side in subfolders). Here on `esp-idf`,
-> the ESP-IDF code lives directly in the repo root, with no Arduino files
-> next to it.
+> This branch is a from-scratch Arduino/PlatformIO rewrite (see `src/`,
+> `platformio.ini`), ported over feature-for-feature from this project's
+> separate `esp-idf` branch (pure ESP-IDF, no Arduino) - that branch remains
+> the reference implementation/fallback and is not affected by this rewrite.
+> **Note:** most of the prose below was written for the ESP-IDF version and
+> still references `idf.py`/`main/*.c` paths in places - a full documentation
+> pass for this branch is a planned follow-up.
 
 See [CHANGELOG.md](CHANGELOG.md) for changes per release.
 
@@ -187,23 +190,26 @@ content instead of brightness).
 
 ## Building & flashing
 
+This branch is a PlatformIO/[pioarduino](https://github.com/pioarduino/platform-espressif32)
+project (Arduino core on top of ESP-IDF 5.5.4) - all firmware source lives
+under `src/`, build config in `platformio.ini`.
+
 ```bash
-idf.py set-target esp32       # or esp32s3 / esp32c3, see note below
-idf.py build
-idf.py -p /dev/ttyUSB0 flash monitor
+pio run -e esp32              # or esp32s3 / esp32c3
+pio run -e esp32 -t upload
+pio device monitor
 ```
 
-> **PlatformIO/Arduino build (`platformio.ini`, `src/`):** use `pio run -e esp32`
-> / `pio run -e esp32 -t upload` instead. pioarduino also auto-generates
-> `.pio/build/esp32/firmware.factory.bin` (bootloader + partition table +
-> otadata initializer + app combined into one image) - flash this single file
-> at offset `0x0` for the initial flash, e.g. via
-> [ESP Web Tools](https://esphome.github.io/esp-web-tools/)/esptool-js in the
-> browser, or `esptool.py write_flash 0x0 firmware.factory.bin`. If the board
-> was previously flashed with a *different* partition table/OTA scheme and
-> boot fails right after flashing (`OTA app partition slot 1 is not
-> bootable`), do one full chip erase first: `pio run -e esp32 -t erase` then
-> reflash.
+pioarduino also auto-generates `.pio/build/esp32/firmware.factory.bin`
+(bootloader + partition table + otadata initializer + app combined into one
+image) on every build - flash this single file at offset `0x0` for the
+initial flash, e.g. via [ESP Web Tools](https://esphome.github.io/esp-web-tools/)/
+esptool-js in the browser, or `esptool.py write_flash 0x0 firmware.factory.bin`,
+instead of writing bootloader/partition table/app separately. If the board
+was previously flashed with a *different* partition table/OTA scheme and
+boot fails right after flashing (`OTA app partition slot 1 is not
+bootable`), do one full chip erase first: `pio run -e esp32 -t erase` then
+reflash.
 
 Initial setup: open AP **`ESP32-HWMon-XXXX`** → `http://192.168.4.1` → enter
 WiFi → save → reboot. On first load, the web portal shows only the WiFi
@@ -215,36 +221,11 @@ mid-way through the long form and jumping back to the SSID field.
 
 ### CI build (GitHub Actions)
 
-`.github/workflows/build-idf.yml` builds the firmware in the official
-`espressif/idf` Docker image (`espressif/esp-idf-ci-action`) and produces
-**two** files per chip:
-
-- `esp32-hwmonitor-vX.X.X-idf[-<target>].bin` - bootloader + partition table
-  + app image combined via `idf.py merge-bin`, meant for the **initial**
-  flash via a web flasher (e.g. ESP Web Tools/esptool-js) or
-  `esptool.py write_flash 0x0 <file>`, instead of writing bootloader/
-  partition table/app separately at three offsets.
-- `esp32-hwmonitor-vX.X.X-idf[-<target>]-ota.bin` - just the app image
-  (`build/esp32-hwmonitor.bin`, no bootloader/partition table), sized to fit
-  a single OTA partition (~1.4 MB). **Use this one for the web portal's
-  Firmware-Update (OTA) upload** - `h_update()` in `main/net/web_portal.c` writes
-  the uploaded body 1:1 via `esp_ota_write()` into an OTA partition, so
-  uploading the merged image there fails/bricks the upload.
-
-Both triggers always build **all three** supported chips (esp32/esp32s3/
-esp32c3) as a matrix job - there's no per-chip selection anymore, a single
-run always produces both `.bin` files for all three chips:
-
-- **Manual** (tab "Actions" → "ESP-IDF Build" → "Run workflow"): choose the
-  ESP-IDF Docker tag, builds all three chips. Results are available as
-  artifacts on the workflow run, `FW_VERSION` comes unchanged from
-  `main/shared_state.h`.
-- **Tag push** (`git tag v1.0.0-idf && git push origin v1.0.0-idf`): builds
-  all three chips and then automatically creates a GitHub release for the
-  tag, with all `.bin` files attached. `FW_VERSION` is set **from the
-  tag** in this case (leading "v" stripped, `v1.0.0-idf` →
-  `FW_VERSION "1.0.0-idf"`) instead of from `main/shared_state.h` - the
-  value checked into the repo only serves as the default for manual builds.
+Not set up yet on this branch - the previous ESP-IDF-based CI workflow
+(`idf.py`/Docker) was removed since it no longer matches this PlatformIO/
+Arduino codebase. A PlatformIO-based replacement (`pio run -e ...` per
+target, matrix over esp32/esp32s3/esp32c3, release artifact upload analogous
+to the old workflow) is a planned follow-up, not yet implemented.
 
 > **Captive portal detection on phones can briefly exhaust sockets**:
 > iOS/Android/Windows check internet connectivity in the setup AP via

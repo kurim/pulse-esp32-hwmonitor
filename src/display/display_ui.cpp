@@ -45,19 +45,29 @@ static void disp_flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *px
     lv_display_flush_ready(disp);
 }
 
+// PENIRQ (touch_irq, GPIO36) direkt lesen, unabhaengig von LovyanGFX's
+// SPI-Transaktion - unterscheidet "Pin sieht nie LOW" (Hardware/Verkabelung)
+// von "Pin geht LOW, aber getTouch() liefert trotzdem false" (LovyanGFX-
+// Konfigurationsfehler). Temporaer fuer die Touch-Fehlersuche auf dem CYD.
+#define TOUCH_IRQ_PIN 36
+
 static void touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
 {
     (void)indev;
     int32_t x, y;
     bool touched = s_lcd.getTouch(&x, &y);
+    bool irq_low = digitalRead(TOUCH_IRQ_PIN) == LOW;
 
     // Temporäres Debug-Log, um bei Touch-Problemen zu unterscheiden, ob
     // getTouch() ueberhaupt Ereignisse liefert (XPT2046-Verkabelung/SPI-Bus)
     // oder ob die Koordinaten falsch auf den Bildschirm gemappt werden.
     static bool s_was_touched = false;
-    if (touched != s_was_touched) {
-        log_i("touch %s x=%d y=%d", touched ? "PRESS" : "RELEASE", (int)x, (int)y);
+    static bool s_was_irq_low = false;
+    if (touched != s_was_touched || irq_low != s_was_irq_low) {
+        log_i("touch %s x=%d y=%d (raw IRQ pin36=%s)",
+              touched ? "PRESS" : "RELEASE", (int)x, (int)y, irq_low ? "LOW" : "HIGH");
         s_was_touched = touched;
+        s_was_irq_low = irq_low;
     }
 
     if (touched) {
@@ -190,6 +200,11 @@ void display_ui_begin(void)
     lv_display_set_color_format(disp, LV_COLOR_FORMAT_RGB565);
 
     if (s_profile->has_touch) {
+        // Unabhaengig von LovyanGFX's eigener Touch-SPI-Init: PENIRQ-Pin
+        // zusaetzlich direkt als Eingang konfigurieren, damit touch_read_cb()
+        // ihn per digitalRead() zur Fehlersuche auslesen kann.
+        pinMode(TOUCH_IRQ_PIN, INPUT);
+
         lv_indev_t *indev = lv_indev_create();
         lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);
         lv_indev_set_read_cb(indev, touch_read_cb);

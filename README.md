@@ -194,15 +194,16 @@ idf.py -p /dev/ttyUSB0 flash monitor
 ```
 
 > **PlatformIO/Arduino build (`platformio.ini`, `src/`):** use `pio run -e esp32`
-> / `pio run -e esp32 -t upload` instead. Each build also produces
-> `.pio/build/esp32/merged-esp32.bin` (bootloader + partition table + otadata
-> initializer + app combined into one image, offsets from `extra_merge_bin.py`)
-> - flash this single file at offset `0x0` for the initial flash, e.g. via
+> / `pio run -e esp32 -t upload` instead. pioarduino also auto-generates
+> `.pio/build/esp32/firmware.factory.bin` (bootloader + partition table +
+> otadata initializer + app combined into one image) - flash this single file
+> at offset `0x0` for the initial flash, e.g. via
 > [ESP Web Tools](https://esphome.github.io/esp-web-tools/)/esptool-js in the
-> browser, or `esptool.py write_flash 0x0 merged-esp32.bin`. If the board was
-> previously flashed with a *different* partition table/OTA scheme and boot
-> fails right after flashing (`OTA app partition slot 1 is not bootable`), do
-> one full chip erase first: `pio run -e esp32 -t erase` then reflash.
+> browser, or `esptool.py write_flash 0x0 firmware.factory.bin`. If the board
+> was previously flashed with a *different* partition table/OTA scheme and
+> boot fails right after flashing (`OTA app partition slot 1 is not
+> bootable`), do one full chip erase first: `pio run -e esp32 -t erase` then
+> reflash.
 
 Initial setup: open AP **`ESP32-HWMon-XXXX`** → `http://192.168.4.1` → enter
 WiFi → save → reboot. On first load, the web portal shows only the WiFi

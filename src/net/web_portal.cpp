@@ -234,10 +234,24 @@ static void cfg_pin_addr(JsonObject &root, const char *key, uint8_t *dst)
     else if (root[key].is<int>()) *dst = (uint8_t)root[key].as<int>();
 }
 
-static void h_config_post_body(AsyncWebServerRequest *req, uint8_t *data, size_t len)
+// Wie im esp-idf-Original auf 4096 Bytes begrenzt (das Config-JSON inkl. aller
+// Pin-Overrides passt deutlich darunter) - Puffer sammelt die (meist einzige)
+// Chunk-Uebertragung ein, bevor geparst wird.
+#define CONFIG_BODY_MAX 4096
+static uint8_t s_config_body[CONFIG_BODY_MAX];
+
+static void h_config_post_body(AsyncWebServerRequest *req, uint8_t *data, size_t len,
+                                size_t index, size_t total)
 {
+    if (total > CONFIG_BODY_MAX || index + len > CONFIG_BODY_MAX) {
+        req->send(400, "application/json", "{\"error\":\"too large\"}");
+        return;
+    }
+    memcpy(s_config_body + index, data, len);
+    if (index + len != total) return; // weitere Chunks abwarten
+
     JsonDocument doc;
-    if (deserializeJson(doc, data, len) != DeserializationError::Ok) {
+    if (deserializeJson(doc, s_config_body, total) != DeserializationError::Ok) {
         req->send(200, "application/json", "{\"error\":\"invalid json\"}");
         return;
     }

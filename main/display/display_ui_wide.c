@@ -16,9 +16,9 @@
 #include <string.h>
 #include <stdio.h>
 
-#define TOPBAR_H 84
-#define CARD_Y   92
-#define CARD_H   380
+#define TOPBAR_H 96
+#define CARD_Y   104
+#define CARD_H   368
 
 typedef struct {
     lv_obj_t *load_lbl;
@@ -206,7 +206,9 @@ static void build_tile(lv_obj_t *parent, int x, int w, const char *title, wide_t
     lv_chart_set_type(tile->chart, LV_CHART_TYPE_LINE);
     lv_chart_set_point_count(tile->chart, HIST_LEN);
     lv_chart_set_range(tile->chart, LV_CHART_AXIS_PRIMARY_Y, 0, 100);
-    lv_chart_set_div_line_count(tile->chart, 3, 0);
+    // Nur eine einzelne, mittige 50%-Referenzlinie statt mehrerer - mit drei
+    // Linien wirkte die Platzierung auf realer Hardware verwirrend/falsch.
+    lv_chart_set_div_line_count(tile->chart, 1, 0);
     tile->ser = lv_chart_add_series(tile->chart, is_gpu ? COL_GPU : COL_ACCENT, LV_CHART_AXIS_PRIMARY_Y);
 }
 
@@ -232,38 +234,40 @@ static void build_wide_main(void)
     lv_obj_clear_flag(bar, LV_OBJ_FLAG_SCROLLABLE);
 
     w_lbl_time = make_label(bar, "--:--:--", &lv_font_montserrat_28, COL_TEXT);
-    lv_obj_set_pos(w_lbl_time, 12, 6);
+    lv_obj_set_pos(w_lbl_time, 12, 8);
     w_lbl_date = make_label(bar, "", &lv_font_montserrat_16, COL_SUB);
-    lv_obj_set_pos(w_lbl_date, 12, 50);
+    lv_obj_set_pos(w_lbl_date, 12, 56);
 
-    // Wetter-Haupttemperatur auf Uhrzeit-Schriftgroesse gebracht (macht die
-    // Navbar insgesamt hoeher, siehe TOPBAR_H oben).
-    lv_obj_t *sun = make_label(bar, MDI_SUN, &mdi_icons_20, COL_YELLOW);
-    lv_obj_set_pos(sun, 230, 10);
+    // Alle vier Wetterwerte (Temperatur/Feuchte/Wind/Regen) einheitlich in
+    // Uhrzeit-Schriftgroesse (28px Text + 28px MDI-Icons) statt der
+    // vorherigen uneinheitlichen Groessen - macht die Navbar insgesamt hoeher
+    // (siehe TOPBAR_H oben).
+    lv_obj_t *sun = make_label(bar, MDI_SUN, &mdi_icons_28, COL_YELLOW);
+    lv_obj_set_pos(sun, 210, 10);
     w_lbl_weather = make_label(bar, "--C", &lv_font_montserrat_28, COL_TEXT);
-    lv_obj_set_pos(w_lbl_weather, 254, 6);
-    lv_obj_set_width(w_lbl_weather, 80);
+    lv_obj_set_pos(w_lbl_weather, 244, 8);
+    lv_obj_set_width(w_lbl_weather, 110);
     lv_label_set_long_mode(w_lbl_weather, LV_LABEL_LONG_MODE_CLIP);
 
-    lv_obj_t *hu = make_label(bar, MDI_HUMIDITY, &mdi_icons_20, COL_RAIN);
-    lv_obj_set_pos(hu, 230, 50);
-    w_lbl_humidity = make_label(bar, "--", &lv_font_montserrat_14, COL_SUB);
-    lv_obj_set_pos(w_lbl_humidity, 254, 52);
-    lv_obj_set_width(w_lbl_humidity, 44);
+    lv_obj_t *hu = make_label(bar, MDI_HUMIDITY, &mdi_icons_28, COL_RAIN);
+    lv_obj_set_pos(hu, 210, 58);
+    w_lbl_humidity = make_label(bar, "--", &lv_font_montserrat_28, COL_SUB);
+    lv_obj_set_pos(w_lbl_humidity, 244, 56);
+    lv_obj_set_width(w_lbl_humidity, 110);
     lv_label_set_long_mode(w_lbl_humidity, LV_LABEL_LONG_MODE_CLIP);
 
-    lv_obj_t *wi = make_label(bar, MDI_WIND, &mdi_icons_20, COL_SUB);
-    lv_obj_set_pos(wi, 420, 10);
-    w_lbl_wind = make_label(bar, "--", &lv_font_montserrat_14, COL_SUB);
-    lv_obj_set_pos(w_lbl_wind, 444, 12);
-    lv_obj_set_width(w_lbl_wind, 220);
+    lv_obj_t *wi = make_label(bar, MDI_WIND, &mdi_icons_28, COL_SUB);
+    lv_obj_set_pos(wi, 400, 10);
+    w_lbl_wind = make_label(bar, "--", &lv_font_montserrat_28, COL_SUB);
+    lv_obj_set_pos(w_lbl_wind, 434, 8);
+    lv_obj_set_width(w_lbl_wind, 260);
     lv_label_set_long_mode(w_lbl_wind, LV_LABEL_LONG_MODE_CLIP);
 
-    lv_obj_t *ri = make_label(bar, MDI_RAIN, &mdi_icons_20, COL_RAIN);
-    lv_obj_set_pos(ri, 420, 50);
-    w_lbl_rain = make_label(bar, "--", &lv_font_montserrat_14, COL_SUB);
-    lv_obj_set_pos(w_lbl_rain, 444, 52);
-    lv_obj_set_width(w_lbl_rain, 100);
+    lv_obj_t *ri = make_label(bar, MDI_RAIN, &mdi_icons_28, COL_RAIN);
+    lv_obj_set_pos(ri, 400, 58);
+    w_lbl_rain = make_label(bar, "--", &lv_font_montserrat_28, COL_SUB);
+    lv_obj_set_pos(w_lbl_rain, 434, 56);
+    lv_obj_set_width(w_lbl_rain, 200);
     lv_label_set_long_mode(w_lbl_rain, LV_LABEL_LONG_MODE_CLIP);
 
     w_icon_status = shape_dot(bar, 16, 16, 8, COL_WARN);

@@ -403,12 +403,11 @@ static lv_display_t *lcd_init_rgb(const board_profile_t *p)
     esp_lcd_panel_handle_t panel = NULL;
     LCD_CHECK(esp_lcd_new_rgb_panel(&panel_cfg, &panel));
     LCD_CHECK(esp_lcd_panel_init(panel));
-    // Polaritaet auf realer Hardware umgekehrt zu allen anderen Panels: mit
-    // app_config.color_invert=false (Checkbox aus, der Default) zeigte dieses
-    // Panel bereits invertierte Farben - true zeigte die korrekten. Deshalb
-    // hier negiert, damit die Checkbox-Bedeutung ("Invertieren" an/aus) fuer
-    // den Nutzer trotzdem intuitiv bleibt.
-    LCD_CHECK(esp_lcd_panel_invert_color(panel, !app_config.color_invert));
+    // KEINE Polaritaets-Umkehr (frueherer Versuch war ein Fehlschluss - echte
+    // Hardware zeigte mit app_config.color_invert direkt durchgereicht
+    // korrekte Farben; die Negation hier fuehrte stattdessen zu einer
+    // komplett invertierten Darstellung, siehe Bugreport).
+    LCD_CHECK(esp_lcd_panel_invert_color(panel, app_config.color_invert));
 
     // Kein swap_xy (siehe unten), aber alle vier Mirror-Kombinationen zum
     // Durchprobieren freigegeben - analog zu LCD_SHAPE_ROUND oben in

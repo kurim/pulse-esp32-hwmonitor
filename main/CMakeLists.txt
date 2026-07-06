@@ -13,6 +13,7 @@ idf_component_register(
         "display/ui_strings.c"
         "display/font_mdi_icons_20.c"
         "display/font_mdi_icons_10.c"
+        "display/font_mdi_icons_28.c"
         "display/touch_xpt2046.c"
         "display/touch_gt911.c"
         "net/web_portal.c"

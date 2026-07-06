@@ -30,9 +30,12 @@ static char           s_ap_ssid[24];
 
 static bool wifi_connect_sta(void)
 {
+    // Immer den WiFi-Treiber initialisieren (auch ohne konfigurierte SSID) -
+    // sonst schlaegt der WiFi.disconnect(true)-Aufruf in start_ap() mit
+    // ESP_ERR_WIFI_NOT_INIT fehl, da der Treiber nie hochgefahren wurde.
+    WiFi.mode(WIFI_STA);
     if (strlen(app_config.wifi_ssid) == 0) return false;
 
-    WiFi.mode(WIFI_STA);
     WiFi.begin(app_config.wifi_ssid, app_config.wifi_pass);
 
     uint32_t start = millis();

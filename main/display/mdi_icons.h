@@ -39,6 +39,12 @@ extern "C" {
 #endif
 
 extern const lv_font_t mdi_icons_20;
+// 28px-Variante (dieselben 9 Glyphen/Codepoints, siehe Kommentar oben) -
+// wird nur vom Dashboard-UI fuer grosse Panels genutzt (display_ui_wide.c),
+// wo Icons neben der 28px-Uhrzeit/Wetter-Schrift sonst unproportional klein
+// wirken. Generiert mit demselben lv_font_conv-Aufruf wie mdi_icons_20,
+// nur --size 28 --lv-font-name mdi_icons_28 -o font_mdi_icons_28.c.
+extern const lv_font_t mdi_icons_28;
 
 // Zeichen-Codes sind die remappten Font-internen Codepoints (U+E001-E009),
 // nicht die MDI-Originalcodepoints - siehe Kommentar oben.

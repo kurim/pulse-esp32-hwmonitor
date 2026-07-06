@@ -3,11 +3,13 @@
 #include "shared_state.h"
 #include "board_profiles.h"
 #include "touch_xpt2046.h"
+#include "touch_gt911.h"
 
 #include "driver/spi_master.h"
 #include "driver/i2c_master.h"
 #include "driver/gpio.h"
 #include "driver/ledc.h"
+#include "soc/soc_caps.h"
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_panel_ops.h"
 #include "esp_lcd_panel_vendor.h" // Core esp_lcd: SSD1306/SSD1309 (esp_lcd_new_panel_ssd1306)
@@ -15,6 +17,12 @@
 #include "esp_lcd_ili9488.h"      // Community component atanisoft/esp_lcd_ili9488
 #include "esp_lcd_st7796.h"
 #include "esp_lcd_gc9a01.h"
+#if SOC_LCD_RGB_SUPPORTED
+#include "esp_lcd_panel_rgb.h"    // Guition JC8048W550: RGB565-Parallelbus (nur ESP32-S3)
+#include "esp_idf_version.h"
+#endif
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "esp_lvgl_port.h"
 #include "esp_log.h"
 #include "lvgl.h"
@@ -98,7 +106,7 @@ static void enter_standby(void)
 {
     if (s_standby) return;
     s_standby = true;
-    if (s_profile->shape == LCD_SHAPE_RECT) {
+    if (s_profile->shape == LCD_SHAPE_RECT || s_profile->shape == LCD_SHAPE_WIDE) {
         lv_screen_load(scr_standby);
     }
 }
@@ -112,6 +120,8 @@ static void exit_standby(void)
         if (s_screen == SCR_CPU || s_screen == SCR_GPU) target = scr_detail;
         else if (s_screen == SCR_SETTINGS)              target = scr_settings;
         lv_screen_load(target);
+    } else if (s_profile->shape == LCD_SHAPE_WIDE) {
+        lv_screen_load((s_screen == SCR_SETTINGS) ? scr_settings : scr_main);
     }
 }
 
@@ -120,13 +130,14 @@ static void check_standby(void)
     if (app_config.standby_timeout_s == 0) {
         exit_standby(); // Standby deaktiviert - falls gerade aktiv, sofort aufwecken
         return;
-    }
-    uint32_t timeout_ms = (uint32_t)app_config.standby_timeout_s * 1000u;
+    }    if (s_screen == SCR_SETTINGS) {
+        return; // In den Einstellungen darf der Screensaver nicht erneut aktiv werden.
+    }    uint32_t timeout_ms = (uint32_t)app_config.standby_timeout_s * 1000u;
     bool no_data = (now_ms() - hw_info.last_update_ms) > timeout_ms;
     if (no_data) {
         enter_standby();
     } else {
-        exit_standby(); // Daten wieder da -> automatisch aufwecken
+        exit_standby();
     }
 }
 
@@ -343,6 +354,156 @@ static lv_display_t *lcd_init_mono_i2c(const board_profile_t *p)
     return lvgl_port_add_disp(&dcfg);
 }
 
+// ------------------------------------------------------------------
+// RGB565-Parallel-Panel (nur Guition JC8048W550: ST7262, "auto-init" ohne
+// Kommando-Schnittstelle) - ESP32-S3-exklusiv (LCD_CAM-Peripherie), siehe
+// SOC_LCD_RGB_SUPPORTED-Guard oben. Anders als die SPI-Panels oben braucht
+// dieses Board kein esp_lcd_panel_io_handle_t (kein Command-Bus). Der
+// Framebuffer liegt in PSRAM (einziges Board in diesem Projekt mit PSRAM),
+// gefuettert per Bounce-Buffer (kleiner SRAM-Zwischenpuffer, siehe panel_cfg
+// unten) - der LVGL-Flush selbst laeuft trotzdem wie bei den SPI-Panels
+// gepuffert/kachelweise (kein direct_mode, siehe Kommentar dort).
+// ------------------------------------------------------------------
+#if SOC_LCD_RGB_SUPPORTED
+static lv_display_t *lcd_init_rgb(const board_profile_t *p)
+{
+    backlight_init(p->bl);
+
+    esp_lcd_rgb_panel_config_t panel_cfg = {
+        .clk_src = LCD_CLK_SRC_PLL160M,
+#if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(5, 3, 0)
+        .psram_trans_align = 64,
+#else
+        .dma_burst_size = 64,
+#endif
+        .data_width = 16,
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(6, 0, 0)
+        .in_color_format = LCD_COLOR_FMT_RGB565,
+#else
+        .bits_per_pixel = 16,
+#endif
+        .de_gpio_num = p->rgb_de,
+        .pclk_gpio_num = p->rgb_pclk,
+        .vsync_gpio_num = p->rgb_vsync,
+        .hsync_gpio_num = p->rgb_hsync,
+        .disp_gpio_num = -1, // kein separater Panel-Enable-Pin verdrahtet
+        .timings = {
+            .pclk_hz = p->rgb_pclk_hz,
+            .h_res = p->h_res,
+            .v_res = p->v_res,
+            .hsync_pulse_width = p->rgb_hsync_pulse_width,
+            .hsync_back_porch  = p->rgb_hsync_back_porch,
+            .hsync_front_porch = p->rgb_hsync_front_porch,
+            .vsync_pulse_width = p->rgb_vsync_pulse_width,
+            .vsync_back_porch  = p->rgb_vsync_back_porch,
+            .vsync_front_porch = p->rgb_vsync_front_porch,
+            .flags.pclk_active_neg = true,
+        },
+        .flags.fb_in_psram = 1,
+        // Einzelner Framebuffer + Bounce-Buffer statt zweier voller PSRAM-
+        // Framebuffer (Ping-Pong/avoid_tearing): auf realer JC8048W550(C)-
+        // Hardware verursachte Letzteres sichtbare Bildstoerungen/Geisterbilder
+        // (PSRAM-Bandbreite reicht nicht, wenn CPU/LVGL und die LCD-DMA
+        // gleichzeitig auf zwei volle 800x480-Puffer zugreifen). Community-
+        // Configs fuer exakt dieses Boardmodell nutzen durchgehend einen
+        // kleinen Bounce-Buffer (Vielfaches von h_res=800) in internem SRAM,
+        // der zeilenweise aus dem einen PSRAM-Framebuffer nachgefuellt wird -
+        // das entkoppelt DMA- von CPU-Zugriffen auf den PSRAM-Bus.
+        .num_fbs = 1,
+        .bounce_buffer_size_px = (size_t)p->h_res * 10,
+    };
+    for (int i = 0; i < 16; i++) panel_cfg.data_gpio_nums[i] = p->rgb_data[i];
+
+    esp_lcd_panel_handle_t panel = NULL;
+    LCD_CHECK(esp_lcd_new_rgb_panel(&panel_cfg, &panel));
+
+    // Eine saubere Init-Sequenz, damit das oft zitternde JC8048W550-Panel
+    // nach Stromlos-Reboot sauber startet.
+    LCD_CHECK(esp_lcd_panel_reset(panel));
+    vTaskDelay(pdMS_TO_TICKS(50));
+    LCD_CHECK(esp_lcd_panel_init(panel));
+    vTaskDelay(pdMS_TO_TICKS(50));
+
+    // Panel-native Polaritaet ist bereits korrekt (auf echter Hardware
+    // bestaetigt) - KEINE Hardware-Invertierung ueber app_config.color_invert.
+    // Anders als bei den SPI-Panels oben (die dort tatsaechlich eine falsche
+    // Panel-Polaritaet ausgleicht) dreht eine blanke Hardware-Invertierung
+    // hier ausnahmslos ALLE Farben gleich um (z.B. gelbe Sonne -> blau) statt
+    // eines brauchbaren "Light Mode". app_config.color_invert wird fuer
+    // dieses Profil daher rein in Software als Light/Dark-Theme-Umschalter
+    // interpretiert, siehe display_ui_wide.c: init_wide_theme().
+    LCD_CHECK(esp_lcd_panel_invert_color(panel, false));
+    if (panel_cfg.disp_gpio_num >= 0) {
+        LCD_CHECK(esp_lcd_panel_disp_on_off(panel, true));
+    }
+
+    // Kein swap_xy (siehe unten), aber alle vier Mirror-Kombinationen zum
+    // Durchprobieren freigegeben - analog zu LCD_SHAPE_ROUND oben in
+    // lcd_init_color_spi(): welche Kombination auf reale Hardware "richtig
+    // herum" abbildet, ist nicht zuverlaessig vorhersagbar (haengt von der
+    // internen Scan-Richtung des jeweiligen Panels/Bausatzes ab). Auf dem
+    // JC8048W550(C) erwies sich sowohl "keine Korrektur" als auch die zunaechst
+    // angenommene mirror_x=true beide als falsch - daher hier wie beim runden
+    // UI alle vier Werte ueber die Rotation-Auswahl im Webportal anbieten,
+    // statt im Code zu raten. touch_gt911_init() spiegelt die Touch-
+    // Koordinaten passend zur selben Zuordnung mit.
+    bool mirror_x = false, mirror_y = false;
+    switch (app_config.rotation) {
+        case 1:  mirror_x = true;  mirror_y = false; break;
+        case 2:  mirror_x = false; mirror_y = true;  break;
+        case 3:  mirror_x = true;  mirror_y = true;  break;
+        case 0:
+        default: mirror_x = false; mirror_y = false; break;
+    }
+    s_hres = p->h_res;
+    s_vres = p->v_res;
+
+    lvgl_port_cfg_t pcfg = ESP_LVGL_PORT_INIT_CONFIG();
+    LCD_CHECK(lvgl_port_init(&pcfg));
+
+    // Normaler gepufferter LVGL-Flush (wie bei den SPI-Panels oben,
+    // esp_lcd_panel_draw_bitmap() schreibt die gerenderte Kachel in den PSRAM-
+    // Framebuffer) statt direct_mode: direct_mode setzt voraus, dass LVGL
+    // wechselnde Framebuffer synchron mitverwalten kann - auf realer
+    // JC8048W550(C)-Hardware fuehrte das sowohl mit zwei vollen Framebuffern
+    // (Ghosting) als auch mit nur einem (komplettes Schwarz/Weiss-Flackern +
+    // Bildfehler links) zu sichtbaren Stoerungen. Der Bounce-Buffer oben
+    // entkoppelt die LCD-DMA ohnehin unabhaengig vom LVGL-Flush-Modus vom
+    // PSRAM-Framebuffer, ein kleiner SRAM-Flush-Puffer reicht daher.
+    //
+    // lvgl_port_add_disp_rgb() (nicht das generische lvgl_port_add_disp()!)
+    // ist hier Pflicht: Letzteres asserted intern auf disp_cfg->io_handle !=
+    // NULL, das dieses Panel (kein Kommando-Bus) nie hat.
+    //
+    // control_handle: esp_lvgl_port ruft esp_lcd_panel_mirror()/_swap_xy()
+    // NICHT auf panel_handle auf, sondern auf dieses separate Feld (fuer
+    // Panels, deren Rotationskommandos ueber einen anderen Bus laufen als die
+    // eigentlichen Pixeldaten, z.B. RGB-Panels mit zusaetzlichem 3-Wire-SPI-
+    // Init). Ohne dieses Feld (NULL) wird mirror_x/mirror_y unten schlicht
+    // NICHT angewendet - genau das fehlte in den vorherigen Versuchen.
+    // Unser Panel hat keinen separaten Kommandobus, also derselbe Handle.
+    lvgl_port_display_cfg_t dcfg = {
+        .panel_handle = panel,
+        .control_handle = panel,
+        .buffer_size  = (uint32_t)p->h_res * LCD_FLUSH_LINES,
+        .double_buffer = false,
+        .hres = p->h_res,
+        .vres = p->v_res,
+        .monochrome = false,
+        .color_format = LV_COLOR_FORMAT_RGB565,
+        .rotation = { .swap_xy = false, .mirror_x = mirror_x, .mirror_y = mirror_y },
+        .flags = {
+            .buff_dma   = false,
+            .swap_bytes = false,
+        },
+    };
+    lvgl_port_display_rgb_cfg_t rgb_cfg = {
+        .flags = { .bb_mode = true, .avoid_tearing = false },
+    };
+    return lvgl_port_add_disp_rgb(&dcfg, &rgb_cfg);
+}
+#endif // SOC_LCD_RGB_SUPPORTED
+
 static lv_display_t *lcd_init(void)
 {
     if (app_config.display_type == DISPLAY_NONE) {
@@ -358,6 +519,11 @@ static lv_display_t *lcd_init(void)
     if (s_profile->bus == LCD_BUS_I2C) {
         return lcd_init_mono_i2c(s_profile);
     }
+#if SOC_LCD_RGB_SUPPORTED
+    if (s_profile->bus == LCD_BUS_RGB) {
+        return lcd_init_rgb(s_profile);
+    }
+#endif
     return lcd_init_color_spi(s_profile);
 }
 
@@ -371,12 +537,41 @@ static void touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
     bool touched = touch_xpt2046_read(&x, &y);
 
     if (touched && s_standby) {
-        // Erster Touch nach dem Standby weckt nur das Display auf und loest
-        // keine Aktion aus (verhindert versehentliches Navigieren/Antippen
-        // von Kacheln beim Aufwecken).
-        exit_standby();
+        // Im Screensaver-Modus reagiert Touch nicht als Aufwecken.
+        // Allow objects such as the settings button to still receive input.
+    }
+
+    if (touched) {
+        data->point.x = x;
+        data->point.y = y;
+        data->state   = LV_INDEV_STATE_PRESSED;
+    } else {
         data->state = LV_INDEV_STATE_RELEASED;
-        return;
+    }
+}
+
+// GT911-Pendant zu touch_read_cb oben: gleiche Standby-Aufweck-Semantik
+// (erster Touch weckt nur auf, loest keine Aktion aus), aber ueber die
+// esp_lcd_touch-Abstraktion statt eines eigenen SPI-Registerzugriffs.
+static esp_lcd_touch_handle_t s_gt911_tp;
+
+static void touch_gt911_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
+{
+    (void)indev;
+    uint16_t x = 0, y = 0;
+    uint8_t cnt = 0;
+    esp_lcd_touch_point_data_t touch_data;
+
+    esp_lcd_touch_read_data(s_gt911_tp);
+    bool touched = esp_lcd_touch_get_data(s_gt911_tp, &touch_data, &cnt, 1) == ESP_OK && cnt > 0;
+    if (touched) {
+        x = touch_data.x;
+        y = touch_data.y;
+    }
+
+    if (touched && s_standby) {
+        // Im Screensaver-Modus reagiert Touch nicht als Aufwecken.
+        // Allow objects such as the settings button to still receive input.
     }
 
     if (touched) {
@@ -455,6 +650,7 @@ static void tick_cb(lv_timer_t *t)
     switch (s_profile->shape) {
         case LCD_SHAPE_MONO:  refresh_mono_ui();  break;
         case LCD_SHAPE_ROUND: refresh_round_ui(); break;
+        case LCD_SHAPE_WIDE:  refresh_wide_ui();  break;
         default:              refresh_now();      break;
     }
 }
@@ -476,8 +672,13 @@ void display_ui_begin(void)
         return;
     }
 
+    esp_lcd_touch_handle_t gt911 = NULL;
     if (s_profile->has_touch) {
-        touch_xpt2046_init(s_profile);
+        if (s_profile->bus == LCD_BUS_RGB) {
+            gt911 = touch_gt911_init(s_profile);
+        } else {
+            touch_xpt2046_init(s_profile);
+        }
     }
     nav_button_init(s_profile);
 
@@ -489,7 +690,15 @@ void display_ui_begin(void)
     // Ab hier LVGL-Objekte nur unter Lock anlegen (esp_lvgl_port-Task laeuft).
     lvgl_port_lock(0);
 
-    if (s_profile->has_touch) {
+    if (s_profile->bus == LCD_BUS_RGB) {
+        if (gt911) {
+            s_gt911_tp = gt911;
+            lv_indev_t *indev = lv_indev_create();
+            lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);
+            lv_indev_set_read_cb(indev, touch_gt911_read_cb);
+            lv_indev_set_display(indev, disp);
+        }
+    } else if (s_profile->has_touch) {
         lv_indev_t *indev = lv_indev_create();
         lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);
         lv_indev_set_read_cb(indev, touch_read_cb);
@@ -503,6 +712,10 @@ void display_ui_begin(void)
             break;
         case LCD_SHAPE_ROUND:
             build_round_ui();
+            lv_screen_load(scr_main);
+            break;
+        case LCD_SHAPE_WIDE:
+            build_wide_ui();
             lv_screen_load(scr_main);
             break;
         default:

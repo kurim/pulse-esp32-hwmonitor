@@ -88,6 +88,13 @@ void round_ui_cycle_screen(void);
 void build_mono_ui(void);
 void refresh_mono_ui(void);
 
+// ---- Dashboard-UI fuer grosse Panels (Guition JC8048W550) - display_ui_wide.c ----
+// Eigenstaendig wie die drei UIs oben (kein gemeinsamer Code mit
+// display_ui_rect.c) - Verlaufsgrafen sitzen direkt auf der Hauptseite statt
+// auf einer eigenen Detailseite, siehe build_wide_ui().
+void build_wide_ui(void);
+void refresh_wide_ui(void);
+
 #ifdef __cplusplus
 }
 #endif

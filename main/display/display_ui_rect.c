@@ -51,9 +51,12 @@ static lv_obj_t *set_ap_btn, *set_ap_btn_lbl;
 static bool s_ap_confirm_armed = false;
 static lv_timer_t *s_ap_confirm_timer = NULL;
 
-// Standby-Screen-Widgets - grosse Uhrzeit + Datum + kompakte Wetterzeile,
-// analog zum Standby des runden Minimal-UIs.
-static lv_obj_t *standby_lbl_time, *standby_lbl_date, *standby_lbl_weather;
+// Standby-Screen-Widgets - grosse Uhrzeit + Datum + 2x2-Wetterraster mit Icons.
+static lv_obj_t *standby_lbl_time, *standby_lbl_date;
+static lv_obj_t *standby_icon_temp, *standby_lbl_temp;
+static lv_obj_t *standby_icon_humidity, *standby_lbl_humidity;
+static lv_obj_t *standby_icon_wind, *standby_lbl_wind;
+static lv_obj_t *standby_icon_rain, *standby_lbl_rain;
 
 static lv_obj_t *make_card(lv_obj_t *parent, int x, int y, int w, int h, lv_color_t border)
 {
@@ -135,6 +138,15 @@ static void settings_back_cb(lv_event_t *e)
     (void)e;
     s_screen = SCR_MAIN;
     lv_screen_load(scr_main);
+    refresh_now();
+}
+
+static void standby_settings_cb(lv_event_t *e)
+{
+    (void)e;
+    s_standby = false;
+    s_screen = SCR_SETTINGS;
+    lv_screen_load(scr_settings);
     refresh_now();
 }
 
@@ -456,15 +468,43 @@ void build_standby(void)
     style_screen(scr_standby);
 
     standby_lbl_time = make_label(scr_standby, "--:--:--", &lv_font_montserrat_48, COL_TEXT);
-    lv_obj_align(standby_lbl_time, LV_ALIGN_CENTER, 0, -30);
+    lv_obj_align(standby_lbl_time, LV_ALIGN_CENTER, 0, -40);
 
     standby_lbl_date = make_label(scr_standby, "", &lv_font_montserrat_16, COL_SUB);
-    lv_obj_align(standby_lbl_date, LV_ALIGN_CENTER, 0, 24);
+    lv_obj_align(standby_lbl_date, LV_ALIGN_CENTER, 0, 16);
 
-    standby_lbl_weather = make_label(scr_standby, "", &lv_font_montserrat_16, COL_SUB);
-    lv_obj_set_width(standby_lbl_weather, s_hres - 20);
-    lv_obj_set_style_text_align(standby_lbl_weather, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_align(standby_lbl_weather, LV_ALIGN_CENTER, 0, 54);
+    const int xoff = 88;
+    const int yoff = 88;
+    const int ygap = 44;
+
+    standby_icon_temp = make_label(scr_standby, MDI_THERMOMETER, &mdi_icons_28, COL_THERMO);
+    lv_obj_align(standby_icon_temp, LV_ALIGN_CENTER, -xoff, yoff);
+    standby_lbl_temp = make_label(scr_standby, "--C", &lv_font_montserrat_18, COL_SUB);
+    lv_obj_align_to(standby_lbl_temp, standby_icon_temp, LV_ALIGN_OUT_RIGHT_MID, 8, 0);
+
+    standby_icon_wind = make_label(scr_standby, MDI_WIND, &mdi_icons_28, COL_SUB);
+    lv_obj_align(standby_icon_wind, LV_ALIGN_CENTER, xoff, yoff);
+    standby_lbl_wind = make_label(scr_standby, "--", &lv_font_montserrat_18, COL_SUB);
+    lv_obj_align_to(standby_lbl_wind, standby_icon_wind, LV_ALIGN_OUT_RIGHT_MID, 8, 0);
+
+    standby_icon_humidity = make_label(scr_standby, MDI_HUMIDITY, &mdi_icons_28, COL_RAIN);
+    lv_obj_align(standby_icon_humidity, LV_ALIGN_CENTER, -xoff, yoff + ygap);
+    standby_lbl_humidity = make_label(scr_standby, "--%", &lv_font_montserrat_18, COL_SUB);
+    lv_obj_align_to(standby_lbl_humidity, standby_icon_humidity, LV_ALIGN_OUT_RIGHT_MID, 8, 0);
+
+    standby_icon_rain = make_label(scr_standby, MDI_RAIN, &mdi_icons_28, COL_RAIN);
+    lv_obj_align(standby_icon_rain, LV_ALIGN_CENTER, xoff, yoff + ygap);
+    standby_lbl_rain = make_label(scr_standby, "--", &lv_font_montserrat_18, COL_SUB);
+    lv_obj_align_to(standby_lbl_rain, standby_icon_rain, LV_ALIGN_OUT_RIGHT_MID, 8, 0);
+
+    lv_obj_t *settings_btn = lv_button_create(scr_standby);
+    lv_obj_set_size(settings_btn, 160, 44);
+    lv_obj_align(settings_btn, LV_ALIGN_BOTTOM_MID, 0, -16);
+    lv_obj_set_style_bg_color(settings_btn, COL_CARD, 0);
+    lv_obj_set_style_radius(settings_btn, 12, 0);
+    lv_obj_add_event_cb(settings_btn, standby_settings_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_t *settings_lbl = make_label(settings_btn, ui_str(UI_STR_SETTINGS_TITLE), &lv_font_montserrat_16, COL_TEXT);
+    lv_obj_center(settings_lbl);
 }
 
 // ------------------------------------------------------------------
@@ -523,32 +563,38 @@ void refresh_now(void)
     if (weather_info.valid) {
         snprintf(buf, sizeof(buf), "%.0fC", weather_info.temp_c);
         lv_label_set_text(lbl_weather, buf);
+        lv_label_set_text(standby_lbl_temp, buf);
+
         snprintf(buf, sizeof(buf), "%d%%", weather_info.humidity);
         lv_label_set_text(lbl_humidity, buf);
+        lv_label_set_text(standby_lbl_humidity, buf);
+
         snprintf(buf, sizeof(buf), "%.0fkm/h %s",
                  weather_info.wind_speed, weather_wind_compass(weather_info.wind_deg));
         lv_label_set_text(lbl_wind, buf);
-        // Ohne "mm"-Einheit: das Regen-Icon liefert den Kontext, und die
-        // 48px breite Box (Sicherheitsabstand zum WLAN-Icon) reichte fuer
-        // "X.Xmm" nicht zuverlässig (wurde auf Hardware abgeschnitten).
-        snprintf(buf, sizeof(buf), "%.1f", weather_info.rain_1h);
+        lv_label_set_text(standby_lbl_wind, buf);
+
+        snprintf(buf, sizeof(buf), "%.1fmm", weather_info.rain_1h);
         lv_label_set_text(lbl_rain, buf);
-        snprintf(buf, sizeof(buf), "%.0fC  %d%%  %.0fkm/h %s  %.1fmm",
-                 weather_info.temp_c, weather_info.humidity, weather_info.wind_speed,
-                 weather_wind_compass(weather_info.wind_deg), weather_info.rain_1h);
-        lv_label_set_text(standby_lbl_weather, buf);
+        lv_label_set_text(standby_lbl_rain, buf);
     } else if (app_config.weather_enabled) {
         lv_label_set_text(lbl_weather, "--C");
+        lv_label_set_text(standby_lbl_temp, "--C");
         lv_label_set_text(lbl_humidity, "--%");
+        lv_label_set_text(standby_lbl_humidity, "--%");
         lv_label_set_text(lbl_wind, "--");
+        lv_label_set_text(standby_lbl_wind, "--");
         lv_label_set_text(lbl_rain, "--");
-        lv_label_set_text(standby_lbl_weather, "--");
+        lv_label_set_text(standby_lbl_rain, "--");
     } else {
         lv_label_set_text(lbl_weather, "");
+        lv_label_set_text(standby_lbl_temp, "");
         lv_label_set_text(lbl_humidity, "");
+        lv_label_set_text(standby_lbl_humidity, "");
         lv_label_set_text(lbl_wind, "");
+        lv_label_set_text(standby_lbl_wind, "");
         lv_label_set_text(lbl_rain, "");
-        lv_label_set_text(standby_lbl_weather, "");
+        lv_label_set_text(standby_lbl_rain, "");
     }
 
     // --- WLAN/Hardwaredaten-Statusicon (Quelle: MQTT oder USB/Seriell) ---

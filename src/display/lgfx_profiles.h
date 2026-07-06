@@ -74,7 +74,6 @@ public:
             cfg.pin_cs   = 33;
             cfg.freq     = 2000000;
             cfg.spi_host = VSPI_HOST; // separater Touch-Bus (SPI3), siehe board_profiles.c
-            cfg.spi_mode = 0;   // XPT2046-Standardmodus, nicht dem Default ueberlassen
             cfg.bus_shared = false;
             _touch_instance.config(cfg);
             _panel_instance.setTouch(&_touch_instance);

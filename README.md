@@ -193,6 +193,15 @@ idf.py build
 idf.py -p /dev/ttyUSB0 flash monitor
 ```
 
+> **PlatformIO/Arduino build (`platformio.ini`, `src/`):** use `pio run -e esp32`
+> / `pio run -e esp32 -t upload` instead. If the board was previously flashed
+> with OTA-capable firmware (e.g. this project's ESP-IDF build) and boot fails
+> right after flashing with `OTA app partition slot 1 is not bootable`, the
+> leftover `otadata` partition from that earlier firmware still points at a
+> slot the new build never wrote to. Fix once with a full chip erase before
+> reflashing: `pio run -e esp32 -t erase` followed by `pio run -e esp32 -t
+> upload`.
+
 Initial setup: open AP **`ESP32-HWMon-XXXX`** → `http://192.168.4.1` → enter
 WiFi → save → reboot. On first load, the web portal shows only the WiFi
 card (SSID/password, with a "Scan WiFi networks" button for a list of

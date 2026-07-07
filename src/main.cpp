@@ -14,12 +14,11 @@
 // zeigen.
 static void bootlogo(void)
 {
-    log_i("#####    #    #        #####  ######");
-    log_i("#    #   #    #   #     #     #     ");
-    log_i("#####    #    #   #      #### #####");
-    log_i("#         #    #  #         # #     ");
-    log_i("#          #### ######  #####  ######");
-    log_i("=== Pulse ESP32 Hardware-Monitor (Version %s) ===", FW_VERSION);
+    log_i("   ___  _ __ __    ___  ___");
+    log_i("  / o |/// // /  ,' _/ / _/");
+    log_i(" / _,'/ U // /_ _\\ `. / _/ ");
+    log_i("/_/   \\_,'/___//___,'/___/ ");
+    log_i("Pulse ESP32 Hardware-Monitor (Version %s)", FW_VERSION);
 }
 
 void setup(void)

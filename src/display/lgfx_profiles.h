@@ -25,7 +25,13 @@ public:
             auto cfg = _bus_instance.config();
             cfg.spi_host   = SPI2_HOST;
             cfg.spi_mode   = 0;
-            cfg.freq_write = 40000000;
+            // 40 MHz zeigte auf realer CYD-Hardware farbiges Speckle-Rauschen
+            // in Fuellflaechen/Trennlinien bei sonst intaktem Bild (Icons,
+            // Text lesbar) - klassisches Symptom von SPI-Signalintegritaet
+            // bei zu hohem Takt, nicht des schon behobenen Byte-Order-Bugs
+            // (der haette das gesamte Bild systematisch verfaerbt). 20 MHz
+            // ist der in der CYD-Community gaengige stabile Wert.
+            cfg.freq_write = 20000000;
             cfg.freq_read  = 16000000;
             cfg.spi_3wire  = true;
             cfg.use_lock   = true;

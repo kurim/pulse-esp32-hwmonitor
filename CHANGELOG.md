@@ -6,6 +6,16 @@ follows [Keep a Changelog](https://keepachangelog.com/), versioning follows
 
 ## [Unreleased]
 
+- **Fix: CYD (ILI9341) speckle noise on real hardware**: solid fills and
+  divider lines showed colored speckle noise while text/icons stayed
+  readable - a different symptom than the byte-order bug fixed earlier
+  (that corrupted the whole image uniformly). Root cause: 40 MHz SPI write
+  clock is marginal on the CYD's onboard wiring. Lowered `freq_write` to
+  20 MHz in `LGFX_CYD` (`src/display/lgfx_profiles.h`), the value commonly
+  reported as stable for this board.
+- **Added a `coredump` partition** to `partitions.csv` to silence the
+  (harmless but confusing) `esp_core_dump_flash: No core dump partition
+  found!` boot log line.
 - **Fix: SSD1309 stuck in light-background "normal mode"**: on real hardware
   the mono OLED showed a light background with dark icons, and the web
   portal's "Invert colors" toggle had no effect (it was never applied to the

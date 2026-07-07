@@ -186,34 +186,24 @@ void display_ui_begin(void)
     s_hres = s_lcd.width();
     s_vres = s_lcd.height();
 
-    // TEMP-DEBUG: reiner Vollflaechen-Test direkt ueber LovyanGFX, komplett
-    // ohne LVGL/Flush-Callback/Puffer - trennt SPI/Panel-Ebene (lgfx_profiles.h)
-    // von der LVGL-Anbindung weiter unten. Kommen diese vier Flaechen sauber
-    // (kein Rauschen/Speckle) an, liegt der Fehler NICHT mehr am Bus/Panel-
-    // Setup, sondern am disp_flush_cb()/LVGL-Renderpuffer unten in dieser
-    // Funktion. Nach der Fehlersuche wieder entfernen.
-    s_lcd.fillScreen(0xF800); // Rot
-    delay(2000);
-    s_lcd.fillScreen(0x07E0); // Gruen
-    delay(2000);
-    s_lcd.fillScreen(0x001F); // Blau
-    delay(2000);
-    s_lcd.fillScreen(0xFFFF); // Weiss
-    delay(2000);
-
-    // TEMP-DEBUG Stufe 2: fillScreen() nutzt vermutlich einen internen
-    // Wiederhol-/Registerpfad und damit NICHT dieselbe Uebertragungskette wie
-    // disp_flush_cb() (malloc'ter Puffer -> writePixels() -> DMA, in
-    // Chunks von je "lines_per_chunk" Zeilen). Stufe 1 (Vollflaechen) war
-    // sauber, das Dashboard trotzdem verrauscht - also hier 1:1 dieselbe
-    // Chunk-Groesse/denselben Uebertragungspfad wie im echten Flush
-    // nachstellen, nur mit einem deterministischen Streifenmuster statt
-    // echtem LVGL-Renderoutput. Kommen die Streifen sauber an, liegt der
-    // Fehler im LVGL-Rendering selbst (Widgets/Icons/Fonts schreiben falsche
-    // Pixel in den Puffer), nicht in der Uebertragung. Sind auch die
-    // Streifen verrauscht, liegt der Fehler in genau diesem Pfad (Puffer/
-    // DMA/Chunking) - also in disp_flush_cb() bzw. wie der Puffer alloziert
-    // wird. Nach der Fehlersuche wieder entfernen.
+    // TEMP-DEBUG Streifentest: repliziert 1:1 den Uebertragungspfad von
+    // disp_flush_cb() (malloc'ter Puffer -> writePixels() -> DMA, in Chunks
+    // von je "lines_per_chunk" Zeilen), nur mit einem deterministischen
+    // Streifenmuster statt echtem LVGL-Renderoutput. Ergebnis auf echter
+    // Hardware: genauso verrauscht wie das echte Dashboard, mit denselben
+    // periodischen schwarzen Balken - der Fehler sitzt also NICHT im LVGL-
+    // Rendering, sondern in genau diesem Chunk-Transferpfad. Ein reiner
+    // fillScreen() (Stufe 1, kam sauber an, deshalb wieder entfernt) nutzt
+    // vermutlich einen internen Wiederhol-/Registerpfad ohne Fremdpuffer/DMA
+    // und ist deshalb kein Test fuer diesen Pfad.
+    //
+    // Naechste Hypothese: writePixels()/endWrite() warten nicht zuverlaessig
+    // auf den Abschluss der DMA-Uebertragung, bevor der naechste Chunk
+    // denselben Puffer ueberschreibt bzw. die naechste setAddrWindow()-
+    // Transaktion startet - dazu probehalber DMA fuer den Display-Bus in
+    // lgfx_profiles.h abgeschaltet (dma_channel = 0, reine synchrone
+    // Polling-Uebertragung). Kommen die Streifen jetzt sauber an, bestaetigt
+    // das die DMA/Timing-Hypothese. Nach der Fehlersuche wieder entfernen.
     {
         const uint32_t lines_per_chunk = 20; // exakt wie buf_px unten
         uint16_t *test_buf = (uint16_t *)malloc(s_hres * lines_per_chunk * sizeof(uint16_t));

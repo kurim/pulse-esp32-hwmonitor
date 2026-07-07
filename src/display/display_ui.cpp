@@ -214,31 +214,47 @@ void display_ui_begin(void)
         delay(4000);
     }
 
-    // TEMP-DEBUG Streifentest B: gleiches Streifenmuster, aber als EIN
-    // einziger writePixels()-Aufruf ueber den kompletten Framebuffer (ein
-    // setAddrWindow() statt vieler). Kommt das sauber an, waehrend Test A
-    // verrauscht bleibt, ist die Anzahl der setAddrWindow()-Aufrufe die
-    // Ursache - dann muesste der echte Fix im Vergroessern des LVGL-
-    // Flush-Puffers liegen (weniger, groessere Flushes statt vieler
-    // 20-Zeilen-Haeppchen). Nach der Fehlersuche wieder entfernen.
+    // TEMP-DEBUG Streifentest B: gleiches Streifenmuster, aber in wenigen
+    // GROSSEN Chunks statt vieler 20-Zeilen-Haeppchen (deutlich weniger
+    // setAddrWindow()-Aufrufe als Test A). Ein Puffer fuer den kompletten
+    // Screen in einem Rutsch (320x240x2 = 153600 Byte) schlug beim ersten
+    // Versuch mit malloc-Fehler fehl (Heap an dieser Boot-Stelle nicht
+    // ausreichend/fragmentiert) - deshalb hier: groesstmoegliche Chunk-
+    // Groesse ermitteln (halbieren bis malloc() klappt), Anzahl der
+    // resultierenden setAddrWindow()-Aufrufe wird geloggt. Kommt das sauber
+    // an, waehrend Test A verrauscht bleibt, ist die ANZAHL der
+    // setAddrWindow()-Aufrufe die Ursache - dann waere der echte Fix, den
+    // LVGL-Flush-Puffer zu vergroessern (weniger, groessere Flushes). Nach
+    // der Fehlersuche wieder entfernen.
     {
-        uint32_t full_px = (uint32_t)s_hres * (uint32_t)s_vres;
-        uint16_t *full_buf = (uint16_t *)malloc(full_px * sizeof(uint16_t));
-        if (full_buf) {
+        uint32_t lines_per_group = (uint32_t)s_vres;
+        uint16_t *group_buf = nullptr;
+        while (lines_per_group >= 4) {
+            group_buf = (uint16_t *)malloc((uint32_t)s_hres * lines_per_group * sizeof(uint16_t));
+            if (group_buf) break;
+            lines_per_group /= 2;
+        }
+        if (group_buf) {
             static const uint16_t bar_colors[] = {0xF800, 0x07E0, 0x001F, 0xFFE0, 0xF81F, 0x07FF};
             const uint32_t n_colors = sizeof(bar_colors) / sizeof(bar_colors[0]);
             const uint32_t lines_per_stripe = 20;
-            for (uint32_t y = 0; y < (uint32_t)s_vres; y++) {
-                uint16_t col = bar_colors[(y / lines_per_stripe) % n_colors];
-                for (uint32_t x = 0; x < (uint32_t)s_hres; x++) full_buf[y * s_hres + x] = col;
-            }
             s_lcd.startWrite();
-            s_lcd.setAddrWindow(0, 0, s_hres, s_vres);
-            s_lcd.writePixels((lgfx::rgb565_t *)full_buf, full_px, false);
+            uint32_t n_calls = 0;
+            for (uint32_t y = 0; y < (uint32_t)s_vres; y += lines_per_group, n_calls++) {
+                uint32_t h = (s_vres - y < lines_per_group) ? (s_vres - y) : lines_per_group;
+                for (uint32_t row = 0; row < h; row++) {
+                    uint16_t col = bar_colors[((y + row) / lines_per_stripe) % n_colors];
+                    for (uint32_t x = 0; x < (uint32_t)s_hres; x++) group_buf[row * s_hres + x] = col;
+                }
+                s_lcd.setAddrWindow(0, y, s_hres, h);
+                s_lcd.writePixels((lgfx::rgb565_t *)group_buf, s_hres * h, false);
+            }
             s_lcd.endWrite();
-            free(full_buf);
+            log_i("TEMP-DEBUG Test B: %u setAddrWindow-Aufrufe a %u Zeilen",
+                  (unsigned)n_calls, (unsigned)lines_per_group);
+            free(group_buf);
         } else {
-            log_e("TEMP-DEBUG Test B: malloc(%u) fehlgeschlagen", (unsigned)(full_px * sizeof(uint16_t)));
+            log_e("TEMP-DEBUG Test B: keine Puffergroesse >= 4 Zeilen allozierbar");
         }
         delay(4000);
     }

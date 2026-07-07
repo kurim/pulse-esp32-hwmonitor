@@ -469,10 +469,21 @@ MQTT (default) or directly over USB/serial - switchable in the web portal
 ("Hardware data source" dropdown, no separate build needed). Only one source
 is active at a time.
 
-USB/serial mode reads from UART0 - the same line already exposed over USB by
-the onboard USB-serial chip used for flashing/log output - at a fixed
-**115200 baud**. No broker/WiFi is required for this path; the PC just needs
-a serial connection to the board.
+USB/serial mode reads at a fixed **115200 baud** over one of two selectable
+channels ("USB channel" dropdown, shown once "USB/serial" is selected as the
+source, only on chips that support both):
+
+- **UART0** (default) - the same line exposed over USB by an onboard
+  USB-serial bridge chip (e.g. CH340/CP2102), used for flashing/log output on
+  boards like the CYD or ESP32-C3-DevKitM-1.
+- **USB Serial/JTAG** - the ESP32-C3/-S3's native USB peripheral, for boards
+  without a bridge chip (e.g. the ESP32-C3 Super Mini) where the USB port is
+  wired directly to the chip and never reaches UART0. If the PC client sees a
+  write timeout / no response despite an open USB connection, this is almost
+  always the cause - switch to this option.
+
+No broker/WiFi is required for this path; the PC just needs a serial
+connection to the board.
 
 Both paths use the same JSON payload format - a JSON object with any of the
 following fields (all optional - only included values get updated):

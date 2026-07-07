@@ -35,7 +35,7 @@ void app_main(void)
     // Hardwaredaten-Quelle: nur einer der beiden Wege gleichzeitig aktiv,
     // umschaltbar per Dropdown im Webportal (app_config.hw_source).
     if (app_config.hw_source == HW_SOURCE_USB) {
-        serial_handler_begin(); // Hardwaredaten per USB/UART0
+        serial_handler_begin(); // Hardwaredaten per USB (UART0 oder USB-Serial/JTAG)
     } else {
         mqtt_handler_begin();   // Hardwaredaten per MQTT
     }

@@ -63,7 +63,18 @@ public:
             cfg.panel_width     = 240;
             cfg.panel_height    = 320;
             cfg.offset_rotation = 0;
-            cfg.rgb_order       = true; // CYD-Panel ist BGR-verdrahtet
+            // War hier faelschlich "true": LovyanGFX setzt das MADCTL-BGR-Bit
+            // ueber "_cfg.rgb_order ? MAD_RGB : MAD_BGR" (Panel_LCD::
+            // update_madctl()) - invers zur naheliegenden Lesart des Namens.
+            // true = MAD_RGB = KEINE Hardware-R/B-Vertauschung, false =
+            // MAD_BGR = Panel vertauscht R/B selbst. Fuer ein physisch BGR-
+            // verdrahtetes Panel (Kompensation noetig) ist also false richtig.
+            // War seit dem allerersten Commit falsch, aber unter dem grossen
+            // writePixels()-Rauschen (siehe disp_flush_cb()-Historie) nicht
+            // erkennbar - sichtbar erst seit dem pushImage()-Fix als generell
+            // zu kuehle/blaustichige Farben (Gold/Orange/Rot wirkten cyan-
+            // /blaustichig).
+            cfg.rgb_order       = false;
             cfg.invert          = false; // auf realer Hardware verifiziert (siehe esp-idf-Branch)
             // Passend zu spi_3wire=false (siehe oben): echte MISO-Leitung ist
             // nutzbar, also Lesevorgaenge (Panel-Status/ID) ueber die korrekten

@@ -217,23 +217,21 @@ void display_ui_begin(void)
     // TEMP-DEBUG Streifentest B: gleiches Streifenmuster, aber in wenigen
     // GROSSEN Chunks statt vieler 20-Zeilen-Haeppchen (deutlich weniger
     // setAddrWindow()-Aufrufe als Test A). Ein Puffer fuer den kompletten
-    // Screen in einem Rutsch (320x240x2 = 153600 Byte) schlug beim ersten
-    // Versuch mit malloc-Fehler fehl (Heap an dieser Boot-Stelle nicht
-    // ausreichend/fragmentiert) - deshalb hier: groesstmoegliche Chunk-
-    // Groesse ermitteln (halbieren bis malloc() klappt), Anzahl der
-    // resultierenden setAddrWindow()-Aufrufe wird geloggt. Kommt das sauber
-    // an, waehrend Test A verrauscht bleibt, ist die ANZAHL der
-    // setAddrWindow()-Aufrufe die Ursache - dann waere der echte Fix, den
-    // LVGL-Flush-Puffer zu vergroessern (weniger, groessere Flushes). Nach
-    // der Fehlersuche wieder entfernen.
+    // Screen in einem Rutsch (320x240x2 = 153600 Byte) schlug mit malloc-
+    // Fehler fehl (Heap an dieser Boot-Stelle nicht ausreichend/fragmentiert).
+    // Ein Nachfolgeversuch, die groesstmoegliche Chunk-Groesse per Halbieren
+    // bis malloc() klappt zu ermitteln, fuehrte stattdessen zu einem
+    // LoadStoreAlignment-Crash tief im SPI/DMA-Treiber (vermutlich eine
+    // Puffer-/Transfergroesse, die dort einen nicht robust behandelten
+    // Grenzfall trifft) - deshalb hier stattdessen eine feste, nachweislich
+    // unproblematische Chunk-Groesse (3x Test A). Kommt das sauber an,
+    // waehrend Test A verrauscht bleibt, ist die ANZAHL der setAddrWindow()-
+    // Aufrufe die Ursache - dann waere der echte Fix, den LVGL-Flush-Puffer
+    // zu vergroessern (weniger, groessere Flushes). Nach der Fehlersuche
+    // wieder entfernen.
     {
-        uint32_t lines_per_group = (uint32_t)s_vres;
-        uint16_t *group_buf = nullptr;
-        while (lines_per_group >= 4) {
-            group_buf = (uint16_t *)malloc((uint32_t)s_hres * lines_per_group * sizeof(uint16_t));
-            if (group_buf) break;
-            lines_per_group /= 2;
-        }
+        const uint32_t lines_per_group = 60;
+        uint16_t *group_buf = (uint16_t *)malloc((uint32_t)s_hres * lines_per_group * sizeof(uint16_t));
         if (group_buf) {
             static const uint16_t bar_colors[] = {0xF800, 0x07E0, 0x001F, 0xFFE0, 0xF81F, 0x07FF};
             const uint32_t n_colors = sizeof(bar_colors) / sizeof(bar_colors[0]);
@@ -254,7 +252,8 @@ void display_ui_begin(void)
                   (unsigned)n_calls, (unsigned)lines_per_group);
             free(group_buf);
         } else {
-            log_e("TEMP-DEBUG Test B: keine Puffergroesse >= 4 Zeilen allozierbar");
+            log_e("TEMP-DEBUG Test B: malloc(%u) fehlgeschlagen",
+                  (unsigned)(s_hres * lines_per_group * sizeof(uint16_t)));
         }
         delay(4000);
     }

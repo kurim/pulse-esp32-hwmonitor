@@ -258,6 +258,48 @@ void display_ui_begin(void)
         delay(4000);
     }
 
+    // TEMP-DEBUG Streifentest C: TFT_eSPI (isolierter Vergleichstest, siehe
+    // tft_espi_noise_test.cpp) kam mit identischer Pinbelegung/Taktrate/
+    // Chunk-Zahl SAUBER an - LovyanGFX ist es also nicht (mehr) an Hardware/
+    // Takt/Aufrufanzahl. Naechster Verdacht: ESP32 (nicht S3) DMA-
+    // Deskriptoren fassen intern max. ~4092 Byte pro Deskriptor, groessere
+    // Transfers muessen verkettet werden - Test A (12800 Byte/Chunk) und
+    // Test B (38400 Byte/Chunk) liegen beide weit darueber. Hier: Chunks von
+    // nur 1 Zeile (s_hres*2 Byte, z.B. 640 Byte bei 320px breit) - passen
+    // garantiert in einen einzigen Deskriptor, keine Verkettung noetig. Das
+    // sichtbare Streifenmuster bleibt trotzdem 20px hoch (bar_colors-Index
+    // unveraendert), nur intern aus vielen 1-Zeilen-writePixels()-Aufrufen
+    // zusammengesetzt. Kommt das sauber an, waehrend A/B verrauscht bleiben,
+    // bestaetigt das die DMA-Verkettungs-Hypothese - der Fix waere dann,
+    // grosse Flush-Chunks selbst in <=4092-Byte-Haeppchen aufzuteilen, bevor
+    // writePixels() aufgerufen wird. Nach der Fehlersuche wieder entfernen.
+    {
+        const uint32_t lines_per_group = 1;
+        uint16_t *line_buf = (uint16_t *)malloc((uint32_t)s_hres * lines_per_group * sizeof(uint16_t));
+        if (line_buf) {
+            static const uint16_t bar_colors[] = {0xF800, 0x07E0, 0x001F, 0xFFE0, 0xF81F, 0x07FF};
+            const uint32_t n_colors = sizeof(bar_colors) / sizeof(bar_colors[0]);
+            const uint32_t lines_per_stripe = 20;
+            s_lcd.startWrite();
+            uint32_t n_calls = 0;
+            for (uint32_t y = 0; y < (uint32_t)s_vres; y += lines_per_group, n_calls++) {
+                uint16_t col = bar_colors[(y / lines_per_stripe) % n_colors];
+                for (uint32_t x = 0; x < (uint32_t)s_hres; x++) line_buf[x] = col;
+                s_lcd.setAddrWindow(0, y, s_hres, lines_per_group);
+                s_lcd.writePixels((lgfx::rgb565_t *)line_buf, s_hres * lines_per_group, false);
+            }
+            s_lcd.endWrite();
+            log_i("TEMP-DEBUG Test C: %u setAddrWindow-Aufrufe a %u Zeile (%u Byte/Chunk)",
+                  (unsigned)n_calls, (unsigned)lines_per_group,
+                  (unsigned)(s_hres * lines_per_group * sizeof(uint16_t)));
+            free(line_buf);
+        } else {
+            log_e("TEMP-DEBUG Test C: malloc(%u) fehlgeschlagen",
+                  (unsigned)(s_hres * lines_per_group * sizeof(uint16_t)));
+        }
+        delay(4000);
+    }
+
     lv_init();
 
     static lv_color_t *buf1;

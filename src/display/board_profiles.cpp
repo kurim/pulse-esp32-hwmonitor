@@ -61,7 +61,7 @@ static const board_profile_t s_profiles[DISPLAY_TYPE_COUNT] = {
         .name = "ESP32-2432S028 - ILI9341 320x240, SPI + XPT2046-Touch",
         .bus = LCD_BUS_SPI, .shape = LCD_SHAPE_RECT, .has_touch = true,
         .mosi = 13, .miso = 12, .sclk = 14, .cs = 15, .dc = 2, .rst = -1, .bl = 21,
-        .spi_hz = 40 * 1000 * 1000,
+        .spi_hz = 20 * 1000 * 1000, // siehe lgfx_profiles.h (LGFX_CYD) fuer die Begruendung
         .touch_cs = 33, .touch_irq = 36, .touch_mosi = 32, .touch_miso = 39, .touch_clk = 25,
         .touch_spi_hz = 2 * 1000 * 1000,
         .nav_button = -1,

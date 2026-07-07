@@ -4,7 +4,8 @@
 # Treiber fuer 5 Displaytypen gleichzeitig (ILI9341/9488/ST7796S/GC9A01/SSD1309)
 # und kam je nach Zielchip auf bis zu ~1.62 MB - das passte in 1.5 MB nicht
 # mehr rein. 2x 1.75 MB + nvs/otadata/phy_init passen weiterhin komfortabel
-# in 4 MB (rechnerisch bleiben ~384 KB frei).
+# in 4 MB (rechnerisch bleiben ~384 KB frei), davon 64 KB fuer die
+# coredump-Partition unten reserviert).
 # otadata liegt bewusst bei 0xe000 (nicht 0xf000 wie im esp-idf-Original) -
 # der Arduino-ESP32-Core/pioarduino-Flash-Vorgang schreibt bei jedem Upload
 # automatisch boot_app0.bin (initialisiert otadata auf "boote App-Slot 0") an

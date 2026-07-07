@@ -30,9 +30,18 @@ public:
             // Text lesbar) - klassisches Symptom von SPI-Signalintegritaet
             // bei zu hohem Takt, nicht des schon behobenen Byte-Order-Bugs
             // (der haette das gesamte Bild systematisch verfaerbt). 20 MHz
-            // ist der in der CYD-Community gaengige stabile Wert.
-            cfg.freq_write = 20000000;
-            cfg.freq_read  = 16000000;
+            // war der in der CYD-Community gaengige stabile Wert, reichte auf
+            // einem konkreten Geraet aber nicht: dort blieb praktisch das
+            // gesamte Bild verrauscht (nicht mehr nur Fuellflaechen/Trenn-
+            // linien wie bei 40 MHz), Struktur nur noch schwach erkennbar -
+            // gleiches Symptombild, staerker ausgepraegt. Weiter auf 10 MHz
+            // reduziert. Bleibt das Rauschen dabei bestehen, ist die Ursache
+            // vermutlich kein SPI-Takt-Problem mehr, sondern Hardware (loses
+            // FPC-Kabel zwischen Display-Modul und Mainboard, oder ein zu
+            // schwaches USB-Netzteil/-Kabel das unter WLAN-Sendestroemspitzen
+            // einbricht).
+            cfg.freq_write = 10000000;
+            cfg.freq_read  = 8000000;
             cfg.spi_3wire  = true;
             cfg.use_lock   = true;
             cfg.dma_channel = SPI_DMA_CH_AUTO;

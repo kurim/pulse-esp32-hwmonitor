@@ -42,18 +42,12 @@ public:
             cfg.freq_read  = 16000000;
             cfg.spi_3wire  = false;
             cfg.use_lock   = true;
-            // TEMP-DEBUG: Der ueber writePixels()-Chunks aus einem Heap-Puffer
-            // uebertragene Streifentest (display_ui.cpp) kommt auf echter
-            // Hardware genauso verrauscht an wie das echte LVGL-Dashboard -
-            // reiner fillScreen() (ohne Fremdpuffer/DMA) dagegen sauber.
-            // Verdacht: writePixels()/endWrite() warten nicht zuverlaessig auf
-            // den DMA-Abschluss, bevor der naechste Chunk denselben Puffer
-            // ueberschreibt bzw. die naechste Transaktion beginnt. DMA hier
-            // testweise abgeschaltet (synchrone Polling-Uebertragung) um das zu
-            // verifizieren. Bestaetigt sich das, muss dma_channel dauerhaft auf
-            // 0 bleiben (oder ein Wait/Sync-Aufruf ergaenzt werden) statt wieder
-            // auf SPI_DMA_CH_AUTO zurueckgesetzt zu werden.
-            cfg.dma_channel = 0;
+            // DMA war NICHT die Ursache: Streifentest A (display_ui.cpp) blieb
+            // mit dma_channel=0 (synchrone Polling-Uebertragung) exakt genauso
+            // verrauscht wie mit SPI_DMA_CH_AUTO - also zurueckgesetzt.
+            // Naechste Spur: Anzahl der setAddrWindow()-Aufrufe (siehe
+            // Streifentest A/B in display_ui.cpp).
+            cfg.dma_channel = SPI_DMA_CH_AUTO;
             cfg.pin_sclk = 14;
             cfg.pin_mosi = 13;
             cfg.pin_miso = 12;

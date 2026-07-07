@@ -186,24 +186,15 @@ void display_ui_begin(void)
     s_hres = s_lcd.width();
     s_vres = s_lcd.height();
 
-    // TEMP-DEBUG Streifentest: repliziert 1:1 den Uebertragungspfad von
-    // disp_flush_cb() (malloc'ter Puffer -> writePixels() -> DMA, in Chunks
-    // von je "lines_per_chunk" Zeilen), nur mit einem deterministischen
-    // Streifenmuster statt echtem LVGL-Renderoutput. Ergebnis auf echter
-    // Hardware: genauso verrauscht wie das echte Dashboard, mit denselben
-    // periodischen schwarzen Balken - der Fehler sitzt also NICHT im LVGL-
-    // Rendering, sondern in genau diesem Chunk-Transferpfad. Ein reiner
-    // fillScreen() (Stufe 1, kam sauber an, deshalb wieder entfernt) nutzt
-    // vermutlich einen internen Wiederhol-/Registerpfad ohne Fremdpuffer/DMA
-    // und ist deshalb kein Test fuer diesen Pfad.
-    //
-    // Naechste Hypothese: writePixels()/endWrite() warten nicht zuverlaessig
-    // auf den Abschluss der DMA-Uebertragung, bevor der naechste Chunk
-    // denselben Puffer ueberschreibt bzw. die naechste setAddrWindow()-
-    // Transaktion startet - dazu probehalber DMA fuer den Display-Bus in
-    // lgfx_profiles.h abgeschaltet (dma_channel = 0, reine synchrone
-    // Polling-Uebertragung). Kommen die Streifen jetzt sauber an, bestaetigt
-    // das die DMA/Timing-Hypothese. Nach der Fehlersuche wieder entfernen.
+    // TEMP-DEBUG Streifentest A: viele kleine Chunks (wie disp_flush_cb() bei
+    // LVGL PARTIAL-Rendering: pro Chunk ein eigener setAddrWindow()-Aufruf).
+    // Kam auf echter Hardware verrauscht an, DMA an/aus (siehe lgfx_profiles.h)
+    // macht KEINEN Unterschied - Timing/DMA-Abschluss ist also nicht die
+    // Ursache. Gemeinsamer Nenner von "sauber" (fillScreen: 1x setAddrWindow)
+    // und "kaputt" (Streifen/Dashboard: viele setAddrWindow-Aufrufe
+    // hintereinander) ist die ANZAHL der Adressfenster-Kommandos. Test B
+    // unten prueft das direkt: derselbe Streifeninhalt, aber als EIN
+    // einziger setAddrWindow()+writePixels()-Aufruf ueber den ganzen Screen.
     {
         const uint32_t lines_per_chunk = 20; // exakt wie buf_px unten
         uint16_t *test_buf = (uint16_t *)malloc(s_hres * lines_per_chunk * sizeof(uint16_t));
@@ -220,6 +211,35 @@ void display_ui_begin(void)
         }
         s_lcd.endWrite();
         free(test_buf);
+        delay(4000);
+    }
+
+    // TEMP-DEBUG Streifentest B: gleiches Streifenmuster, aber als EIN
+    // einziger writePixels()-Aufruf ueber den kompletten Framebuffer (ein
+    // setAddrWindow() statt vieler). Kommt das sauber an, waehrend Test A
+    // verrauscht bleibt, ist die Anzahl der setAddrWindow()-Aufrufe die
+    // Ursache - dann muesste der echte Fix im Vergroessern des LVGL-
+    // Flush-Puffers liegen (weniger, groessere Flushes statt vieler
+    // 20-Zeilen-Haeppchen). Nach der Fehlersuche wieder entfernen.
+    {
+        uint32_t full_px = (uint32_t)s_hres * (uint32_t)s_vres;
+        uint16_t *full_buf = (uint16_t *)malloc(full_px * sizeof(uint16_t));
+        if (full_buf) {
+            static const uint16_t bar_colors[] = {0xF800, 0x07E0, 0x001F, 0xFFE0, 0xF81F, 0x07FF};
+            const uint32_t n_colors = sizeof(bar_colors) / sizeof(bar_colors[0]);
+            const uint32_t lines_per_stripe = 20;
+            for (uint32_t y = 0; y < (uint32_t)s_vres; y++) {
+                uint16_t col = bar_colors[(y / lines_per_stripe) % n_colors];
+                for (uint32_t x = 0; x < (uint32_t)s_hres; x++) full_buf[y * s_hres + x] = col;
+            }
+            s_lcd.startWrite();
+            s_lcd.setAddrWindow(0, 0, s_hres, s_vres);
+            s_lcd.writePixels((lgfx::rgb565_t *)full_buf, full_px, false);
+            s_lcd.endWrite();
+            free(full_buf);
+        } else {
+            log_e("TEMP-DEBUG Test B: malloc(%u) fehlgeschlagen", (unsigned)(full_px * sizeof(uint16_t)));
+        }
         delay(4000);
     }
 

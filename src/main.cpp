@@ -1,10 +1,3 @@
-// TFT_ESPI_NOISE_TEST (siehe platformio.ini env:esp32_tftespi_test) ersetzt
-// setup()/loop() komplett durch den isolierten TFT_eSPI-Vergleichstest in
-// tft_espi_noise_test.cpp - die eigentliche App (unten) wird dafuer
-// ausgeblendet, um Nebeneffekte durch LVGL/WLAN/restlichen App-Code
-// auszuschliessen.
-#ifndef TFT_ESPI_NOISE_TEST
-
 #include <Arduino.h>
 #include "shared_state.h"
 #include "config_store.h"
@@ -81,5 +74,3 @@ void loop(void)
         mqtt_handler_loop();
     }
 }
-
-#endif // TFT_ESPI_NOISE_TEST

@@ -201,6 +201,38 @@ void display_ui_begin(void)
     s_lcd.fillScreen(0xFFFF); // Weiss
     delay(2000);
 
+    // TEMP-DEBUG Stufe 2: fillScreen() nutzt vermutlich einen internen
+    // Wiederhol-/Registerpfad und damit NICHT dieselbe Uebertragungskette wie
+    // disp_flush_cb() (malloc'ter Puffer -> writePixels() -> DMA, in
+    // Chunks von je "lines_per_chunk" Zeilen). Stufe 1 (Vollflaechen) war
+    // sauber, das Dashboard trotzdem verrauscht - also hier 1:1 dieselbe
+    // Chunk-Groesse/denselben Uebertragungspfad wie im echten Flush
+    // nachstellen, nur mit einem deterministischen Streifenmuster statt
+    // echtem LVGL-Renderoutput. Kommen die Streifen sauber an, liegt der
+    // Fehler im LVGL-Rendering selbst (Widgets/Icons/Fonts schreiben falsche
+    // Pixel in den Puffer), nicht in der Uebertragung. Sind auch die
+    // Streifen verrauscht, liegt der Fehler in genau diesem Pfad (Puffer/
+    // DMA/Chunking) - also in disp_flush_cb() bzw. wie der Puffer alloziert
+    // wird. Nach der Fehlersuche wieder entfernen.
+    {
+        const uint32_t lines_per_chunk = 20; // exakt wie buf_px unten
+        uint16_t *test_buf = (uint16_t *)malloc(s_hres * lines_per_chunk * sizeof(uint16_t));
+        static const uint16_t bar_colors[] = {0xF800, 0x07E0, 0x001F, 0xFFE0, 0xF81F, 0x07FF};
+        const uint32_t n_colors = sizeof(bar_colors) / sizeof(bar_colors[0]);
+        s_lcd.startWrite();
+        uint32_t chunk = 0;
+        for (uint32_t y = 0; y < (uint32_t)s_vres; y += lines_per_chunk, chunk++) {
+            uint32_t h = (s_vres - y < lines_per_chunk) ? (s_vres - y) : lines_per_chunk;
+            uint16_t col = bar_colors[chunk % n_colors];
+            for (uint32_t i = 0; i < s_hres * h; i++) test_buf[i] = col;
+            s_lcd.setAddrWindow(0, y, s_hres, h);
+            s_lcd.writePixels((lgfx::rgb565_t *)test_buf, s_hres * h, false);
+        }
+        s_lcd.endWrite();
+        free(test_buf);
+        delay(4000);
+    }
+
     lv_init();
 
     static lv_color_t *buf1;

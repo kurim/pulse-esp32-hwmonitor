@@ -186,6 +186,21 @@ void display_ui_begin(void)
     s_hres = s_lcd.width();
     s_vres = s_lcd.height();
 
+    // TEMP-DEBUG: reiner Vollflaechen-Test direkt ueber LovyanGFX, komplett
+    // ohne LVGL/Flush-Callback/Puffer - trennt SPI/Panel-Ebene (lgfx_profiles.h)
+    // von der LVGL-Anbindung weiter unten. Kommen diese vier Flaechen sauber
+    // (kein Rauschen/Speckle) an, liegt der Fehler NICHT mehr am Bus/Panel-
+    // Setup, sondern am disp_flush_cb()/LVGL-Renderpuffer unten in dieser
+    // Funktion. Nach der Fehlersuche wieder entfernen.
+    s_lcd.fillScreen(0xF800); // Rot
+    delay(2000);
+    s_lcd.fillScreen(0x07E0); // Gruen
+    delay(2000);
+    s_lcd.fillScreen(0x001F); // Blau
+    delay(2000);
+    s_lcd.fillScreen(0xFFFF); // Weiss
+    delay(2000);
+
     lv_init();
 
     static lv_color_t *buf1;

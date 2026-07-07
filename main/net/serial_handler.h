@@ -4,9 +4,11 @@
 extern "C" {
 #endif
 
-// Startet den Empfang von Hardwaredaten per USB/UART0 (dieselbe Leitung, die
-// auch zum Flashen/fuer die Log-Ausgabe genutzt wird - siehe README.md).
-// Alternative zu mqtt_handler_begin(), siehe app_config.hw_source.
+// Startet den Empfang von Hardwaredaten per USB - entweder ueber UART0
+// (externer Bridgechip, z.B. CH340/CP2102) oder natives USB-Serial/JTAG
+// (bridgechip-lose Boards wie der ESP32-C3 Super Mini), siehe
+// app_config.serial_iface und serial_handler.c. Alternative zu
+// mqtt_handler_begin(), siehe app_config.hw_source.
 void serial_handler_begin(void);
 
 #ifdef __cplusplus

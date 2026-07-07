@@ -17,6 +17,7 @@
 #include "freertos/event_groups.h"
 #include "cJSON.h"
 #include "lwip/sockets.h"
+#include "soc/soc_caps.h"
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -94,7 +95,11 @@ static const char INDEX_HTML[] =
 "<div><label>Topic</label><input type=\"text\" id=\"mqtt_topic\" maxlength=\"64\"></div></div>"
 "<div class=\"row\"><div><label data-i18n=\"lbl_username\">Benutzer</label><input type=\"text\" id=\"mqtt_user\" maxlength=\"32\"></div>"
 "<div><label data-i18n=\"lbl_password\">Passwort</label><input type=\"password\" id=\"mqtt_pass\" maxlength=\"64\" data-i18n-ph=\"ph_keep_empty\" placeholder=\"unver&auml;ndert lassen = leer\"></div></div></div>"
-"<div id=\"usbHint\" class=\"hint\" style=\"display:none\" data-i18n=\"hint_usb_source\">Sendet JSON-Zeilen (gleiches Format wie MQTT) per USB/Seriell an 115200 Baud, z.B. mit tools/pc_bridge_example.py --serial COM3.</div></div>"
+"<div id=\"usbHint\" class=\"hint\" style=\"display:none\" data-i18n=\"hint_usb_source\">Sendet JSON-Zeilen (gleiches Format wie MQTT) per USB/Seriell an 115200 Baud, z.B. mit tools/pc_bridge_example.py --serial COM3.</div>"
+"<div id=\"serialIfaceField\" style=\"display:none\"><label data-i18n=\"lbl_serial_iface\">USB-Kanal</label><select id=\"serial_iface\">"
+"<option value=\"0\" data-i18n=\"opt_serial_iface_uart0\">UART0 (Bridgechip, z.B. CH340/CP2102)</option>"
+"<option value=\"1\" data-i18n=\"opt_serial_iface_usbjtag\">USB-Serial/JTAG (nativ, z.B. ESP32-C3 Super Mini)</option></select>"
+"<div class=\"hint\" data-i18n=\"hint_serial_iface\">Bei &quot;Write timeout&quot;/keine Reaktion auf dem PC-Client trotz USB-Verbindung: Board ohne Bridgechip (z.B. ESP32-C3 Super Mini) - hier auf USB-Serial/JTAG umschalten.</div></div></div>"
 "<div class=\"card\"><h2 data-i18n=\"card_time\">Zeit</h2><label>NTP-Server</label><input type=\"text\" id=\"ntp_server\" maxlength=\"64\">"
 "<label data-i18n=\"lbl_posix_tz\">POSIX-Zeitzone</label><input type=\"text\" id=\"tz\" maxlength=\"64\"></div>"
 "<div class=\"card\"><h2 data-i18n=\"card_weather\">Wetter (optional, OpenWeatherMap)</h2>"
@@ -162,6 +167,9 @@ static const char INDEX_HTML[] =
 "hide_advanced:'Erweiterte Einstellungen ausblenden',card_mqtt:'Hardwaredaten-Quelle (MQTT / USB)',"
 "lbl_hw_source:'Quelle',opt_hw_source_mqtt:'MQTT',opt_hw_source_usb:'USB/Seriell',"
 "hint_usb_source:'Sendet JSON-Zeilen (gleiches Format wie MQTT) per USB/Seriell an 115200 Baud, z.B. mit tools/pc_bridge_example.py --serial COM3.',"
+"lbl_serial_iface:'USB-Kanal',opt_serial_iface_uart0:'UART0 (Bridgechip, z.B. CH340/CP2102)',"
+"opt_serial_iface_usbjtag:'USB-Serial/JTAG (nativ, z.B. ESP32-C3 Super Mini)',"
+"hint_serial_iface:'Bei \\u201eWrite timeout\\u201c/keine Reaktion auf dem PC-Client trotz USB-Verbindung: Board ohne Bridgechip (z.B. ESP32-C3 Super Mini) - hier auf USB-Serial/JTAG umschalten.',"
 "lbl_username:'Benutzer',card_time:'Zeit',lbl_posix_tz:'POSIX-Zeitzone',card_weather:'Wetter (optional, OpenWeatherMap)',"
 "lbl_enable:'Aktivieren',lbl_location:'Ort (Stadt,Land)',lbl_unit:'Einheit',card_display:'Display',"
 "lbl_display_type:'Displaytyp',hint_display_reboot:'Nach dem Speichern startet das Ger\\u00e4t neu und initialisiert das gew\\u00e4hlte Panel. Verdrahtung wie oben angezeigt oder weiter unten die PINs anpassen.',"
@@ -186,6 +194,9 @@ static const char INDEX_HTML[] =
 "hide_advanced:'Hide advanced settings',card_mqtt:'Hardware data source (MQTT / USB)',"
 "lbl_hw_source:'Source',opt_hw_source_mqtt:'MQTT',opt_hw_source_usb:'USB/Serial',"
 "hint_usb_source:'Sends JSON lines (same format as MQTT) over USB/serial at 115200 baud, e.g. with tools/pc_bridge_example.py --serial COM3.',"
+"lbl_serial_iface:'USB channel',opt_serial_iface_uart0:'UART0 (bridge chip, e.g. CH340/CP2102)',"
+"opt_serial_iface_usbjtag:'USB Serial/JTAG (native, e.g. ESP32-C3 Super Mini)',"
+"hint_serial_iface:'If the PC client sees a write timeout / no response despite a USB connection: board without a bridge chip (e.g. ESP32-C3 Super Mini) - switch to USB Serial/JTAG here.',"
 "lbl_username:'Username',card_time:'Time',lbl_posix_tz:'POSIX timezone',card_weather:'Weather (optional, OpenWeatherMap)',"
 "lbl_enable:'Enable',lbl_location:'Location (city,country)',lbl_unit:'Unit',card_display:'Display',"
 "lbl_display_type:'Display type',hint_display_reboot:'After saving, the device restarts and initializes the selected panel. Wire it as shown above, or adjust the PINs below.',"
@@ -304,11 +315,14 @@ static const char INDEX_HTML[] =
 "activeKey=document.getElementById('display_type').value;"
 "renderRotationOptions();"
 "for(const k in c){const el=document.getElementById(k);if(!el)continue;if(el.type==='checkbox')el.checked=!!c[k];else el.value=(c[k]===null?'':c[k]);}"
+"usbJtagSupported=!!c.usb_jtag_supported;"
 "renderDisplayInfo();updatePinFields();updateHwSourceVisibility();}"
 "function updateHwSourceVisibility(){const v=document.getElementById('hw_source').value;"
 "document.getElementById('mqttFields').style.display=(v==='1')?'none':'';"
-"document.getElementById('usbHint').style.display=(v==='1')?'':'none';}"
+"document.getElementById('usbHint').style.display=(v==='1')?'':'none';"
+"document.getElementById('serialIfaceField').style.display=(v==='1'&&usbJtagSupported)?'':'none';}"
 "document.getElementById('hw_source').addEventListener('change',updateHwSourceVisibility);"
+"let usbJtagSupported=false;"
 "async function loadStatus(){try{const r=await fetch('/api/status');const s=await r.json();"
 "document.getElementById('fwVersion').innerText=s.fw_version+t('free_memory_suffix')+Math.round(s.free_heap/1024)+' KB)';"
 "const hwOk=(s.hw_source===1)?s.serial:s.mqtt;const hwLabel=(s.hw_source===1)?'USB':'MQTT';"
@@ -343,7 +357,7 @@ static const char INDEX_HTML[] =
 "s.innerText=list.length?list.length+' '+t('networks_found'):t('no_networks_found');"
 "}catch(e){s.innerText=t('search_error');}}"
 "document.getElementById('cfgForm').addEventListener('submit',async(e)=>{e.preventDefault();"
-"const ids=['hw_source','mqtt_host','mqtt_port','mqtt_user','mqtt_pass','mqtt_topic','ntp_server','tz','weather_enabled','weather_api_key','weather_city','weather_units','brightness','rotation','language','display_type','standby_timeout_s','color_invert'];"
+"const ids=['hw_source','serial_iface','mqtt_host','mqtt_port','mqtt_user','mqtt_pass','mqtt_topic','ntp_server','tz','weather_enabled','weather_api_key','weather_city','weather_units','brightness','rotation','language','display_type','standby_timeout_s','color_invert'];"
 "PIN_FIELDS.forEach(f=>ids.push('pin_'+f));"
 "const payload={};ids.forEach(id=>{const el=document.getElementById(id);if(!el)return;"
 "if(el.type==='checkbox')payload[id]=el.checked;"
@@ -352,7 +366,7 @@ static const char INDEX_HTML[] =
 "else if(el.type==='number')payload[id]=(el.value===''?null:Number(el.value));"
 // rotation ist ein <select> (id==='number' greift hier nicht) - der Server
 // erwartet trotzdem eine JSON-Zahl, nicht den String, den el.value liefert.
-"else if(id==='rotation'||id==='hw_source')payload[id]=Number(el.value);"
+"else if(id==='rotation'||id==='hw_source'||id==='serial_iface')payload[id]=Number(el.value);"
 "else payload[id]=el.value;});"
 "document.getElementById('status').innerText=t('saving');"
 "await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});"
@@ -614,6 +628,12 @@ static esp_err_t h_config_get(httpd_req_t *req)
     cJSON_AddStringToObject(d, "wifi_ssid", app_config.wifi_ssid);
     cJSON_AddStringToObject(d, "wifi_pass", "");        // Passwoerter nie zuruecksenden
     cJSON_AddNumberToObject(d, "hw_source", (int)app_config.hw_source);
+    cJSON_AddNumberToObject(d, "serial_iface", (int)app_config.serial_iface);
+#if SOC_USB_SERIAL_JTAG_SUPPORTED
+    cJSON_AddBoolToObject(d, "usb_jtag_supported", true);
+#else
+    cJSON_AddBoolToObject(d, "usb_jtag_supported", false);
+#endif
     cJSON_AddStringToObject(d, "mqtt_host", app_config.mqtt_host);
     cJSON_AddNumberToObject(d, "mqtt_port", app_config.mqtt_port);
     cJSON_AddStringToObject(d, "mqtt_user", app_config.mqtt_user);
@@ -792,6 +812,8 @@ static esp_err_t h_config_post(httpd_req_t *req)
     cfg_str(root, "wifi_pass",  app_config.wifi_pass,  sizeof(app_config.wifi_pass),  true);
     cJSON *hs = cJSON_GetObjectItem(root, "hw_source");
     if (cJSON_IsNumber(hs)) app_config.hw_source = (hw_source_t)(int)hs->valuedouble;
+    cJSON *si = cJSON_GetObjectItem(root, "serial_iface");
+    if (cJSON_IsNumber(si)) app_config.serial_iface = (serial_iface_t)(int)si->valuedouble;
     cfg_str(root, "mqtt_host",  app_config.mqtt_host,  sizeof(app_config.mqtt_host),  false);
     cJSON *port = cJSON_GetObjectItem(root, "mqtt_port");
     if (cJSON_IsNumber(port)) app_config.mqtt_port = (uint16_t)port->valuedouble;

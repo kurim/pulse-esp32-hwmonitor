@@ -13,12 +13,24 @@ extern "C" {
 #define HIST_LEN 60
 
 // Quelle der Hardwaredaten (CPU/GPU-Werte): entweder vom MQTT-Broker oder
-// direkt per USB/UART0 vom PC-Client (siehe main/net/serial_handler.c).
+// direkt per USB vom PC-Client (siehe main/net/serial_handler.c).
 // Nur einer der beiden Wege ist gleichzeitig aktiv (siehe app_main.c).
 typedef enum {
     HW_SOURCE_MQTT = 0,
     HW_SOURCE_USB  = 1,
 } hw_source_t;
+
+// Physischer Kanal fuer HW_SOURCE_USB: UART0 (externer Bridgechip wie CH340/
+// CP2102, z.B. CYD oder ESP32-C3-DevKitM-1) oder das native USB-Serial/JTAG-
+// Peripheriegeraet (bridgechip-lose Boards wie der ESP32-C3 Super Mini, dessen
+// USB-Buchse direkt an diese vom UART0 komplett getrennte Hardware-Einheit
+// angeschlossen ist). Nur auf Chips mit SOC_USB_SERIAL_JTAG_SUPPORTED
+// (ESP32-C3/S3, siehe serial_handler.c) waehlbar - auf dem klassischen ESP32
+// (CYD) bleibt es immer UART0.
+typedef enum {
+    SERIAL_IFACE_UART0    = 0,
+    SERIAL_IFACE_USB_JTAG = 1,
+} serial_iface_t;
 
 // ----------------------------------------------------------------
 // Konfiguration (per Webportal gesetzt, in NVS persistiert)
@@ -28,6 +40,7 @@ typedef struct {
     char     wifi_pass[65];
 
     hw_source_t hw_source;   // MQTT (Default) oder USB/Seriell
+    serial_iface_t serial_iface; // nur bei hw_source==HW_SOURCE_USB relevant, s.o.
 
     char     mqtt_host[65];
     uint16_t mqtt_port;
@@ -115,7 +128,7 @@ extern history_t      cpu_history;
 extern history_t      gpu_history;
 extern volatile bool  wifi_connected;
 extern volatile bool  mqtt_connected;
-extern volatile bool  serial_connected;  // true nach der ersten gueltigen Zeile per USB/UART0
+extern volatile bool  serial_connected;  // true nach der ersten gueltigen Zeile per USB (UART0 oder USB-Serial/JTAG)
 
 // Millisekunden seit Boot (Arduino-millis()-Aequivalent).
 int64_t now_ms(void);

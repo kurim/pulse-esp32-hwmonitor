@@ -44,8 +44,13 @@ idf_component_register(
         esp_driver_spi
         esp_driver_gpio
         esp_driver_ledc
-        # serial_handler.c (USB/UART0-Empfang als Alternative zu MQTT)
+        # serial_handler.c (USB-Empfang als Alternative zu MQTT): UART0-Backend
+        # (Bridgechip-Boards) immer noetig, USB-Serial/JTAG-Backend (natives
+        # USB, z.B. ESP32-C3 Super Mini) nur auf Chips mit dieser Peripherie -
+        # die Komponente selbst ist aber auf jedem Ziel-Chip anforderbar, ihre
+        # Nutzung im Code ist per SOC_USB_SERIAL_JTAG_SUPPORTED abgesichert.
         esp_driver_uart
+        esp_driver_usb_serial_jtag
         # display_ui.c (SSD1309-Profil) nutzt den neuen i2c_master-Treiber
         # (driver/i2c_master.h) statt der alten driver/i2c.h-API - letztere
         # liefert auf ESP-IDF 6.0.2 nicht mehr den von esp_lcd_new_panel_io_i2c

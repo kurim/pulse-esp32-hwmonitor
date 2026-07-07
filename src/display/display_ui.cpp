@@ -300,6 +300,42 @@ void display_ui_begin(void)
         delay(4000);
     }
 
+    // TEMP-DEBUG Streifentest D: gleicher Inhalt/Chunk-Groesse wie Test A
+    // (20-Zeilen-Chunks), aber ueber pushImage(x,y,w,h,data) statt manuellem
+    // setAddrWindow()+writePixels()-Paar. Hintergrund: LVGLs offizieller
+    // LovyanGFX-Adapter (LV_USE_LOVYAN_GFX, siehe lvgl.io/docs) verwendet
+    // vermutlich pushImage() intern - falls dessen interne Umsetzung sich
+    // von unserem manuellen Aufrufpaar unterscheidet (z.B. andere DMA-Wait-
+    // Semantik), koennte das den Unterschied machen, obwohl A/B/C (alle
+    // ueber writePixels()) durchgehend verrauscht waren. Kommt das sauber
+    // an, lohnt sich der Umstieg auf pushImage()/den offiziellen LVGL-
+    // Adapter. Nach der Fehlersuche wieder entfernen.
+    {
+        const uint32_t lines_per_group = 20;
+        uint16_t *group_buf = (uint16_t *)malloc((uint32_t)s_hres * lines_per_group * sizeof(uint16_t));
+        if (group_buf) {
+            static const uint16_t bar_colors[] = {0xF800, 0x07E0, 0x001F, 0xFFE0, 0xF81F, 0x07FF};
+            const uint32_t n_colors = sizeof(bar_colors) / sizeof(bar_colors[0]);
+            const uint32_t lines_per_stripe = 20;
+            s_lcd.startWrite();
+            uint32_t n_calls = 0;
+            for (uint32_t y = 0; y < (uint32_t)s_vres; y += lines_per_group, n_calls++) {
+                uint32_t h = (s_vres - y < lines_per_group) ? (s_vres - y) : lines_per_group;
+                uint16_t col = bar_colors[(y / lines_per_stripe) % n_colors];
+                for (uint32_t i = 0; i < s_hres * h; i++) group_buf[i] = col;
+                s_lcd.pushImage(0, y, s_hres, h, (lgfx::rgb565_t *)group_buf);
+            }
+            s_lcd.endWrite();
+            log_i("TEMP-DEBUG Test D: %u pushImage()-Aufrufe a %u Zeilen",
+                  (unsigned)n_calls, (unsigned)lines_per_group);
+            free(group_buf);
+        } else {
+            log_e("TEMP-DEBUG Test D: malloc(%u) fehlgeschlagen",
+                  (unsigned)(s_hres * lines_per_group * sizeof(uint16_t)));
+        }
+        delay(4000);
+    }
+
     lv_init();
 
     static lv_color_t *buf1;

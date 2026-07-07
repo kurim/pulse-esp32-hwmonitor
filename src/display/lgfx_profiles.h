@@ -25,24 +25,22 @@ public:
             auto cfg = _bus_instance.config();
             cfg.spi_host   = SPI2_HOST;
             cfg.spi_mode   = 0;
-            // 40 MHz zeigte auf realer CYD-Hardware farbiges Speckle-Rauschen
-            // in Fuellflaechen/Trennlinien bei sonst intaktem Bild (Icons,
-            // Text lesbar) - klassisches Symptom von SPI-Signalintegritaet
-            // bei zu hohem Takt, nicht des schon behobenen Byte-Order-Bugs
-            // (der haette das gesamte Bild systematisch verfaerbt). 20 MHz
-            // war der in der CYD-Community gaengige stabile Wert, reichte auf
-            // einem konkreten Geraet aber nicht: dort blieb praktisch das
-            // gesamte Bild verrauscht (nicht mehr nur Fuellflaechen/Trenn-
-            // linien wie bei 40 MHz), Struktur nur noch schwach erkennbar -
-            // gleiches Symptombild, staerker ausgepraegt. Weiter auf 10 MHz
-            // reduziert. Bleibt das Rauschen dabei bestehen, ist die Ursache
-            // vermutlich kein SPI-Takt-Problem mehr, sondern Hardware (loses
-            // FPC-Kabel zwischen Display-Modul und Mainboard, oder ein zu
-            // schwaches USB-Netzteil/-Kabel das unter WLAN-Sendestroemspitzen
-            // einbricht).
-            cfg.freq_write = 10000000;
-            cfg.freq_read  = 8000000;
-            cfg.spi_3wire  = true;
+            // Frueherer Verdacht "SPI-Takt zu hoch" (40/20/10 MHz durchprobiert)
+            // hat das grossflaechige Rauschen NICHT behoben und war die falsche
+            // Spur. Abgleich mit einer auf echter CYD-Hardware verifiziert
+            // funktionierenden Referenz-Config (jhsrennie/ESP32, LovyanGFX_CYD_
+            // Settings.h) zeigt den eigentlichen Fehler: spi_3wire war hier auf
+            // true gesetzt, obwohl pin_miso=12 eine echte, separate MISO-Leitung
+            // konfiguriert - spi_3wire ist aber nur fuer Panels OHNE eigene MISO-
+            // Leitung gedacht (Lesevorgaenge im Halbduplex ueber MOSI). Mit einer
+            // real verkabelten MISO-Leitung erzwingt das einen falschen Halb-
+            // duplex-Modus auf dem SPI-Peripheriegeraet - klassisches Symptom fuer
+            // die beobachtete grossflaechige Bildstoerung. Die Referenz laeuft mit
+            // spi_3wire=false sogar bei 55 MHz stabil; wir bleiben hier
+            // konservativ bei 40 MHz.
+            cfg.freq_write = 40000000;
+            cfg.freq_read  = 16000000;
+            cfg.spi_3wire  = false;
             cfg.use_lock   = true;
             cfg.dma_channel = SPI_DMA_CH_AUTO;
             cfg.pin_sclk = 14;
@@ -62,6 +60,13 @@ public:
             cfg.offset_rotation = 0;
             cfg.rgb_order       = true; // CYD-Panel ist BGR-verdrahtet
             cfg.invert          = false; // auf realer Hardware verifiziert (siehe esp-idf-Branch)
+            // Passend zu spi_3wire=false (siehe oben): echte MISO-Leitung ist
+            // nutzbar, also Lesevorgaenge (Panel-Status/ID) ueber die korrekten
+            // Dummy-Bit-Timings statt Halbduplex-Bitbanging abwickeln - 1:1 aus
+            // der verifizierten Referenz-Config uebernommen.
+            cfg.readable         = true;
+            cfg.dummy_read_pixel = 8;
+            cfg.dummy_read_bits  = 1;
             _panel_instance.config(cfg);
         }
         {

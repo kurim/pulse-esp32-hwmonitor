@@ -241,6 +241,40 @@ void display_ui_begin(void)
             break;
     }
 
+    // TEMP-DEBUG: Uhr/CPU-GPU-Kacheln/Wetter aktualisieren sich laut Nutzer
+    // trotz nachweislich frischer Daten (refresh_now()-Log zeigt korrekte
+    // Werte) nicht sichtbar auf dem Panel. Alle bisherigen pushImage()-Tests
+    // (Streifentests A-D) liefen aber nur mit VOLLER Panelbreite (x=0,
+    // w=s_hres) - noch nie mit einem kleinen, beliebig positionierten
+    // Bereich wie einem einzelnen Textlabel. Dieses winzige, unabhaengige
+    // Label zaehlt jede Sekunde per LVGL-Timer hoch (exakt derselbe Pfad wie
+    // die echten Labels: lv_label_set_text_fmt() -> Invalidate -> Flush ->
+    // pushImage()), aber komplett ohne MQTT/Wetter/Zeit-Abhaengigkeit.
+    // Zaehlt es auf dem Panel sichtbar hoch, ist die Rendering-Pipeline fuer
+    // kleine Teilbereiche in Ordnung und der Fehler liegt spezifisch bei den
+    // echten Labels. Bleibt es stehen (obwohl das Log unten "TEMP-DEBUG
+    // counter -> N" zeigt), ist pushImage()/der Flush fuer kleine, nicht-
+    // vollbreite Bereiche der Bug. Nach der Fehlersuche wieder entfernen.
+    {
+        static lv_obj_t *dbg_lbl;
+        dbg_lbl = lv_label_create(scr_main);
+        lv_obj_set_pos(dbg_lbl, 90, 100);
+        lv_obj_set_style_bg_color(dbg_lbl, lv_color_hex(0x000000), 0);
+        lv_obj_set_style_bg_opa(dbg_lbl, LV_OPA_COVER, 0);
+        lv_obj_set_style_text_color(dbg_lbl, lv_color_hex(0xFF00FF), 0);
+        lv_label_set_text(dbg_lbl, "DBG:0");
+        lv_obj_move_foreground(dbg_lbl);
+
+        static lv_obj_t *s_dbg_lbl_ref = dbg_lbl;
+        lv_timer_create([](lv_timer_t *t) {
+            (void)t;
+            static int n = 0;
+            n++;
+            lv_label_set_text_fmt(s_dbg_lbl_ref, "DBG:%d", n);
+            log_i("TEMP-DEBUG counter -> %d", n);
+        }, 1000, NULL);
+    }
+
     tick_cb();
     log_i("UI initialisiert (%s)", s_profile->name);
 }

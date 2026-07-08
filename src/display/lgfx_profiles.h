@@ -103,6 +103,18 @@ public:
             // ueberfluessig.
             cfg.x_min = 200;  cfg.x_max = 3700;
             cfg.y_min = 240;  cfg.y_max = 3800;
+            // Touch war bei rotation=1 (Standard-Landscape) auf der Y-Achse
+            // gespiegelt (Tap oben links -> y nahe Panelunterkante). Ursache:
+            // Panel_Device::convertRawXY() kombiniert Panel-Rotation und
+            // touch-offset_rotation zu einem internen r=((rot+offset)&3) |
+            // ((rot&4)^(offset&4)) und flippt Y fuer r in {1,2,4,7} - mit
+            // offset=0 und rot=1 ergibt das r=1 (vflip aktiv). offset=4
+            // ergibt r=5 (kein vflip, X-Achsentausch bleibt erhalten, der ja
+            // schon korrekt war). Deckt sich mit der in mehreren CYD-
+            // Referenz-Configs kolportierten Faustregel "Rotationen 0-3 sind
+            // gespiegelt, 4-7 verwenden". Bei Bedarf (z.B. rotation=3/180°)
+            // ggf. weiter nachjustieren.
+            cfg.offset_rotation = 4;
             cfg.pin_int  = 36;
             cfg.pin_sclk = 25;
             cfg.pin_mosi = 32;

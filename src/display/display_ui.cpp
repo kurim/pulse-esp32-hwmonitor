@@ -57,7 +57,9 @@ static void disp_flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *px
 static void touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
 {
     (void)indev;
-    int32_t x, y;
+    // getTouch() laesst x/y bei RELEASE unveraendert (kein Touch-Ereignis) -
+    // ohne Initialisierung wuerde das Log dann Stack-Muell anzeigen.
+    int32_t x = 0, y = 0;
     bool touched = s_lcd.getTouch(&x, &y);
     bool irq_low = digitalRead(TOUCH_IRQ_PIN) == LOW;
 
@@ -184,6 +186,13 @@ void display_ui_begin(void)
     s_lcd.init();
     s_lcd.setRotation(app_config.rotation);
     s_lcd.setBrightness(app_config.brightness);
+    // app_config.color_invert ist per Webportal umschaltbar (im NVS
+    // gespeichert/geladen), wurde bisher aber nirgends auf das Panel
+    // angewendet - der Schalter ("invert colors / dark mode") hatte dadurch
+    // keinerlei Wirkung. cfg.invert in lgfx_profiles.h bleibt der feste
+    // Boot-Default (auf realer CYD-Hardware verifiziert), hier zusaetzlich
+    // zur Laufzeit ueberschreibbar.
+    s_lcd.invertDisplay(app_config.color_invert);
     s_lcd_active = true;
 
     s_hres = s_lcd.width();
@@ -229,40 +238,6 @@ void display_ui_begin(void)
             build_standby();
             lv_screen_load(scr_main);
             break;
-    }
-
-    // TEMP-DEBUG: Uhr/CPU-GPU-Kacheln/Wetter aktualisieren sich laut Nutzer
-    // trotz nachweislich frischer Daten (refresh_now()-Log zeigt korrekte
-    // Werte) nicht sichtbar auf dem Panel. Alle bisherigen pushImage()-Tests
-    // (Streifentests A-D) liefen aber nur mit VOLLER Panelbreite (x=0,
-    // w=s_hres) - noch nie mit einem kleinen, beliebig positionierten
-    // Bereich wie einem einzelnen Textlabel. Dieses winzige, unabhaengige
-    // Label zaehlt jede Sekunde per LVGL-Timer hoch (exakt derselbe Pfad wie
-    // die echten Labels: lv_label_set_text_fmt() -> Invalidate -> Flush ->
-    // pushImage()), aber komplett ohne MQTT/Wetter/Zeit-Abhaengigkeit.
-    // Zaehlt es auf dem Panel sichtbar hoch, ist die Rendering-Pipeline fuer
-    // kleine Teilbereiche in Ordnung und der Fehler liegt spezifisch bei den
-    // echten Labels. Bleibt es stehen (obwohl das Log unten "TEMP-DEBUG
-    // counter -> N" zeigt), ist pushImage()/der Flush fuer kleine, nicht-
-    // vollbreite Bereiche der Bug. Nach der Fehlersuche wieder entfernen.
-    {
-        static lv_obj_t *dbg_lbl;
-        dbg_lbl = lv_label_create(scr_main);
-        lv_obj_set_pos(dbg_lbl, 90, 100);
-        lv_obj_set_style_bg_color(dbg_lbl, lv_color_hex(0x000000), 0);
-        lv_obj_set_style_bg_opa(dbg_lbl, LV_OPA_COVER, 0);
-        lv_obj_set_style_text_color(dbg_lbl, lv_color_hex(0xFF00FF), 0);
-        lv_label_set_text(dbg_lbl, "DBG:0");
-        lv_obj_move_foreground(dbg_lbl);
-
-        static lv_obj_t *s_dbg_lbl_ref = dbg_lbl;
-        lv_timer_create([](lv_timer_t *t) {
-            (void)t;
-            static int n = 0;
-            n++;
-            lv_label_set_text_fmt(s_dbg_lbl_ref, "DBG:%d", n);
-            log_i("TEMP-DEBUG counter -> %d", n);
-        }, 1000, NULL);
     }
 
     tick_cb();

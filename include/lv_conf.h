@@ -19,22 +19,12 @@
 
 #define LV_FONT_DEFAULT &lv_font_montserrat_14
 
-// LV_USE_LOG=1 (voller Logumfang der ganzen LVGL-Bibliothek, nicht nur
-// unserer eigenen Aufrufe) sprengte zusammen mit LV_MEM_SIZE=56KB die
-// Flash-Partitionsgroesse (102% belegt) - stattdessen gezielt nur
-// lv_mem_monitor() nutzen (siehe refresh_now()), das ist viel leichter und
-// liefert exakt die gesuchte Information (Pool-Auslastung/Fragmentierung)
-// ohne die komplette Logging-Infrastruktur mit reinzuziehen.
 #define LV_USE_LOG 0
-#define LV_TICK_CUSTOM 1
-#define LV_TICK_CUSTOM_INCLUDE "Arduino.h"
-#define LV_TICK_CUSTOM_SYS_TIME_EXPR (millis())
 
-// 128KB (Sprung von 48 -> 128KB) sprengte das DRAM-Segment auf dem
-// klassischen ESP32 (kein PSRAM) um 67520 Byte - der verfuegbare Spielraum
-// oberhalb von 48KB liegt also nur bei ~14KB (80KB angefordert, 67.5KB
-// Ueberlauf). Auf 56KB reduziert (+8KB, mit Sicherheitsabstand zum
-// errechneten Maximum von ~62KB) statt den Build komplett zu blockieren.
-#define LV_MEM_SIZE (56 * 1024U)
+// LV_TICK_CUSTOM existiert in LVGL 9.x nicht mehr (wurde stillschweigend
+// ignoriert, nicht etwa mit einem Fehler quittiert) - lv_tick_inc() muss
+// stattdessen manuell gefuettert werden, siehe display_ui_loop().
+
+#define LV_MEM_SIZE (48 * 1024U)
 
 #endif // LV_CONF_H

@@ -537,18 +537,6 @@ static void update_chart(lv_obj_t *chart, lv_chart_series_t *ser, const float *d
     lv_chart_refresh(chart);
 }
 
-// TEMP-DEBUG: Nutzer berichtet CPU/GPU-Kacheln + Uhr blieben eingefroren,
-// obwohl MQTT-Daten laut Webportal (liest denselben hw_info-Struct) ankommen -
-// zeigt alle ~5s den Zustand, den refresh_now() gerade sieht. Klaert zwei
-// Dinge: (1) wird refresh_now() ueberhaupt periodisch aufgerufen (tick_cb()/
-// display_ui_loop()) - wenn diese Zeile nie/selten im Log auftaucht, liegt
-// der Fehler dort, nicht in refresh_now() selbst. (2) sind die Werte, die
-// refresh_now() liest, bereits frisch (ever_received/cpu_load/last_update_ms)
-// - wenn die hier schon veraltet/falsch sind, liegt der Fehler in der Daten-
-// haltung (hw_data_apply_json()/shared_state), nicht in der UI-Aktualisierung.
-// Nach der Fehlersuche wieder entfernen.
-static uint32_t s_debug_last_log_ms;
-
 void refresh_now(void)
 {
     char buf[64];
@@ -557,30 +545,6 @@ void refresh_now(void)
     time_t now = time(NULL);
     struct tm ti;
     localtime_r(&now, &ti);
-
-    if (millis() - s_debug_last_log_ms >= 5000) {
-        s_debug_last_log_ms = millis();
-        char dbg_buf[32];
-        strftime(dbg_buf, sizeof(dbg_buf), "%H:%M:%S %d.%m.%Y", &ti);
-        log_i("TEMP-DEBUG refresh_now(): s_screen=%d ever_received=%d cpu_load=%.1f "
-              "gpu_load=%.1f last_update_ms=%lld now_ms=%lld epoch=%lld local='%s'",
-              (int)s_screen, (int)hw_info.ever_received, hw_info.cpu_load, hw_info.gpu_load,
-              (long long)hw_info.last_update_ms, (long long)now_ms(), (long long)now, dbg_buf);
-
-        // TEMP-DEBUG: leichtgewichtiger Ersatz fuer vollen LV_USE_LOG (siehe
-        // lv_conf.h) - zeigt direkt die Auslastung von LVGLs internem
-        // 56KB-Speicherpool. Verdacht: der Pool ist nach dem initialen
-        // Bildschirmaufbau erschoepft, wodurch nachfolgende Label-Text-
-        // Allokierungen (Uhr/CPU-GPU-Kacheln/Wetter) stillschweigend
-        // fehlschlagen. used_pct nahe 100 bzw. free_size nahe 0 bestaetigt
-        // das. Nach der Fehlersuche wieder entfernen.
-        lv_mem_monitor_t mon;
-        lv_mem_monitor(&mon);
-        log_i("TEMP-DEBUG lv_mem_monitor(): used_pct=%u%% frag_pct=%u%% "
-              "free_size=%u free_biggest_size=%u max_used=%u",
-              (unsigned)mon.used_pct, (unsigned)mon.frag_pct, (unsigned)mon.free_size,
-              (unsigned)mon.free_biggest_size, (unsigned)mon.max_used);
-    }
 
     if (ti.tm_year > 100) {
         strftime(buf, sizeof(buf), "%H:%M:%S", &ti);

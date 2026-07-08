@@ -1,8 +1,3 @@
-// LVGL9_MIN_TEST (siehe platformio.ini env:esp32_lvgl9_min_test) ersetzt
-// setup()/loop() komplett durch den isolierten LVGL9-Minimaltest in
-// lvgl9_min_test.cpp - die eigentliche App (unten) wird dafuer ausgeblendet.
-#ifndef LVGL9_MIN_TEST
-
 #include <Arduino.h>
 #include "shared_state.h"
 #include "config_store.h"
@@ -79,5 +74,3 @@ void loop(void)
         mqtt_handler_loop();
     }
 }
-
-#endif // LVGL9_MIN_TEST

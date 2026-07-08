@@ -73,21 +73,6 @@ static void touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
         s_was_irq_low = irq_low;
     }
 
-    // TEMP-DEBUG: bisheriges Log meldet nie etwas, wenn touched/irq_low sich
-    // NIE aendern - das ist zweideutig zwischen "Pin liegt hardwareseitig
-    // dauerhaft fest" und "touch_read_cb() wird von LVGL ueberhaupt nicht
-    // aufgerufen". Deshalb hier zusaetzlich alle ~2s UNBEDINGT (nicht nur bei
-    // Aenderung) loggen - taucht das ueberhaupt nie auf, wird der Callback
-    // nicht aufgerufen (LVGL-Input-Device-Registrierung); taucht es auf,
-    // zeigt roh_pin36/irq_low ob der Pin sich beim Antippen wirklich nie
-    // bewegt. Nach der Fehlersuche wieder entfernen.
-    static uint32_t s_debug_last_log_ms;
-    if (millis() - s_debug_last_log_ms >= 2000) {
-        s_debug_last_log_ms = millis();
-        log_i("TEMP-DEBUG touch_read_cb() lebt: touched=%d irq_low=%d raw_pin36=%d",
-              (int)touched, (int)irq_low, digitalRead(TOUCH_IRQ_PIN));
-    }
-
     if (touched) {
         data->point.x = x;
         data->point.y = y;
@@ -232,12 +217,6 @@ void display_ui_begin(void)
         lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);
         lv_indev_set_read_cb(indev, touch_read_cb);
         lv_indev_set_display(indev, disp);
-
-        // TEMP-DEBUG: bisheriges touch_read_cb()-Log (auch die unbedingte
-        // ~2s-Variante) erschien im letzten Test ueberhaupt nicht - hier
-        // pruefen ob dieser Setup-Pfad ueberhaupt durchlaeuft und der indev-
-        // Zeiger gueltig ist, statt das stillschweigend anzunehmen.
-        log_i("TEMP-DEBUG Touch-Indev registriert: indev=%p disp=%p", (void *)indev, (void *)disp);
     }
 
     ui_set_language(app_config.language);
@@ -292,6 +271,19 @@ void display_ui_begin(void)
 
 void display_ui_loop(void)
 {
+    // LV_TICK_CUSTOM (lv_conf.h) existiert in LVGL 9.x nicht mehr und wurde
+    // stillschweigend ignoriert - LVGLs interner Tick-Zaehler stand seit dem
+    // Boot fest auf 0, wodurch KEIN Timer (Refresh-Timer, Input-Device-
+    // Polling, eigene lv_timer_create()-Timer) je als faellig galt. Das war
+    // die Ursache dafuer, dass sich Uhr/Kacheln/Wetter nach dem initialen
+    // Rendern nie wieder aktualisiert haben und Touch nie reagierte -
+    // bestaetigt durch einen isolierten LVGL9-Minimaltest. lv_tick_inc()
+    // muss in LVGL 9.x manuell mit der vergangenen Zeit gefuettert werden.
+    static uint32_t s_last_lv_tick_ms = millis();
+    uint32_t lv_tick_now = millis();
+    lv_tick_inc(lv_tick_now - s_last_lv_tick_ms);
+    s_last_lv_tick_ms = lv_tick_now;
+
     lv_timer_handler();
 
     if (s_lcd_active && millis() - s_last_tick_ms >= 1000) {

@@ -16,12 +16,10 @@ const char *weather_wind_compass(int deg)
     return dirs[idx % 8];
 }
 
-// TEMP-DEBUG: bisher gab es bei einem Fehlschlag keinerlei Log-Ausgabe -
-// weather_info.valid blieb einfach false, ohne erkennbar zu machen ob die
-// Anfrage nie rausging, der Server einen Fehler zurueckgab (z.B. falscher
-// API-Key/Stadtname -> HTTP 401/404) oder die Antwort nicht wie erwartet
-// aussah. Bei Gelegenheit wieder auf log_d/entfernen, wenn die Ursache
-// gefunden ist.
+// Loggt Erfolg/Fehlschlag explizit - ohne das blieb weather_info.valid bei
+// einem Fehler einfach false, ohne erkennbar zu machen ob die Anfrage nie
+// rausging, der Server einen Fehler zurueckgab (z.B. falscher API-Key/
+// Stadtname -> HTTP 401/404) oder die Antwort nicht wie erwartet aussah.
 static void fetch_weather(void)
 {
     if (!app_config.weather_enabled || strlen(app_config.weather_api_key) == 0) return;

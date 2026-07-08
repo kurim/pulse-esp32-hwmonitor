@@ -566,6 +566,20 @@ void refresh_now(void)
               "gpu_load=%.1f last_update_ms=%lld now_ms=%lld epoch=%lld local='%s'",
               (int)s_screen, (int)hw_info.ever_received, hw_info.cpu_load, hw_info.gpu_load,
               (long long)hw_info.last_update_ms, (long long)now_ms(), (long long)now, dbg_buf);
+
+        // TEMP-DEBUG: leichtgewichtiger Ersatz fuer vollen LV_USE_LOG (siehe
+        // lv_conf.h) - zeigt direkt die Auslastung von LVGLs internem
+        // 56KB-Speicherpool. Verdacht: der Pool ist nach dem initialen
+        // Bildschirmaufbau erschoepft, wodurch nachfolgende Label-Text-
+        // Allokierungen (Uhr/CPU-GPU-Kacheln/Wetter) stillschweigend
+        // fehlschlagen. used_pct nahe 100 bzw. free_size nahe 0 bestaetigt
+        // das. Nach der Fehlersuche wieder entfernen.
+        lv_mem_monitor_t mon;
+        lv_mem_monitor(&mon);
+        log_i("TEMP-DEBUG lv_mem_monitor(): used_pct=%u%% frag_pct=%u%% "
+              "free_size=%u free_biggest_size=%u max_used=%u",
+              (unsigned)mon.used_pct, (unsigned)mon.frag_pct, (unsigned)mon.free_size,
+              (unsigned)mon.free_biggest_size, (unsigned)mon.max_used);
     }
 
     if (ti.tm_year > 100) {

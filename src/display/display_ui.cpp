@@ -204,46 +204,12 @@ void display_ui_begin(void)
     s_hres = s_lcd.width();
     s_vres = s_lcd.height();
 
-    // TEMP-DEBUG Stufe E: das DBG-Zaehl-Label (LVGL-Timer) blieb bei "DBG:0"
-    // stehen - Nutzer vermutet, LovyanGFX zeichnet den Screen nur einmalig.
-    // Hier komplett ohne LVGL: 5x direkt hintereinander (mit ECHTER
-    // Zeitpause, nicht wie Streifentests A-D unter einem einzigen
-    // startWrite()/endWrite()-Bracket) eine kleine 60x60-Box an derselben
-    // Stelle per pushImage() aus einem Fremdpuffer neu zeichnen - exakt das
-    // Muster, das disp_flush_cb() im Betrieb macht (jeweils eigenes
-    // startWrite()/pushImage()/endWrite() pro Aufruf, zeitlich isoliert).
-    // Bewusst NICHT fillRect() (das ist der bereits erwiesenermassen
-    // funktionierende interne Fuellpfad, wie fillScreen() in Stufe 1 - haette
-    // hier nichts Neues gezeigt). Wechselt die Box sichtbar die Farbe, ist
-    // die Uebertragung an sich in Ordnung und der Fehler liegt spezifisch
-    // bei LVGL (Invalidate/Timer/Flush-Kopplung). Bleibt sie bei der ersten
-    // Farbe stehen, bestaetigt das die Vermutung: LovyanGFX/pushImage()
-    // zeichnet nur beim ersten (ggf. "warmen") Aufruf, nicht bei spaeteren
-    // isolierten Aufrufen. Nach der Fehlersuche wieder entfernen.
-    {
-        static const uint16_t box_colors[] = {0xF800, 0x07E0, 0x001F, 0xFFE0, 0xFFFF};
-        const uint32_t box_w = 60, box_h = 60;
-        uint16_t *box_buf = (uint16_t *)malloc(box_w * box_h * sizeof(uint16_t));
-        for (int i = 0; i < 5 && box_buf; i++) {
-            for (uint32_t p = 0; p < box_w * box_h; p++) box_buf[p] = box_colors[i];
-            s_lcd.startWrite();
-            s_lcd.pushImage(100, 90, box_w, box_h, (lgfx::rgb565_t *)box_buf);
-            s_lcd.endWrite();
-            log_i("TEMP-DEBUG Stufe E: Box %d per pushImage() gezeichnet (Farbe 0x%04X)", i, box_colors[i]);
-            delay(2000);
-        }
-        free(box_buf);
-    }
+    // Streifentest Stufe E (mehrfache isolierte pushImage()-Aufrufe direkt
+    // ohne LVGL) hat bereits bestaetigt, dass die SPI-Uebertragung selbst
+    // einwandfrei funktioniert - Test entfernt, um Flash-Platz zu sparen
+    // (Firmware ueberschritt sonst die OTA-Partitionsgroesse).
 
     lv_init();
-
-    // TEMP-DEBUG: siehe lv_conf.h (LV_USE_LOG) - macht LVGL-interne Fehler
-    // (z.B. Out-of-Memory bei Label-Text-Updates nach dem initialen Aufbau)
-    // sichtbar, die bisher stillschweigend verschluckt wurden.
-    lv_log_register_print_cb([](lv_log_level_t level, const char *buf) {
-        (void)level;
-        log_i("LVGL: %s", buf);
-    });
 
     static lv_color_t *buf1;
     static lv_color_t *buf2;

@@ -19,19 +19,13 @@
 
 #define LV_FONT_DEFAULT &lv_font_montserrat_14
 
-// TEMP-DEBUG: LV_USE_LOG war 0 - LVGL-interne Fehler (z.B. fehlgeschlagene
-// Allokierungen im 48KB-Pool) waren dadurch unsichtbar. Nutzer berichtet:
-// Uhr/CPU-GPU-Kacheln/Wetter/ein testweise hinzugefuegtes Debug-Label
-// aktualisieren sich nach dem initialen Aufbau nie wieder, obwohl
-// pushImage() selbst nachweislich (Stufe-E-Test) bei wiederholten,
-// isolierten Aufrufen einwandfrei funktioniert - der Fehler liegt also
-// zwischen LVGL und dem Flush, nicht in der Uebertragung. Logging an, um
-// LVGL-interne Fehlermeldungen (z.B. Out-of-Memory bei nachfolgenden
-// Label-Text-Allokierungen) sichtbar zu machen, plus LV_MEM_SIZE grosszuegig
-// erhoeht (48KB war fuer 4 Screens + Chart-Widget + mehrere Fonts eng) als
-// naheliegendster Verdaechtiger. Nach der Fehlersuche ggf. wieder senken.
-#define LV_USE_LOG 1
-#define LV_LOG_LEVEL LV_LOG_LEVEL_WARN
+// LV_USE_LOG=1 (voller Logumfang der ganzen LVGL-Bibliothek, nicht nur
+// unserer eigenen Aufrufe) sprengte zusammen mit LV_MEM_SIZE=56KB die
+// Flash-Partitionsgroesse (102% belegt) - stattdessen gezielt nur
+// lv_mem_monitor() nutzen (siehe refresh_now()), das ist viel leichter und
+// liefert exakt die gesuchte Information (Pool-Auslastung/Fragmentierung)
+// ohne die komplette Logging-Infrastruktur mit reinzuziehen.
+#define LV_USE_LOG 0
 #define LV_TICK_CUSTOM 1
 #define LV_TICK_CUSTOM_INCLUDE "Arduino.h"
 #define LV_TICK_CUSTOM_SYS_TIME_EXPR (millis())

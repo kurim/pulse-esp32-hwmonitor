@@ -237,6 +237,14 @@ void display_ui_begin(void)
 
     lv_init();
 
+    // TEMP-DEBUG: siehe lv_conf.h (LV_USE_LOG) - macht LVGL-interne Fehler
+    // (z.B. Out-of-Memory bei Label-Text-Updates nach dem initialen Aufbau)
+    // sichtbar, die bisher stillschweigend verschluckt wurden.
+    lv_log_register_print_cb([](lv_log_level_t level, const char *buf) {
+        (void)level;
+        log_i("LVGL: %s", buf);
+    });
+
     static lv_color_t *buf1;
     static lv_color_t *buf2;
     const uint32_t buf_px = s_hres * 20; // ~ LCD_FLUSH_LINES aus dem Original

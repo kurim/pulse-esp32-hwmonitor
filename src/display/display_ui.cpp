@@ -227,6 +227,12 @@ void display_ui_begin(void)
         lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);
         lv_indev_set_read_cb(indev, touch_read_cb);
         lv_indev_set_display(indev, disp);
+
+        // TEMP-DEBUG: bisheriges touch_read_cb()-Log (auch die unbedingte
+        // ~2s-Variante) erschien im letzten Test ueberhaupt nicht - hier
+        // pruefen ob dieser Setup-Pfad ueberhaupt durchlaeuft und der indev-
+        // Zeiger gueltig ist, statt das stillschweigend anzunehmen.
+        log_i("TEMP-DEBUG Touch-Indev registriert: indev=%p disp=%p", (void *)indev, (void *)disp);
     }
 
     ui_set_language(app_config.language);

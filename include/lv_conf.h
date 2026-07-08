@@ -36,6 +36,11 @@
 #define LV_TICK_CUSTOM_INCLUDE "Arduino.h"
 #define LV_TICK_CUSTOM_SYS_TIME_EXPR (millis())
 
-#define LV_MEM_SIZE (128 * 1024U)
+// 128KB (Sprung von 48 -> 128KB) sprengte das DRAM-Segment auf dem
+// klassischen ESP32 (kein PSRAM) um 67520 Byte - der verfuegbare Spielraum
+// oberhalb von 48KB liegt also nur bei ~14KB (80KB angefordert, 67.5KB
+// Ueberlauf). Auf 56KB reduziert (+8KB, mit Sicherheitsabstand zum
+// errechneten Maximum von ~62KB) statt den Build komplett zu blockieren.
+#define LV_MEM_SIZE (56 * 1024U)
 
 #endif // LV_CONF_H

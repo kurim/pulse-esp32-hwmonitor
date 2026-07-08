@@ -553,18 +553,21 @@ void refresh_now(void)
 {
     char buf[64];
 
-    if (millis() - s_debug_last_log_ms >= 5000) {
-        s_debug_last_log_ms = millis();
-        log_i("TEMP-DEBUG refresh_now(): s_screen=%d ever_received=%d cpu_load=%.1f "
-              "gpu_load=%.1f last_update_ms=%lld now_ms=%lld",
-              (int)s_screen, (int)hw_info.ever_received, hw_info.cpu_load, hw_info.gpu_load,
-              (long long)hw_info.last_update_ms, (long long)now_ms());
-    }
-
     // --- Zeit / Datum ---
     time_t now = time(NULL);
     struct tm ti;
     localtime_r(&now, &ti);
+
+    if (millis() - s_debug_last_log_ms >= 5000) {
+        s_debug_last_log_ms = millis();
+        char dbg_buf[32];
+        strftime(dbg_buf, sizeof(dbg_buf), "%H:%M:%S %d.%m.%Y", &ti);
+        log_i("TEMP-DEBUG refresh_now(): s_screen=%d ever_received=%d cpu_load=%.1f "
+              "gpu_load=%.1f last_update_ms=%lld now_ms=%lld epoch=%lld local='%s'",
+              (int)s_screen, (int)hw_info.ever_received, hw_info.cpu_load, hw_info.gpu_load,
+              (long long)hw_info.last_update_ms, (long long)now_ms(), (long long)now, dbg_buf);
+    }
+
     if (ti.tm_year > 100) {
         strftime(buf, sizeof(buf), "%H:%M:%S", &ti);
         lv_label_set_text(lbl_time, buf);

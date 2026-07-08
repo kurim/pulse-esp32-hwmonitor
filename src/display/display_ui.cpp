@@ -61,7 +61,7 @@ static void touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
     bool touched = s_lcd.getTouch(&x, &y);
     bool irq_low = digitalRead(TOUCH_IRQ_PIN) == LOW;
 
-    // Temporäres Debug-Log, um bei Touch-Problemen zu unterscheiden, ob
+    // Temporaeres Debug-Log, um bei Touch-Problemen zu unterscheiden, ob
     // getTouch() ueberhaupt Ereignisse liefert (XPT2046-Verkabelung/SPI-Bus)
     // oder ob die Koordinaten falsch auf den Bildschirm gemappt werden.
     static bool s_was_touched = false;
@@ -71,6 +71,21 @@ static void touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
               touched ? "PRESS" : "RELEASE", (int)x, (int)y, irq_low ? "LOW" : "HIGH");
         s_was_touched = touched;
         s_was_irq_low = irq_low;
+    }
+
+    // TEMP-DEBUG: bisheriges Log meldet nie etwas, wenn touched/irq_low sich
+    // NIE aendern - das ist zweideutig zwischen "Pin liegt hardwareseitig
+    // dauerhaft fest" und "touch_read_cb() wird von LVGL ueberhaupt nicht
+    // aufgerufen". Deshalb hier zusaetzlich alle ~2s UNBEDINGT (nicht nur bei
+    // Aenderung) loggen - taucht das ueberhaupt nie auf, wird der Callback
+    // nicht aufgerufen (LVGL-Input-Device-Registrierung); taucht es auf,
+    // zeigt roh_pin36/irq_low ob der Pin sich beim Antippen wirklich nie
+    // bewegt. Nach der Fehlersuche wieder entfernen.
+    static uint32_t s_debug_last_log_ms;
+    if (millis() - s_debug_last_log_ms >= 2000) {
+        s_debug_last_log_ms = millis();
+        log_i("TEMP-DEBUG touch_read_cb() lebt: touched=%d irq_low=%d raw_pin36=%d",
+              (int)touched, (int)irq_low, digitalRead(TOUCH_IRQ_PIN));
     }
 
     if (touched) {

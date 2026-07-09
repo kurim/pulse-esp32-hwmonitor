@@ -6,6 +6,14 @@ follows [Keep a Changelog](https://keepachangelog.com/), versioning follows
 
 ## [Unreleased]
 
+- **Added a centered boot logo** (`build_main()`, `src/display/
+  display_ui_rect.cpp`) shown on the main screen while the device
+  initializes, covering the CPU/GPU tiles instead of the previous narrow
+  "Warte auf Daten..."/"Warte auf MQTT-Daten..." strip along their bottom
+  edge. Same visibility rule as before (tied to `hw_info.ever_received`,
+  hidden for good after the first message from the configured source), so
+  it only ever shows once per boot and isn't retriggered by a later,
+  short-lived interruption of the data stream.
 - **Removed the "Invert colors (dark mode)" web portal toggle**: the device
   only ever ships in dark mode, so the switch (`app_config.color_invert`,
   the `/api/config` field, its NVS entry, and the checkbox/i18n strings in

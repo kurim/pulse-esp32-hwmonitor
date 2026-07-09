@@ -37,7 +37,7 @@ static tile_ctx_t cpu_tile, gpu_tile;
 static lv_obj_t *lbl_time, *lbl_date;
 static lv_obj_t *lbl_weather, *lbl_humidity, *lbl_wind, *lbl_rain;
 static lv_obj_t *icon_wifi;
-static lv_obj_t *lbl_waiting;
+static lv_obj_t *boot_logo;
 
 // Detailschirm-Widgets
 static lv_obj_t *det_title, *det_load, *det_temp, *det_power;
@@ -300,20 +300,36 @@ void build_main(void)
     build_tile(scr_main, margin, tile_w, "CPU", &cpu_tile, SCR_CPU, false, COL_CPU_BAR_A, COL_CPU_BAR_B);
     build_tile(scr_main, margin + tile_w + gap, tile_w, "GPU", &gpu_tile, SCR_GPU, true, COL_GPU_BAR_A, COL_GPU_BAR_B);
 
-    // "Warte auf Daten"-Hinweis, ueberlagert die Kachel-Unterkante bis zur
-    // ersten Nachricht der konfigurierten Quelle (danach ausgeblendet). Text
-    // wird einmalig beim Boot passend zu app_config.hw_source gewaehlt - ein
-    // Quellenwechsel greift ohnehin erst nach einem Neustart (gleiches Muster
-    // wie Sprache/Displaytyp/Rotation).
-    lbl_waiting = make_label(scr_main,
+    // Bootlogo, ueberdeckt die Kacheln vollflaechig bis zur ersten Nachricht
+    // der konfigurierten Quelle (danach ausgeblendet, siehe refresh_now()) -
+    // ersetzt den vorherigen schmalen "Warte auf Daten"-Streifen am
+    // Kachel-Unterrand durch einen mittig stehenden Init-Screen (Icon + Name
+    // + Statustext), analog zum ASCII-Bootbanner auf der seriellen Konsole
+    // (main.cpp: bootlogo()). Bleibt exakt so lange stehen wie der
+    // Statustext allein vorher: beide haengen an hw_info.ever_received, das
+    // erst mit der ersten Nachricht dauerhaft auf true kippt. Ein kurzzeitig
+    // abreissender Datenstrom NACH diesem Punkt setzt ever_received nicht
+    // zurueck - das Bootlogo bleibt also auf einen echten Erststart
+    // beschraenkt und flackert nicht bei jeder kurzen Verbindungsluecke
+    // wieder auf.
+    boot_logo = lv_obj_create(scr_main);
+    lv_obj_set_pos(boot_logo, 0, CARD_Y);
+    lv_obj_set_size(boot_logo, s_hres, CARD_H);
+    lv_obj_set_style_bg_color(boot_logo, COL_BG, 0);
+    lv_obj_set_style_bg_opa(boot_logo, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(boot_logo, 0, 0);
+    lv_obj_set_style_pad_all(boot_logo, 0, 0);
+    lv_obj_clear_flag(boot_logo, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clear_flag(boot_logo, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_flex_flow(boot_logo, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(boot_logo, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+    make_label(boot_logo, MDI_CHIP, &mdi_icons_28, COL_ACCENT);
+    make_label(boot_logo, "PULSE", &lv_font_montserrat_24, COL_TEXT);
+
+    make_label(boot_logo,
         (app_config.hw_source == HW_SOURCE_USB) ? ui_str(UI_STR_WAITING_DATA) : ui_str(UI_STR_WAITING_MQTT),
         &lv_font_montserrat_14, COL_SUB);
-    lv_obj_set_width(lbl_waiting, s_hres - 12);
-    lv_obj_set_style_text_align(lbl_waiting, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_style_bg_color(lbl_waiting, COL_BG, 0);
-    lv_obj_set_style_bg_opa(lbl_waiting, LV_OPA_80, 0);
-    lv_obj_set_style_pad_ver(lbl_waiting, 2, 0);
-    lv_obj_set_pos(lbl_waiting, 6, CARD_Y + CARD_H - 18);
 
     // ---- Settings-Knopf (unten) ----
     lv_obj_t *settings_btn = lv_obj_create(scr_main);
@@ -594,8 +610,8 @@ void refresh_now(void)
     if (s_screen == SCR_MAIN) {
         update_tile(&cpu_tile, &cpu_history, hw_info.cpu_load, hw_info.cpu_temp, hw_info.cpu_power);
         update_tile(&gpu_tile, &gpu_history, hw_info.gpu_load, hw_info.gpu_temp, hw_info.gpu_power);
-        if (hw_info.ever_received) lv_obj_add_flag(lbl_waiting, LV_OBJ_FLAG_HIDDEN);
-        else                       lv_obj_clear_flag(lbl_waiting, LV_OBJ_FLAG_HIDDEN);
+        if (hw_info.ever_received) lv_obj_add_flag(boot_logo, LV_OBJ_FLAG_HIDDEN);
+        else                       lv_obj_clear_flag(boot_logo, LV_OBJ_FLAG_HIDDEN);
 
     } else if (s_screen == SCR_CPU || s_screen == SCR_GPU) {
         bool is_cpu = (s_screen == SCR_CPU);

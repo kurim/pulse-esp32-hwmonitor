@@ -197,13 +197,6 @@ static void build_tile(lv_obj_t *parent, int x, int w, const char *title, tile_c
     lv_obj_t *t = make_label(card, title, &lv_font_montserrat_16, COL_TEXT);
     lv_obj_set_pos(t, 32, 5);
 
-    if (is_gpu) {
-        lv_obj_t *badge = shape_rrect(card, 28, 16, 8, COL_BADGE_BG);
-        lv_obj_set_pos(badge, w - 34, 6);
-        lv_obj_t *bl = make_label(badge, "3D", &lv_font_montserrat_14, COL_BADGE_TEXT);
-        lv_obj_center(bl);
-    }
-
     tile->load_lbl = make_label(card, "--", &lv_font_montserrat_48, COL_TEXT);
     lv_obj_align(tile->load_lbl, LV_ALIGN_CENTER, 0, -14);
 
@@ -253,12 +246,6 @@ void build_main(void)
     lv_obj_set_style_border_width(bar, 0, 0);
     lv_obj_set_style_pad_all(bar, 0, 0);
     lv_obj_clear_flag(bar, LV_OBJ_FLAG_SCROLLABLE);
-
-    // Top-Bar als 3-Spalten-Raster (Wunsch des Nutzers):
-    //   Uhrzeit    | Temperatur       | Wind
-    //   Datum      | Luftfeuchtigkeit | Regen
-    // Spalten: Zeit/Datum x=8, Temp/Feuchte x=124, Wind/Regen x=204.
-    // MDI-Icons sind 20px breit (aus der generierten Font ausgelesen).
 
     // -- Spalte 1: Zeit/Datum --
     lbl_time = make_label(bar, "--:--:--", &lv_font_montserrat_24, COL_TEXT);
@@ -340,7 +327,7 @@ void build_main(void)
 
     lv_obj_t *gear = make_label(settings_btn, MDI_COG, &mdi_icons_20, COL_SUB);
     lv_obj_align(gear, LV_ALIGN_TOP_MID, 0, 2);
-    lv_obj_t *set_lbl = make_label(settings_btn, "SETTINGS", &lv_font_montserrat_14, COL_SUB);
+    lv_obj_t *set_lbl = make_label(settings_btn, ui_str(UI_STR_SETTINGS_TITLE), &lv_font_montserrat_14, COL_SUB);
     lv_obj_align(set_lbl, LV_ALIGN_TOP_MID, 0, 26);
 }
 

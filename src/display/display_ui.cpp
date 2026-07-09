@@ -15,7 +15,7 @@ int s_hres, s_vres;
 
 lv_obj_t *scr_main;
 int s_screen = SCR_MAIN;
-lv_obj_t *scr_detail, *scr_settings, *scr_standby;
+lv_obj_t *scr_detail, *scr_settings, *scr_standby, *scr_boot;
 
 bool s_standby = false;
 
@@ -211,7 +211,11 @@ void display_ui_begin(void)
             build_detail();
             build_settings();
             build_standby();
-            lv_screen_load(scr_main);
+            build_boot();
+            // Bootlogo statt Homescreen, bis die erste Nachricht der
+            // konfigurierten Quelle eintrifft (siehe refresh_now() in
+            // display_ui_rect.cpp).
+            lv_screen_load(scr_boot);
             break;
     }
 

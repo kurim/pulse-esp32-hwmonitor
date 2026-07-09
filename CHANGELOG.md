@@ -6,14 +6,22 @@ follows [Keep a Changelog](https://keepachangelog.com/), versioning follows
 
 ## [Unreleased]
 
-- **Added a centered boot logo** (`build_main()`, `src/display/
-  display_ui_rect.cpp`) shown on the main screen while the device
-  initializes, covering the CPU/GPU tiles instead of the previous narrow
-  "Warte auf Daten..."/"Warte auf MQTT-Daten..." strip along their bottom
-  edge. Same visibility rule as before (tied to `hw_info.ever_received`,
-  hidden for good after the first message from the configured source), so
-  it only ever shows once per boot and isn't retriggered by a later,
-  short-lived interruption of the data stream.
+- **Added an image-based boot logo screen** (`scr_boot`, `build_boot()` in
+  `src/display/display_ui_rect.cpp`): the device now shows a dedicated,
+  centered splash screen (Pulse logo image + the previous "Warte auf
+  Daten..."/"Warte auf MQTT-Daten..." status text) instead of the homescreen
+  right after panel init, and only switches to `scr_main` once the first
+  message from the configured source arrives - same trigger
+  (`hw_info.ever_received`) and therefore the same effective duration as the
+  status text alone had before. Since `ever_received` never resets to
+  `false` again, the boot screen only ever shows once per boot and doesn't
+  reappear on a later, short-lived data stream interruption. The image
+  itself (`src/bootlogo.c`/`bootlogo.h`, `lv_image_dsc_t bootlogo_img`) was
+  down-scaled from the originally checked-in 800x480 asset (750 KB
+  uncompressed, ~43% of the 1.75 MB OTA app partition on its own) to 200x120
+  (~47 KB) - small enough to comfortably fit the shared multi-panel firmware
+  image while still reading clearly as a centered logo on the 320x240 CYD
+  panel.
 - **Removed the "Invert colors (dark mode)" web portal toggle**: the device
   only ever ships in dark mode, so the switch (`app_config.color_invert`,
   the `/api/config` field, its NVS entry, and the checkbox/i18n strings in

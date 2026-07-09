@@ -21,6 +21,20 @@ follows [Keep a Changelog](https://keepachangelog.com/), versioning follows
   uncompressed, ~43% of the 1.75 MB OTA app partition on its own) to 200x120
   (~47 KB) so it reads clearly as a centered logo on the 320x240 CYD panel
   without being excessive.
+- **Re-encoded the boot logo as an indexed (I8) image** instead of raw
+  RGB565: `src/bootlogo.c` now stores a 256-color palette (1024 bytes, B/G/R/A
+  per entry) plus one palette-index byte per pixel instead of 2 raw color
+  bytes per pixel - 25,024 bytes total vs. 48,000 before (~48% smaller), no
+  visible quality loss for this particular image (solid black background +
+  a smooth two-color gradient, well within 256 colors). LVGL's built-in
+  decoder (`lv_bin_decoder.c`) expands indexed images to a temporary
+  ARGB8888 buffer (200x120x4 = ~94 KB) at draw time since the software
+  renderer can't blit indexed pixels directly - but since `LV_CACHE_DEF_SIZE`
+  in `lv_conf.h` is left at its default of `0`, that buffer is released
+  immediately after each draw rather than held for as long as the boot
+  screen is shown, so this is a brief one-time allocation spike at first
+  paint, not a sustained RAM cost. Combined with the partition bump below,
+  this leaves ~110 KB of headroom in each 1.875 MB OTA slot instead of ~87 KB.
 - **Fix: firmware no longer fit the OTA app partition** after adding the
   boot logo image (`program size (1876603 bytes) is greater than maximum
   allowed (1835008 bytes)`, ~41 KB over on top of the driver code for 5

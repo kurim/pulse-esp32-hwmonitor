@@ -26,9 +26,6 @@ void config_store_load(app_config_t *cfg)
         return; 
     }
 
-    get_str(s_prefs, "wifi_ssid",  cfg->wifi_ssid,  sizeof(cfg->wifi_ssid));
-    get_str(s_prefs, "wifi_pass",  cfg->wifi_pass,  sizeof(cfg->wifi_pass));
-
     cfg->hw_source = (hw_source_t)s_prefs.getUChar("hw_src", (uint8_t)cfg->hw_source);
 
     get_str(s_prefs, "mqtt_host",  cfg->mqtt_host,  sizeof(cfg->mqtt_host));
@@ -71,8 +68,6 @@ void config_store_save(const app_config_t *cfg)
         return;
     }
 
-    s_prefs.putString("wifi_ssid",  cfg->wifi_ssid);
-    s_prefs.putString("wifi_pass",  cfg->wifi_pass);
     s_prefs.putUChar ("hw_src",     (uint8_t)cfg->hw_source);
     s_prefs.putString("mqtt_host",  cfg->mqtt_host);
     s_prefs.putUShort("mqtt_port",  cfg->mqtt_port);

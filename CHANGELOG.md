@@ -6,6 +6,27 @@ follows [Keep a Changelog](https://keepachangelog.com/), versioning follows
 
 ## [Unreleased]
 
+- **Replaced the hand-rolled WiFi STA/AP logic with tzapu/WiFiManager**
+  (`src/net/web_portal.cpp`): `wifi_connect_sta()`/`start_ap()` and the
+  custom captive-portal-detection routes are gone, `WiFiManager` now owns
+  WiFi connect-or-fallback-to-AP entirely, including its own scan/SSID-entry
+  portal UI (so `/api/wifi_scan` and the "WLAN" card in the embedded config
+  page - SSID/password fields and the "Scan WiFi networks" button - are
+  removed too; `app_config` no longer has `wifi_ssid`/`wifi_pass` fields,
+  WiFiManager persists credentials itself via the WiFi driver's own storage).
+  Run in **non-blocking** mode (`setConfigPortalBlocking(false)` +
+  `wm.process()` from `web_portal_loop()`) specifically so the LCD stays
+  responsive (clock/touch/refresh) while WiFiManager's setup portal is open -
+  a blocking `autoConnect()` call would stall `loop()`, and with it
+  `lv_timer_handler()`, for as long as the portal is up. Our own
+  `AsyncWebServer` (config page, `/api/*`, OTA) now starts lazily, once
+  `WiFi.status() == WL_CONNECTED` and WiFiManager's own portal server has
+  stepped aside, since both would otherwise fight over port 80.
+  `web_portal_force_ap()` (the "Restart into setup AP" button) now clears
+  WiFiManager's stored credentials and reboots instead of switching into AP
+  mode live in place - a reboot either way, since the button already drops
+  the current connection immediately in both versions.
+  Adds `tzapu/WiFiManager@^2.0.17` to `platformio.ini`.
 - **Added an image-based boot logo screen** (`scr_boot`, `build_boot()` in
   `src/display/display_ui_rect.cpp`): the device now shows a dedicated,
   centered splash screen (Pulse logo image + the previous "Warte auf

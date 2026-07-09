@@ -48,9 +48,6 @@ typedef struct {
     // geht. 0 = Standby deaktiviert.
     uint16_t standby_timeout_s;
 
-    // Panel-Farbinversion - im Webportal umschaltbar.
-    bool color_invert;
-
     // Anzeigesprache des Geraete-Displays ("de"/"en").
     char language[3];
 

@@ -48,7 +48,6 @@ void config_store_load(app_config_t *cfg)
     cfg->rotation   = s_prefs.getUChar("rot",    cfg->rotation);
     cfg->display_type = (display_type_t)s_prefs.getUChar("disp_type", (uint8_t)cfg->display_type);
     cfg->standby_timeout_s = s_prefs.getUShort("standby_s", cfg->standby_timeout_s);
-    cfg->color_invert = s_prefs.getUChar("inv", cfg->color_invert ? 1 : 0) != 0;
 
     get_str(s_prefs, "language", cfg->language, sizeof(cfg->language));
 
@@ -90,7 +89,6 @@ void config_store_save(const app_config_t *cfg)
     s_prefs.putUChar ("rot",        cfg->rotation);
     s_prefs.putUChar ("disp_type",  (uint8_t)cfg->display_type);
     s_prefs.putUShort("standby_s",  cfg->standby_timeout_s);
-    s_prefs.putUChar ("inv",        cfg->color_invert ? 1 : 0);
     s_prefs.putString("language",   cfg->language);
     s_prefs.putBytes ("pin_ov",     &cfg->pin_overrides, sizeof(cfg->pin_overrides));
 

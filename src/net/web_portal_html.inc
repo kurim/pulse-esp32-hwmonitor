@@ -71,8 +71,7 @@ static const char INDEX_HTML[] =
 "<div class=\"row\"><div><label data-i18n=\"lbl_language\">Sprache (Ger&auml;t-Display)</label>"
 "<select id=\"language\"><option value=\"de\">Deutsch</option><option value=\"en\">English</option></select></div><div></div></div>"
 "<label data-i18n=\"lbl_standby\">Standby nach (Sekunden ohne Hardwaredaten, 0 = deaktiviert)</label>"
-"<input type=\"number\" id=\"standby_timeout_s\" min=\"0\" max=\"65535\">"
-"<div class=\"toggle\" id=\"invertRow\"><input type=\"checkbox\" id=\"color_invert\"><label style=\"margin:0\" data-i18n=\"lbl_invert\">Farben invertieren (Dark Mode, falls Hintergrund hell statt dunkel ist)</label></div></div>"
+"<input type=\"number\" id=\"standby_timeout_s\" min=\"0\" max=\"65535\"></div>"
 "<div class=\"card\" id=\"pinCard\"><h2 data-i18n=\"card_pins\">Pin-Belegung (optional anpassen)</h2>"
 "<div class=\"hint\" data-i18n=\"hint_pins\">Leer lassen = Standard-Pin f&uuml;r den oben gew&auml;hlten Displaytyp verwenden (siehe Tabelle "
 "oben). Nur bei abweichender eigener Verdrahtung &auml;ndern. Wechselt der Displaytyp, werden alle Pin-Overrides "
@@ -123,7 +122,7 @@ static const char INDEX_HTML[] =
 "lbl_enable:'Aktivieren',lbl_location:'Ort (Stadt,Land)',lbl_unit:'Einheit',card_display:'Display',"
 "lbl_display_type:'Displaytyp',hint_display_reboot:'Nach dem Speichern startet das Ger\\u00e4t neu und initialisiert das gew\\u00e4hlte Panel. Verdrahtung wie oben angezeigt oder weiter unten die PINs anpassen.',"
 "lbl_brightness:'Helligkeit (0-255)',lbl_rotation:'Rotation/Spiegelung',lbl_language:'Sprache (Ger\\u00e4t-Display)',"
-"lbl_standby:'Standby nach (Sekunden ohne Hardwaredaten, 0 = deaktiviert)',lbl_invert:'Farben invertieren (Dark Mode, falls Hintergrund hell statt dunkel ist)',"
+"lbl_standby:'Standby nach (Sekunden ohne Hardwaredaten, 0 = deaktiviert)',"
 "card_pins:'Pin-Belegung (optional anpassen)',hint_pins:'Leer lassen = Standard-Pin f\\u00fcr den oben gew\\u00e4hlten Displaytyp verwenden (siehe Tabelle oben). Nur bei abweichender eigener Verdrahtung \\u00e4ndern. Wechselt der Displaytyp, werden alle Pin-Overrides zur\\u00fcckgesetzt.',"
 "lbl_miso:'MISO (-1 = kein Pin)',lbl_reset_pin:'RESET (-1 = kein Pin)',lbl_backlight_pin:'Backlight (-1 = kein Pin)',"
 "lbl_i2c_addr:'I2C-Adresse (dezimal, z.B. 60 f\\u00fcr 0x3C)',lbl_nav_button:'Navigationstaste (BOOT-Button, -1 = keine)',"
@@ -147,7 +146,7 @@ static const char INDEX_HTML[] =
 "lbl_enable:'Enable',lbl_location:'Location (city,country)',lbl_unit:'Unit',card_display:'Display',"
 "lbl_display_type:'Display type',hint_display_reboot:'After saving, the device restarts and initializes the selected panel. Wire it as shown above, or adjust the PINs below.',"
 "lbl_brightness:'Brightness (0-255)',lbl_rotation:'Rotation/mirroring',lbl_language:'Language (device display)',"
-"lbl_standby:'Standby after (seconds without hardware data, 0 = disabled)',lbl_invert:'Invert colors (dark mode, if background is light instead of dark)',"
+"lbl_standby:'Standby after (seconds without hardware data, 0 = disabled)',"
 "card_pins:'Pin assignment (optional)',hint_pins:'Leave empty = use the default pin for the display type selected above (see table above). Only change for different custom wiring. Changing the display type resets all pin overrides.',"
 "lbl_miso:'MISO (-1 = no pin)',lbl_reset_pin:'RESET (-1 = no pin)',lbl_backlight_pin:'Backlight (-1 = no pin)',"
 "lbl_i2c_addr:'I2C address (decimal, e.g. 60 for 0x3C)',lbl_nav_button:'Navigation button (BOOT button, -1 = none)',"
@@ -212,11 +211,6 @@ static const char INDEX_HTML[] =
 "document.getElementById('pinGroupI2c').style.display=(d.bus==='i2c'||d.bus==='rgb')?'':'none';"
 "document.getElementById('pinGroupTouchI2c').style.display=(d.bus==='rgb'&&d.has_touch)?'':'none';"
 "document.getElementById('pinGroupNav').style.display=d.shape==='round'?'':'none';"
-// SSD1309 (mono) ist fest auf Dark Mode verdrahtet (siehe
-// lcd_init_mono_i2c() in display_ui.c) - der Invertieren-Toggle hatte dort
-// nie eine Wirkung, deshalb hier ausblenden statt eine wirkungslose Option
-// anzuzeigen.
-"document.getElementById('invertRow').style.display=d.shape==='mono'?'none':'';"
 "PIN_FIELDS.forEach(f=>{const el=document.getElementById('pin_'+f);if(!el)return;"
 "const srcKey=PIN_KEY_MAP[f]||f;"
 "el.placeholder=(d.pins[srcKey]!==undefined)?('Default: '+d.pins[srcKey]):'Default';"
@@ -300,7 +294,7 @@ static const char INDEX_HTML[] =
 "s.innerText=list.length?list.length+' '+t('networks_found'):t('no_networks_found');"
 "}catch(e){s.innerText=t('search_error');}}"
 "document.getElementById('cfgForm').addEventListener('submit',async(e)=>{e.preventDefault();"
-"const ids=['hw_source','mqtt_host','mqtt_port','mqtt_user','mqtt_pass','mqtt_topic','ntp_server','tz','weather_enabled','weather_api_key','weather_city','weather_units','brightness','rotation','language','display_type','standby_timeout_s','color_invert'];"
+"const ids=['hw_source','mqtt_host','mqtt_port','mqtt_user','mqtt_pass','mqtt_topic','ntp_server','tz','weather_enabled','weather_api_key','weather_city','weather_units','brightness','rotation','language','display_type','standby_timeout_s'];"
 "PIN_FIELDS.forEach(f=>ids.push('pin_'+f));"
 "const payload={};ids.forEach(id=>{const el=document.getElementById(id);if(!el)return;"
 "if(el.type==='checkbox')payload[id]=el.checked;"

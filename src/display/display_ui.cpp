@@ -168,16 +168,6 @@ void display_ui_begin(void)
     s_lcd.init();
     s_lcd.setRotation(app_config.rotation);
     s_lcd.setBrightness(app_config.brightness);
-    // app_config.color_invert ist per Webportal umschaltbar (im NVS
-    // gespeichert/geladen). Das UI kennt nur ein hart codiertes Farbschema
-    // (COL_BG=schwarz, siehe display_ui_internal.h) - cfg.invert=false in
-    // lgfx_profiles.h (auf realer CYD-Hardware verifiziert) zeigt dieses
-    // Schema bereits korrekt als Dark Mode. Der Schalter heisst im Webportal
-    // "Dark Mode" fuer den angehakten Zustand, deshalb hier umgekehrt
-    // anwenden: an -> INVOFF (Dark Mode, physisch korrekt), aus -> INVON
-    // (Light Mode, Foto-Negativ). Sonst waere auf dem CYD an=hell/aus=dunkel,
-    // exakt gegenteilig zur Beschriftung.
-    s_lcd.invertDisplay(!app_config.color_invert);
     s_lcd_active = true;
 
     s_hres = s_lcd.width();

@@ -128,7 +128,6 @@ static void h_config_get(AsyncWebServerRequest *req)
     d["rotation"] = app_config.rotation;
     d["display_type"] = board_profile_key(app_config.display_type);
     d["standby_timeout_s"] = app_config.standby_timeout_s;
-    d["color_invert"] = app_config.color_invert;
     d["language"] = app_config.language;
 
     const pin_override_t *ov = &app_config.pin_overrides;
@@ -284,7 +283,6 @@ static void h_config_post_body(AsyncWebServerRequest *req, uint8_t *data, size_t
         app_config.display_type = new_type;
     }
     if (root["standby_timeout_s"].is<int>()) app_config.standby_timeout_s = root["standby_timeout_s"].as<uint16_t>();
-    if (root["color_invert"].is<bool>()) app_config.color_invert = root["color_invert"].as<bool>();
     cfg_str(root, "language", app_config.language, sizeof(app_config.language), false);
 
     pin_override_t *ov = &app_config.pin_overrides;

@@ -197,19 +197,32 @@ under `src/`, build config in `platformio.ini`.
 ```bash
 pio run -e esp32              # or esp32s3 / esp32c3
 pio run -e esp32 -t upload
+pio run -e esp32 -t uploadfs  # web portal page (data/index.html), see below
 pio device monitor
 ```
+
+The web portal's config page (`data/index.html`) is **not** part of the app
+binary - it's built as a separate LittleFS image (`spiffs` partition in
+`partitions.csv`, `board_build.filesystem = littlefs` in `platformio.ini`)
+and only gets onto the device via `pio run -t uploadfs`. Forgetting this
+step (e.g. on the very first flash) leaves the partition empty; the device
+still boots and the AP/WiFi setup itself still works, but opening `/` in a
+browser returns an explanatory 500 instead of the page. Only needed again
+later if `data/index.html` itself changes - a plain firmware update
+(`-t upload`) doesn't touch the filesystem partition.
 
 pioarduino also auto-generates `.pio/build/esp32/firmware.factory.bin`
 (bootloader + partition table + otadata initializer + app combined into one
 image) on every build - flash this single file at offset `0x0` for the
 initial flash, e.g. via [ESP Web Tools](https://esphome.github.io/esp-web-tools/)/
 esptool-js in the browser, or `esptool.py write_flash 0x0 firmware.factory.bin`,
-instead of writing bootloader/partition table/app separately. If the board
-was previously flashed with a *different* partition table/OTA scheme and
-boot fails right after flashing (`OTA app partition slot 1 is not
-bootable`), do one full chip erase first: `pio run -e esp32 -t erase` then
-reflash.
+instead of writing bootloader/partition table/app separately. This does
+**not** include the LittleFS image either - still run `uploadfs` (or flash
+`.pio/build/esp32/littlefs.bin` at the `spiffs` partition's offset manually)
+afterwards. If the board was previously flashed with a *different*
+partition table/OTA scheme and boot fails right after flashing (`OTA app
+partition slot 1 is not bootable`), do one full chip erase first: `pio run
+-e esp32 -t erase` then reflash.
 
 Initial setup: open AP **`ESP32-HWMon-XXXX`** → `http://192.168.4.1` → enter
 WiFi → save → reboot. On first load, the web portal shows only the WiFi

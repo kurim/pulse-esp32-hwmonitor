@@ -9,19 +9,13 @@
 #include <ESPAsyncWebServer.h>
 #include <Update.h>
 #include <ArduinoJson.h>
+#include <LittleFS.h>
 
 static AsyncWebServer s_server(80);
 static DNSServer      s_dns;
 static bool           s_ap_mode;
 static char           s_ip[16] = "0.0.0.0";
 static char           s_ap_ssid[24];
-
-// ------------------------------------------------------------------
-// Eingebettete Config-Seite - woertlich aus dem esp-idf-Original
-// uebernommen (main/net/web_portal.c: INDEX_HTML), da reines HTML/JS/CSS
-// ohne ESP-IDF-Abhaengigkeit.
-// ------------------------------------------------------------------
-#include "web_portal_html.inc"
 
 // ------------------------------------------------------------------
 // WLAN
@@ -348,8 +342,30 @@ static void h_captive_redirect(AsyncWebServerRequest *req)
     req->send(404, "text/plain", "Not found");
 }
 
+// Config-Seite liegt seit LittleFS-Umstellung als data/index.html vor (nicht
+// mehr als C-String im App-Image, siehe partitions.csv: spiffs-Partition) -
+// muss per "pio run -t uploadfs" separat geflasht werden. Fehlt sie (z.B.
+// Erstflash ohne uploadfs), waere die Setup-Seite sonst kommentarlos leer -
+// stattdessen ein Hinweis, da "/" im AP-Modus der einzige Weg ist, das
+// Geraet ueberhaupt zu konfigurieren.
+static void h_index(AsyncWebServerRequest *req)
+{
+    if (!LittleFS.exists("/index.html")) {
+        req->send(500, "text/plain",
+            "index.html fehlt auf LittleFS - vor dem ersten Verbinden einmal "
+            "'pio run -t uploadfs' ausfuehren (siehe README).");
+        return;
+    }
+    req->send(LittleFS, "/index.html", "text/html");
+}
+
 void web_portal_begin(void)
 {
+    if (!LittleFS.begin(true)) {
+        log_e("LittleFS-Mount fehlgeschlagen - Config-Seite bleibt unerreichbar "
+              "bis 'pio run -t uploadfs' geflasht wurde");
+    }
+
     if (wifi_connect_sta()) {
         wifi_connected = true;
         strcpy(s_ip, WiFi.localIP().toString().c_str());
@@ -359,9 +375,7 @@ void web_portal_begin(void)
         start_ap();
     }
 
-    s_server.on("/", HTTP_GET, [](AsyncWebServerRequest *req) {
-        req->send(200, "text/html", INDEX_HTML);
-    });
+    s_server.on("/", HTTP_GET, h_index);
     s_server.on("/api/status", HTTP_GET, h_status);
     s_server.on("/api/config", HTTP_GET, h_config_get);
     s_server.on("/api/config", HTTP_POST,

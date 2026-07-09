@@ -6,6 +6,12 @@ follows [Keep a Changelog](https://keepachangelog.com/), versioning follows
 
 ## [Unreleased]
 
+- **Removed the "Invert colors (dark mode)" web portal toggle**: the device
+  only ever ships in dark mode, so the switch (`app_config.color_invert`,
+  the `/api/config` field, its NVS entry, and the checkbox/i18n strings in
+  the web portal) was dead weight - dark mode is now simply the hardwired
+  default (`cfg.invert=false` in `LGFX_CYD`, `src/display/lgfx_profiles.h`),
+  matching how SSD1309 already worked.
 - **Fix: CYD "invert colors" toggle was backwards**: checking the web portal's
   "Farben invertieren (Dark Mode...)" toggle made the display turn light, and
   leaving it unchecked (default) showed the correct dark theme - the opposite

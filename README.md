@@ -287,23 +287,20 @@ to the old workflow) is a planned follow-up, not yet implemented.
 
 These points are board-dependent and couldn't be verified without a device:
 
-1. **Display colors** — color inversion is now switchable in the web portal
-   (card "Display" → "Invert colors (dark mode)", `app_config.color_invert`,
-   default off/false) instead of hardwired in `display_ui.c`. For ILI9341
-   (ESP32-2432S028), "off" (default) is verified correct on hardware; on
-   GC9A01 the background was light instead of dark without inversion -
-   choose "on" there. If red/blue are swapped instead (a different symptom
-   than light/dark background), `color_invert` won't help - adjust
+1. **Display colors** — there is no user-facing dark/light mode switch; every
+   panel is hardwired to boot with a dark background, fixed per-profile via
+   `cfg.invert` in each panel's LGFX config (e.g. `LGFX_CYD` in
+   `src/display/lgfx_profiles.h`). For ILI9341 (ESP32-2432S028),
+   `cfg.invert=false` is verified correct (dark background) on real
+   hardware. If a not-yet-verified panel boots with a light background
+   instead of dark, flip that panel's `cfg.invert`. If red/blue are swapped
+   instead (a different symptom than light/dark background), adjust
    `board_profile_t.bgr` in `board_profiles.c` instead.
-   **SSD1309 is the exception:** confirmed on real hardware that it showed a
-   light background with dark icons, and the web portal's invert toggle had
-   no effect (it was never wired up for the mono/I2C init path). Since a
-   light background isn't just wrong but actively harmful (burn-in risk on a
-   self-lit OLED that's on continuously), `lcd_init_mono_i2c()` now calls
-   `esp_lcd_panel_invert_color(panel, true)` unconditionally instead of
-   reading `app_config.color_invert` - dark mode only, not user-switchable.
-   The web portal hides the "Invert colors" toggle for this display type
-   accordingly.
+   **SSD1309** needed exactly this fix on real hardware (it showed a light
+   background with dark icons) - since a light background isn't just wrong
+   but actively harmful (burn-in risk on a self-lit OLED that's on
+   continuously), it now also initializes hardwired to a dark background,
+   same as every other profile.
 2. **SSD1309 text/icon legibility** — also confirmed on real hardware: after
    the background fix above, text, values and icons still didn't render.
    Root cause was the font, not the panel or resolution: `display_ui_mono.c`

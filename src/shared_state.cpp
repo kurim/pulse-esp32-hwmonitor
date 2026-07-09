@@ -31,10 +31,6 @@ void config_set_defaults(app_config_t *cfg)
     cfg->rotation   = 1;
     cfg->display_type = board_profile_default();
     cfg->standby_timeout_s = 120; // 2 Minuten
-    // true = Dark-Mode-Haken ab Werk gesetzt, damit ein frisch geflashtes
-    // Geraet weiterhin dunkel bootet (siehe umgekehrte Anwendung in
-    // display_ui.cpp: an=Dark Mode/INVOFF, aus=Light Mode/INVON).
-    cfg->color_invert = true;
     strcpy(cfg->language, "de");
     pin_override_set_defaults(&cfg->pin_overrides);
 }

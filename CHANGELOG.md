@@ -19,9 +19,21 @@ follows [Keep a Changelog](https://keepachangelog.com/), versioning follows
   itself (`src/bootlogo.c`/`bootlogo.h`, `lv_image_dsc_t bootlogo_img`) was
   down-scaled from the originally checked-in 800x480 asset (750 KB
   uncompressed, ~43% of the 1.75 MB OTA app partition on its own) to 200x120
-  (~47 KB) - small enough to comfortably fit the shared multi-panel firmware
-  image while still reading clearly as a centered logo on the 320x240 CYD
-  panel.
+  (~47 KB) so it reads clearly as a centered logo on the 320x240 CYD panel
+  without being excessive.
+- **Fix: firmware no longer fit the OTA app partition** after adding the
+  boot logo image (`program size (1876603 bytes) is greater than maximum
+  allowed (1835008 bytes)`, ~41 KB over on top of the driver code for 5
+  display types already sharing the one firmware image). Raised both OTA
+  app slots in `partitions.csv` from 1.75 MB to 1.875 MB (+128 KB each),
+  using flash space that was already unallocated at the end of the 4 MB
+  chip (~320 KB free tail before this change, ~64 KB after) - the sensitive
+  `nvs`/`otadata`/`phy_init` offsets (see comment above them, `otadata`'s
+  fixed `0xe000` in particular) are untouched. **Changing the partition
+  table means the usual "just re-upload" won't boot** - do a full chip
+  erase first (`pio run -e esp32 -t erase`, per-env for `esp32s3`/`esp32c3`)
+  and reflash, exactly as already documented in the README for partition
+  table changes.
 - **Removed the "Invert colors (dark mode)" web portal toggle**: the device
   only ever ships in dark mode, so the switch (`app_config.color_invert`,
   the `/api/config` field, its NVS entry, and the checkbox/i18n strings in

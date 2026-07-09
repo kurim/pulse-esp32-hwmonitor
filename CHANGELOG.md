@@ -6,27 +6,6 @@ follows [Keep a Changelog](https://keepachangelog.com/), versioning follows
 
 ## [Unreleased]
 
-- **Moved the web portal's config page onto a LittleFS partition** instead of
-  compiling it into the app image: `src/net/web_portal_html.inc` (a ~26 KB
-  HTML/CSS/JS C-string) is gone, replaced by `data/index.html`, served via
-  `req->send(LittleFS, "/index.html", "text/html")` in a new `h_index()`
-  handler (`src/net/web_portal.cpp`). Needs a new `spiffs`-labeled partition
-  (128 KB, formatted as LittleFS via `board_build.filesystem = littlefs` in
-  `platformio.ini`) added to `partitions.csv`, and - important operational
-  change - `pio run -t uploadfs` alongside the normal `-t upload`/factory.bin
-  flash, both for the first flash and whenever `data/index.html` changes (a
-  plain firmware update doesn't touch the filesystem partition); see the
-  new README section under "Building & flashing". If the filesystem wasn't
-  uploaded, `/` now returns an explanatory 500 instead of an empty page -
-  `LittleFS.begin(true)` auto-formats an unformatted/corrupt partition on
-  mount rather than failing outright, but an empty filesystem still has no
-  `index.html` on it.
-  To fit the now-separate `spiffs` partition into the existing 4 MB flash
-  layout, both OTA app slots in `partitions.csv` were resized from 1.875 MB
-  down to 1.8125 MB (still ~46 KB of headroom over the current build size,
-  more once the ~26 KB that used to be compiled in is actually gone from the
-  app binary) - 2x 1.8125 MB + nvs/otadata/phy_init + 64 KB coredump + 128 KB
-  spiffs now fits in 4 MB with 64 KB left unallocated at the end.
 - **Added an image-based boot logo screen** (`scr_boot`, `build_boot()` in
   `src/display/display_ui_rect.cpp`): the device now shows a dedicated,
   centered splash screen (Pulse logo image + the previous "Warte auf

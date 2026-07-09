@@ -32,15 +32,6 @@ static void disp_flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *px
     uint32_t w = area->x2 - area->x1 + 1;
     uint32_t h = area->y2 - area->y1 + 1;
 
-    // pushImage() statt manuellem setAddrWindow()+writePixels()-Paar: Auf
-    // echter CYD-Hardware zeigte JEDER writePixels()-Aufruf (unabhaengig von
-    // Puffergroesse, DMA an/aus und Aufrufanzahl - ausfuehrlich mit vier
-    // Streifentests eingegrenzt) grossflaechiges Farbrauschen, waehrend
-    // fillScreen() und pushImage() sauber blieben. LGFX_CYD ist BGR-verdrahtet
-    // (rgb_order=true in lgfx_profiles.h), pushImage() beruecksichtigt das
-    // ueber den rgb565_t-Elementtyp korrekt selbst - kein zusaetzlicher
-    // swap-Parameter noetig (der bei writePixels() vorhandene Parameter war
-    // hier nicht die Fehlerursache).
     s_lcd.startWrite();
     s_lcd.pushImage(area->x1, area->y1, w, h, (lgfx::rgb565_t *)px_map);
     s_lcd.endWrite();
@@ -48,24 +39,15 @@ static void disp_flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *px
     lv_display_flush_ready(disp);
 }
 
-// PENIRQ (touch_irq, GPIO36) direkt lesen, unabhaengig von LovyanGFX's
-// SPI-Transaktion - unterscheidet "Pin sieht nie LOW" (Hardware/Verkabelung)
-// von "Pin geht LOW, aber getTouch() liefert trotzdem false" (LovyanGFX-
-// Konfigurationsfehler). Temporaer fuer die Touch-Fehlersuche auf dem CYD.
 #define TOUCH_IRQ_PIN 36
 
 static void touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
 {
     (void)indev;
-    // getTouch() laesst x/y bei RELEASE unveraendert (kein Touch-Ereignis) -
-    // ohne Initialisierung wuerde das Log dann Stack-Muell anzeigen.
     int32_t x = 0, y = 0;
     bool touched = s_lcd.getTouch(&x, &y);
     bool irq_low = digitalRead(TOUCH_IRQ_PIN) == LOW;
 
-    // Temporaeres Debug-Log, um bei Touch-Problemen zu unterscheiden, ob
-    // getTouch() ueberhaupt Ereignisse liefert (XPT2046-Verkabelung/SPI-Bus)
-    // oder ob die Koordinaten falsch auf den Bildschirm gemappt werden.
     static bool s_was_touched = false;
     static bool s_was_irq_low = false;
     if (touched != s_was_touched || irq_low != s_was_irq_low) {

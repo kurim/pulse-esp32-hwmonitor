@@ -545,6 +545,7 @@ void refresh_now(void)
     time_t now = time(NULL);
     struct tm ti;
     localtime_r(&now, &ti);
+
     if (ti.tm_year > 100) {
         strftime(buf, sizeof(buf), "%H:%M:%S", &ti);
         lv_label_set_text(lbl_time, buf);

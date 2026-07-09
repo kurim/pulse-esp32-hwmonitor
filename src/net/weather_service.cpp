@@ -16,6 +16,10 @@ const char *weather_wind_compass(int deg)
     return dirs[idx % 8];
 }
 
+// Loggt Erfolg/Fehlschlag explizit - ohne das blieb weather_info.valid bei
+// einem Fehler einfach false, ohne erkennbar zu machen ob die Anfrage nie
+// rausging, der Server einen Fehler zurueckgab (z.B. falscher API-Key/
+// Stadtname -> HTTP 401/404) oder die Antwort nicht wie erwartet aussah.
 static void fetch_weather(void)
 {
     if (!app_config.weather_enabled || strlen(app_config.weather_api_key) == 0) return;
@@ -29,12 +33,17 @@ static void fetch_weather(void)
 
     HTTPClient http;
     http.setTimeout(8000);
-    if (!http.begin(url)) return;
+    if (!http.begin(url)) {
+        log_e("http.begin() fehlgeschlagen fuer Stadt='%s'", app_config.weather_city);
+        return;
+    }
 
     int status = http.GET();
+    log_i("GET Wetter-API -> HTTP %d (Stadt='%s')", status, app_config.weather_city);
     if (status == 200) {
         JsonDocument doc;
-        if (deserializeJson(doc, http.getStream()) == DeserializationError::Ok) {
+        DeserializationError err = deserializeJson(doc, http.getStream());
+        if (err == DeserializationError::Ok) {
             JsonVariant temp = doc["main"]["temp"];
             if (!temp.isNull()) {
                 weather_info.temp_c = temp.as<float>();
@@ -59,8 +68,18 @@ static void fetch_weather(void)
                 const char *icon = doc["weather"][0]["icon"];
                 if (desc) strlcpy(weather_info.description, desc, sizeof(weather_info.description));
                 if (icon) strlcpy(weather_info.icon, icon, sizeof(weather_info.icon));
+
+                log_i("Wetter aktualisiert: %.1fC, %d%%, Wind %.1f", weather_info.temp_c,
+                      weather_info.humidity, weather_info.wind_speed);
+            } else {
+                log_e("Antwort ohne main.temp - unerwartete JSON-Struktur");
             }
+        } else {
+            log_e("JSON-Parse-Fehler: %s", err.c_str());
         }
+    } else {
+        String body = http.getString();
+        log_e("HTTP-Fehler %d, Antwort: %s", status, body.c_str());
     }
     http.end();
 }

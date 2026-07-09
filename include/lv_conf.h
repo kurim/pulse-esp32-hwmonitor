@@ -20,9 +20,10 @@
 #define LV_FONT_DEFAULT &lv_font_montserrat_14
 
 #define LV_USE_LOG 0
-#define LV_TICK_CUSTOM 1
-#define LV_TICK_CUSTOM_INCLUDE "Arduino.h"
-#define LV_TICK_CUSTOM_SYS_TIME_EXPR (millis())
+
+// LV_TICK_CUSTOM existiert in LVGL 9.x nicht mehr (wurde stillschweigend
+// ignoriert, nicht etwa mit einem Fehler quittiert) - lv_tick_inc() muss
+// stattdessen manuell gefuettert werden, siehe display_ui_loop().
 
 #define LV_MEM_SIZE (48 * 1024U)
 

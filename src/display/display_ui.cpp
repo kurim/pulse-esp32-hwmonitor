@@ -32,14 +32,17 @@ static void disp_flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *px
     uint32_t w = area->x2 - area->x1 + 1;
     uint32_t h = area->y2 - area->y1 + 1;
 
-    // swap=false: mit swap=true (urspruengliche Annahme) zeigte echte
-    // Hardware ein von TV-Rauschen ueberlagertes Bild (klassisches Symptom
-    // von falscher RGB565-Byte-Reihenfolge beim Flush) - LVGLs Renderpuffer
-    // liegt bereits in der von LovyanGFX/SPI erwarteten Reihenfolge, ein
-    // zusaetzlicher Swap zerstoert die Daten.
+    // pushImage() statt manuellem setAddrWindow()+writePixels()-Paar: Auf
+    // echter CYD-Hardware zeigte JEDER writePixels()-Aufruf (unabhaengig von
+    // Puffergroesse, DMA an/aus und Aufrufanzahl - ausfuehrlich mit vier
+    // Streifentests eingegrenzt) grossflaechiges Farbrauschen, waehrend
+    // fillScreen() und pushImage() sauber blieben. LGFX_CYD ist BGR-verdrahtet
+    // (rgb_order=true in lgfx_profiles.h), pushImage() beruecksichtigt das
+    // ueber den rgb565_t-Elementtyp korrekt selbst - kein zusaetzlicher
+    // swap-Parameter noetig (der bei writePixels() vorhandene Parameter war
+    // hier nicht die Fehlerursache).
     s_lcd.startWrite();
-    s_lcd.setAddrWindow(area->x1, area->y1, w, h);
-    s_lcd.writePixels((lgfx::rgb565_t *)px_map, w * h, false);
+    s_lcd.pushImage(area->x1, area->y1, w, h, (lgfx::rgb565_t *)px_map);
     s_lcd.endWrite();
 
     lv_display_flush_ready(disp);
@@ -54,11 +57,13 @@ static void disp_flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *px
 static void touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
 {
     (void)indev;
-    int32_t x, y;
+    // getTouch() laesst x/y bei RELEASE unveraendert (kein Touch-Ereignis) -
+    // ohne Initialisierung wuerde das Log dann Stack-Muell anzeigen.
+    int32_t x = 0, y = 0;
     bool touched = s_lcd.getTouch(&x, &y);
     bool irq_low = digitalRead(TOUCH_IRQ_PIN) == LOW;
 
-    // Temporäres Debug-Log, um bei Touch-Problemen zu unterscheiden, ob
+    // Temporaeres Debug-Log, um bei Touch-Problemen zu unterscheiden, ob
     // getTouch() ueberhaupt Ereignisse liefert (XPT2046-Verkabelung/SPI-Bus)
     // oder ob die Koordinaten falsch auf den Bildschirm gemappt werden.
     static bool s_was_touched = false;
@@ -181,10 +186,25 @@ void display_ui_begin(void)
     s_lcd.init();
     s_lcd.setRotation(app_config.rotation);
     s_lcd.setBrightness(app_config.brightness);
+    // app_config.color_invert ist per Webportal umschaltbar (im NVS
+    // gespeichert/geladen). Das UI kennt nur ein hart codiertes Farbschema
+    // (COL_BG=schwarz, siehe display_ui_internal.h) - cfg.invert=false in
+    // lgfx_profiles.h (auf realer CYD-Hardware verifiziert) zeigt dieses
+    // Schema bereits korrekt als Dark Mode. Der Schalter heisst im Webportal
+    // "Dark Mode" fuer den angehakten Zustand, deshalb hier umgekehrt
+    // anwenden: an -> INVOFF (Dark Mode, physisch korrekt), aus -> INVON
+    // (Light Mode, Foto-Negativ). Sonst waere auf dem CYD an=hell/aus=dunkel,
+    // exakt gegenteilig zur Beschriftung.
+    s_lcd.invertDisplay(!app_config.color_invert);
     s_lcd_active = true;
 
     s_hres = s_lcd.width();
     s_vres = s_lcd.height();
+
+    // Streifentest Stufe E (mehrfache isolierte pushImage()-Aufrufe direkt
+    // ohne LVGL) hat bereits bestaetigt, dass die SPI-Uebertragung selbst
+    // einwandfrei funktioniert - Test entfernt, um Flash-Platz zu sparen
+    // (Firmware ueberschritt sonst die OTA-Partitionsgroesse).
 
     lv_init();
 
@@ -229,6 +249,19 @@ void display_ui_begin(void)
 
 void display_ui_loop(void)
 {
+    // LV_TICK_CUSTOM (lv_conf.h) existiert in LVGL 9.x nicht mehr und wurde
+    // stillschweigend ignoriert - LVGLs interner Tick-Zaehler stand seit dem
+    // Boot fest auf 0, wodurch KEIN Timer (Refresh-Timer, Input-Device-
+    // Polling, eigene lv_timer_create()-Timer) je als faellig galt. Das war
+    // die Ursache dafuer, dass sich Uhr/Kacheln/Wetter nach dem initialen
+    // Rendern nie wieder aktualisiert haben und Touch nie reagierte -
+    // bestaetigt durch einen isolierten LVGL9-Minimaltest. lv_tick_inc()
+    // muss in LVGL 9.x manuell mit der vergangenen Zeit gefuettert werden.
+    static uint32_t s_last_lv_tick_ms = millis();
+    uint32_t lv_tick_now = millis();
+    lv_tick_inc(lv_tick_now - s_last_lv_tick_ms);
+    s_last_lv_tick_ms = lv_tick_now;
+
     lv_timer_handler();
 
     if (s_lcd_active && millis() - s_last_tick_ms >= 1000) {

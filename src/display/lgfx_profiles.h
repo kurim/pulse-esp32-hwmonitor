@@ -103,18 +103,34 @@ public:
             // ueberfluessig.
             cfg.x_min = 200;  cfg.x_max = 3700;
             cfg.y_min = 240;  cfg.y_max = 3800;
-            // Touch war bei rotation=1 (Standard-Landscape) auf der Y-Achse
-            // gespiegelt (Tap oben links -> y nahe Panelunterkante). Ursache:
             // Panel_Device::convertRawXY() kombiniert Panel-Rotation und
             // touch-offset_rotation zu einem internen r=((rot+offset)&3) |
-            // ((rot&4)^(offset&4)) und flippt Y fuer r in {1,2,4,7} - mit
-            // offset=0 und rot=1 ergibt das r=1 (vflip aktiv). offset=4
-            // ergibt r=5 (kein vflip, X-Achsentausch bleibt erhalten, der ja
-            // schon korrekt war). Deckt sich mit der in mehreren CYD-
-            // Referenz-Configs kolportierten Faustregel "Rotationen 0-3 sind
-            // gespiegelt, 4-7 verwenden". Bei Bedarf (z.B. rotation=3/180°)
-            // ggf. weiter nachjustieren.
-            cfg.offset_rotation = 4;
+            // ((rot&4)^(offset&4)) und flippt X/Y abhaengig von r (vflip fuer
+            // r in {1,2,4,7}, siehe LovyanGFX-Upstream-Quelle). offset=4 ergab
+            // bei rotation=1 (Standard) r=5 (nur Achsentausch, kein Flip) -
+            // auf echter Hardware fuer diese eine Rotation verifiziert, aber
+            // bei rotation=3 (180°) ergibt dasselbe offset=4 r=7 (Achsentausch
+            // + X- + Y-Flip) - eine andere Transformation als bei Standard.
+            // Realer Hardware-Test zeigte genau das erwartete Symptom: Touch
+            // bei Standard verhielt sich wie 180° und umgekehrt (vertauscht).
+            // Durchrechnen aller 8 offset_rotation-Werte fuer beide von der
+            // CYD-UI angebotenen Rotationen (1 und 3):
+            //   offset  r@rot1  r@rot3
+            //     0       1       3
+            //     1       2       0
+            //     2       3       1
+            //     3       0       2
+            //     4       5       7   (bisher, s.o. - vertauscht)
+            //     5       6       4
+            //     6       7       5   (liefert das gespiegelte Paar -> Fix)
+            //     7       4       6
+            // offset=6 tauscht genau die beiden Transformationen zwischen
+            // Standard und 180° - passt exakt zur gemeldeten Vertauschung.
+            // Kein CYD in dieser Sandbox verfuegbar - nach dem Flashen in
+            // beiden Rotationen alle 4 Ecken antippen; falls noch nicht ganz
+            // korrekt, sind laut Tabelle nur noch 0, 5 oder 7 als naechste
+            // Kandidaten uebrig.
+            cfg.offset_rotation = 6;
             cfg.pin_int  = 36;
             cfg.pin_sclk = 25;
             cfg.pin_mosi = 32;

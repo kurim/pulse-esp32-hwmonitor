@@ -6,6 +6,22 @@ follows [Keep a Changelog](https://keepachangelog.com/), versioning follows
 
 ## [Unreleased]
 
+- **Fix: CYD "invert colors" toggle was backwards**: checking the web portal's
+  "Farben invertieren (Dark Mode...)" toggle made the display turn light, and
+  leaving it unchecked (default) showed the correct dark theme - the opposite
+  of what the label promises. `display_ui_begin()` now applies
+  `!app_config.color_invert` to `invertDisplay()`, and the compiled-in default
+  for `color_invert` changed to `true` so a freshly flashed device still boots
+  dark with the toggle shown checked.
+- **Fix: CYD touch mirrored between "Standard" and "180°" rotation**: the
+  touch `offset_rotation` tuned in the previous commit was only verified
+  against `rotation=1` ("Standard"); on real hardware, touch at "Standard"
+  behaved like "180°" should and vice versa. Changed
+  `cfg.offset_rotation` from `4` to `6` in `LGFX_CYD` (`src/display/
+  lgfx_profiles.h`), which swaps exactly those two transforms back to their
+  correct rotation - see the code comment for the full derivation and the
+  remaining fallback candidates if hardware testing shows it still needs
+  adjustment.
 - **Fix: CYD (ILI9341) speckle noise on real hardware**: solid fills and
   divider lines showed colored speckle noise while text/icons stayed
   readable - a different symptom than the byte-order bug fixed earlier

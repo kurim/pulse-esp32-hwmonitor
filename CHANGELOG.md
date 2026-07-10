@@ -6,6 +6,20 @@ follows [Keep a Changelog](https://keepachangelog.com/), versioning follows
 
 ## [Unreleased]
 
+- **Added a timezone preset dropdown** to the "Zeit" card in the web
+  portal (`src/net/web_portal_html.inc`): the raw POSIX-TZ text field
+  (`app_config.tz`, e.g. `CET-1CEST,M3.5.0,M10.5.0/3`) was the only way to
+  set the timezone, which next to nobody writes correctly from memory (vs.
+  the "GMT+1"-style input most people expect). Added a `<select>` with ~20
+  common city/region presets (POSIX strings taken from
+  [nayarsystems/posix_tz_db](https://github.com/nayarsystems/posix_tz_db),
+  itself derived from the IANA tzdata, rather than hand-written - DST
+  transition rules are easy to get subtly wrong from memory) that fills in
+  the POSIX field on selection; the POSIX field itself stays visible and
+  editable underneath for anyone who wants an exact/uncommon zone. Purely a
+  frontend change (~2 KB added to the embedded page) - `app_config.tz` and
+  `configTzTime()` on the backend are untouched, still just get a POSIX
+  string either way.
 - **Fix: firmware no longer fit the OTA app partition after adding
   WiFiManager** (`program size (1977299 bytes) is greater than maximum
   allowed (1966080 bytes)`, ~11 KB over) - the library alone adds roughly

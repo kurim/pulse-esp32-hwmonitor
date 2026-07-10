@@ -6,6 +6,23 @@ follows [Keep a Changelog](https://keepachangelog.com/), versioning follows
 
 ## [Unreleased]
 
+- **Re-encoded the boot logo as monochrome (I1)** in the UI accent color
+  `0x2FB6E0` (`COL_CARD_BORDER`/`COL_CPU_BAR_A`, see
+  `display_ui_internal.h`) instead of the previous 256-color gradient:
+  `src/bootlogo.c` is now 3,008 bytes (8-byte palette + 3,000 bytes of
+  1-bit-per-pixel data) versus 25,024 bytes for the I8 version - a ~22 KB
+  saving, on top of also being visually consistent with the rest of the
+  tile UI's accent color instead of its own separate gradient. Traded away
+  the smooth gradient/anti-aliasing (hard black/accent threshold per pixel
+  at build time, no in-between shades) - reads clearly at 200x120 but has
+  slightly harder edges than the I8 version. Confirmed via research into
+  LVGL's software decoder (`lv_draw_sw_img.c` always passes `NULL` decoder
+  args) that this doesn't change the RAM behavior established for I8: I1
+  images go through the same temporary ARGB8888 expansion at draw time as
+  I2/I4/I8 (the `LV_DRAW_SW_SUPPORT_I1` config flag governs rendering into
+  an I1-format *destination* buffer for monochrome displays, not decoding
+  an I1 *source* image) - still just a brief spike released immediately
+  after each draw since `LV_CACHE_DEF_SIZE` stays at 0.
 - **Switched to `alexhopeoconnor/WiFiManager` v2.0.19** (pinned tag, not
   upstream `tzapu/WiFiManager`). Earlier in this fork's history an
   arbitrary pinned commit turned out byte-identical to upstream 2.0.17

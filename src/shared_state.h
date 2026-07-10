@@ -20,8 +20,9 @@ typedef enum {
 // Konfiguration (per Webportal gesetzt, in Preferences/NVS persistiert)
 // ----------------------------------------------------------------
 typedef struct {
-    char     wifi_ssid[33];
-    char     wifi_pass[65];
+    // WLAN-Zugangsdaten liegen seit dem Wechsel auf tzapu/WiFiManager NICHT
+    // mehr hier - WiFiManager verwaltet sie selbst (WiFi-Treiber-eigene NVS-
+    // Persistenz), siehe web_portal.cpp.
 
     hw_source_t hw_source;   // MQTT (Default) oder USB/Seriell
 

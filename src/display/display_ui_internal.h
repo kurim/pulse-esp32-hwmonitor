@@ -43,7 +43,7 @@ extern lv_obj_t *scr_main;
 
 enum { SCR_MAIN = 0, SCR_CPU = 1, SCR_GPU = 2, SCR_SETTINGS = 3 };
 extern int s_screen;
-extern lv_obj_t *scr_detail, *scr_settings, *scr_standby;
+extern lv_obj_t *scr_detail, *scr_settings, *scr_standby, *scr_boot;
 
 // ---- Gemeinsame Style-Helfer (Definition in display_ui.cpp) ----
 void style_screen(lv_obj_t *scr);
@@ -54,6 +54,7 @@ void build_main(void);
 void build_detail(void);
 void build_settings(void);
 void build_standby(void);
+void build_boot(void);
 void refresh_now(void);
 
 // ---- Rundes Minimal-UI (GC9A01) - display_ui_round.cpp (Phase 2) ----

@@ -211,13 +211,21 @@ boot fails right after flashing (`OTA app partition slot 1 is not
 bootable`), do one full chip erase first: `pio run -e esp32 -t erase` then
 reflash.
 
-Initial setup: open AP **`ESP32-HWMon-XXXX`** → `http://192.168.4.1` → enter
-WiFi → save → reboot. On first load, the web portal shows only the WiFi
-card (SSID/password, with a "Scan WiFi networks" button for a list of
-nearby networks instead of typing the SSID manually); all other settings
-(MQTT/timezone/display type/pin assignment/OTA) are hidden behind "Show
-advanced settings". This separation avoids mobile browsers losing focus
-mid-way through the long form and jumping back to the SSID field.
+Initial setup: WiFi connect/fallback-to-AP is handled by a pinned fork of
+[tzapu/WiFiManager](https://github.com/tzapu/WiFiManager)
+([alexhopeoconnor/WiFiManager](https://github.com/alexhopeoconnor/WiFiManager)
+`v2.0.19`, see the comment above `lib_deps` in `platformio.ini` for what's
+actually different from upstream and why it's pinned to a tag), not this
+project's own code - open AP **`ESP32-HWMon-XXXX`** → `http://192.168.4.1`
+→ pick/enter WiFi in WiFiManager's own portal → device connects and reboots into normal
+operation. Our own web portal (config page, `/api/*`, OTA) only starts
+once a WiFi connection is up - it no longer has a WiFi card at all
+(WiFiManager already handled that before this page ever loads), and with
+no WiFi step left to hide, all its settings (MQTT/timezone/display
+type/pin assignment/OTA) are simply shown directly - no more "Show
+advanced settings" toggle. To reconfigure WiFi later, use "Restart into
+setup AP" (card "Settings") - this clears the stored WiFi credentials and
+reboots into WiFiManager's portal again.
 
 ### CI build (GitHub Actions)
 
@@ -389,10 +397,9 @@ bars, weather/wind/rain display, trend arrows, settings button):
   `weather_api_key`.
 - **Settings screen** (gear button, tile UI only): shows firmware version,
   IP address, WiFi/MQTT status and free memory. The "Restart into setup AP"
-  button (`web_portal_force_ap()`) switches from WiFi to the open setup AP
-  **at runtime without a device reboot**, without deleting the saved WiFi
-  credentials. Requires two taps to confirm (prevents accidental
-  disconnection).
+  button (`web_portal_force_ap()`) clears the WiFi credentials WiFiManager
+  has stored and reboots into the open setup AP. Requires two taps to
+  confirm (prevents accidental disconnection).
 - **Trend arrows**: compare the current load value against the value up to
   10 measurements ago (`compute_trend()` in `display_ui.c`); threshold ±3
   percentage points for rising/falling, otherwise "stable" (dash).

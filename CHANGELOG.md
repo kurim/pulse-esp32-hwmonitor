@@ -6,6 +6,138 @@ follows [Keep a Changelog](https://keepachangelog.com/), versioning follows
 
 ## [Unreleased]
 
+- **Replaced the boot logo artwork and re-encoded it as monochrome (I1)**
+  in the UI accent color `0x2FB6E0` (`COL_CARD_BORDER`/`COL_CPU_BAR_A`, see
+  `display_ui_internal.h`). New source is a cleaner vector-style "PWLSE"
+  mark (hexagon + pulse waveform + WiFi arcs, plus wordmark), supplied as a
+  692x507 PNG, scaled to fit the 200x120 boot canvas by height (164x120,
+  centered with 18px black bars left/right - its aspect ratio is a bit more
+  square than the canvas) and luminance-thresholded (>40) to the single
+  accent color. `src/bootlogo.c` is 3,008 bytes (8-byte palette + 3,000
+  bytes of 1-bit-per-pixel data) - same format/size as the previous
+  monochrome pass, ~22 KB smaller than the original 256-color (I8) gradient
+  version's 25,024 bytes, and visually consistent with the tile UI's
+  existing accent color instead of a separate gradient. Confirmed via
+  research into LVGL's software decoder (`lv_draw_sw_img.c` always passes
+  `NULL` decoder args) that I1 doesn't get a RAM-usage break over I8: it
+  goes through the same temporary ARGB8888 expansion at draw time (the
+  `LV_DRAW_SW_SUPPORT_I1` config flag governs rendering *into* an I1-format
+  destination buffer for monochrome displays, not decoding an I1 *source*
+  image) - just a brief spike released immediately after each draw since
+  `LV_CACHE_DEF_SIZE` stays at 0.
+- **Switched to `alexhopeoconnor/WiFiManager` v2.0.19** (pinned tag, not
+  upstream `tzapu/WiFiManager`). Earlier in this fork's history an
+  arbitrary pinned commit turned out byte-identical to upstream 2.0.17
+  (no actual difference) and, separately, showed non-deterministic program
+  sizes across rebuilds pointing at unreliable git-commit-pin dependency
+  resolution - that commit was reverted in favor of plain upstream. `v2.0.19`
+  is a real, tagged release and a genuine rewrite, not a no-op fork: WiFiManager
+  is now split into 5 files under `lib/WiFiManager/` and built natively on
+  `ESPAsyncWebServer` instead of the classic blocking `WebServer`.
+  **`setConfigPortalBlocking()` no longer exists** - confirmed in the fork's
+  source that `autoConnect()`/`startConfigPortal()` never block waiting for
+  the portal to finish, so non-blocking is simply the only mode now;
+  `web_portal.cpp` just stopped calling it, nothing replaces it. Pulls in a
+  new transitive dependency, `alexhopeoconnor/DFTE` (the fork author's own
+  streaming template engine, v1.0.0, no tags yet - pinned to a commit in
+  `platformio.ini` since there's nothing else to pin to), and raises the
+  minimum `ESP32Async/ESPAsyncWebServer` version to 3.9.1.
+- **Removed the "Show advanced settings" toggle** from the web portal: it
+  originally existed to keep the WiFi card (SSID/password) uncluttered on
+  first load, but that card is gone now that WiFiManager owns WiFi setup
+  (see above) - with nothing left to hide, the remaining settings
+  (MQTT/timezone/display type/pin assignment/OTA) are just always shown.
+- **Added a timezone preset dropdown** to the "Zeit" card in the web
+  portal (`src/net/web_portal_html.inc`): the raw POSIX-TZ text field
+  (`app_config.tz`, e.g. `CET-1CEST,M3.5.0,M10.5.0/3`) was the only way to
+  set the timezone, which next to nobody writes correctly from memory (vs.
+  the "GMT+1"-style input most people expect). Added a `<select>` with ~20
+  common city/region presets (POSIX strings taken from
+  [nayarsystems/posix_tz_db](https://github.com/nayarsystems/posix_tz_db),
+  itself derived from the IANA tzdata, rather than hand-written - DST
+  transition rules are easy to get subtly wrong from memory) that fills in
+  the POSIX field on selection; the POSIX field itself stays visible and
+  editable underneath for anyone who wants an exact/uncommon zone. Purely a
+  frontend change (~2 KB added to the embedded page) - `app_config.tz` and
+  `configTzTime()` on the backend are untouched, still just get a POSIX
+  string either way.
+- **Fix: firmware no longer fit the OTA app partition after adding
+  WiFiManager** (`program size (1977299 bytes) is greater than maximum
+  allowed (1966080 bytes)`, ~11 KB over) - the library alone adds roughly
+  120 KB of code, more than the ~110 KB of headroom the I8 boot logo
+  encoding had freed up. Raised both OTA app slots in `partitions.csv` from
+  1.875 MB to 1.9375 MB (+64 KB each) and **removed the `coredump`
+  partition** to free the flash for it (its only purpose was silencing a
+  harmless `esp_core_dump_flash: No core dump partition found!` boot log
+  line - no functional loss). This uses the **entire** 4 MB flash chip with
+  0 bytes to spare (2x 1.9375 MB + nvs/otadata/phy_init exactly fill it) -
+  there is no more room to grow within this shared 4 MB partition table
+  (esp32/esp32s3/esp32c3 all use the same `partitions.csv`). The next
+  overflow will need an actual code-size reduction or a per-chip partition
+  table for boards with more flash, not another size bump.
+- **Replaced the hand-rolled WiFi STA/AP logic with tzapu/WiFiManager**
+  (`src/net/web_portal.cpp`): `wifi_connect_sta()`/`start_ap()` and the
+  custom captive-portal-detection routes are gone, `WiFiManager` now owns
+  WiFi connect-or-fallback-to-AP entirely, including its own scan/SSID-entry
+  portal UI (so `/api/wifi_scan` and the "WLAN" card in the embedded config
+  page - SSID/password fields and the "Scan WiFi networks" button - are
+  removed too; `app_config` no longer has `wifi_ssid`/`wifi_pass` fields,
+  WiFiManager persists credentials itself via the WiFi driver's own storage).
+  Run in **non-blocking** mode (`setConfigPortalBlocking(false)` +
+  `wm.process()` from `web_portal_loop()`) specifically so the LCD stays
+  responsive (clock/touch/refresh) while WiFiManager's setup portal is open -
+  a blocking `autoConnect()` call would stall `loop()`, and with it
+  `lv_timer_handler()`, for as long as the portal is up. Our own
+  `AsyncWebServer` (config page, `/api/*`, OTA) now starts lazily, once
+  `WiFi.status() == WL_CONNECTED` and WiFiManager's own portal server has
+  stepped aside, since both would otherwise fight over port 80.
+  `web_portal_force_ap()` (the "Restart into setup AP" button) now clears
+  WiFiManager's stored credentials and reboots instead of switching into AP
+  mode live in place - a reboot either way, since the button already drops
+  the current connection immediately in both versions.
+  Adds `tzapu/WiFiManager@^2.0.17` to `platformio.ini`.
+- **Added an image-based boot logo screen** (`scr_boot`, `build_boot()` in
+  `src/display/display_ui_rect.cpp`): the device now shows a dedicated,
+  centered splash screen (Pulse logo image + the previous "Warte auf
+  Daten..."/"Warte auf MQTT-Daten..." status text) instead of the homescreen
+  right after panel init, and only switches to `scr_main` once the first
+  message from the configured source arrives - same trigger
+  (`hw_info.ever_received`) and therefore the same effective duration as the
+  status text alone had before. Since `ever_received` never resets to
+  `false` again, the boot screen only ever shows once per boot and doesn't
+  reappear on a later, short-lived data stream interruption. The image
+  itself (`src/bootlogo.c`/`bootlogo.h`, `lv_image_dsc_t bootlogo_img`) was
+  down-scaled from the originally checked-in 800x480 asset (750 KB
+  uncompressed, ~43% of the 1.75 MB OTA app partition on its own) to 200x120
+  (~47 KB) so it reads clearly as a centered logo on the 320x240 CYD panel
+  without being excessive.
+- **Re-encoded the boot logo as an indexed (I8) image** instead of raw
+  RGB565: `src/bootlogo.c` now stores a 256-color palette (1024 bytes, B/G/R/A
+  per entry) plus one palette-index byte per pixel instead of 2 raw color
+  bytes per pixel - 25,024 bytes total vs. 48,000 before (~48% smaller), no
+  visible quality loss for this particular image (solid black background +
+  a smooth two-color gradient, well within 256 colors). LVGL's built-in
+  decoder (`lv_bin_decoder.c`) expands indexed images to a temporary
+  ARGB8888 buffer (200x120x4 = ~94 KB) at draw time since the software
+  renderer can't blit indexed pixels directly - but since `LV_CACHE_DEF_SIZE`
+  in `lv_conf.h` is left at its default of `0`, that buffer is released
+  immediately after each draw rather than held for as long as the boot
+  screen is shown, so this is a brief one-time allocation spike at first
+  paint, not a sustained RAM cost. Combined with the partition bump below,
+  this leaves ~110 KB of headroom in each 1.875 MB OTA slot instead of ~87 KB.
+- **Fix: firmware no longer fit the OTA app partition** after adding the
+  boot logo image (`program size (1876603 bytes) is greater than maximum
+  allowed (1835008 bytes)`, ~41 KB over on top of the driver code for 5
+  display types already sharing the one firmware image). Raised both OTA
+  app slots in `partitions.csv` from 1.75 MB to 1.875 MB (+128 KB each),
+  using flash space that was already unallocated at the end of the 4 MB
+  chip (~320 KB free tail before this change, ~64 KB after) - the sensitive
+  `nvs`/`otadata`/`phy_init` offsets (see comment above them, `otadata`'s
+  fixed `0xe000` in particular) are untouched. **Changing the partition
+  table means the usual "just re-upload" won't boot** - do a full chip
+  erase first (`pio run -e esp32 -t erase`, per-env for `esp32s3`/`esp32c3`)
+  and reflash, exactly as already documented in the README for partition
+  table changes.
 - **Removed the "Invert colors (dark mode)" web portal toggle**: the device
   only ever ships in dark mode, so the switch (`app_config.color_invert`,
   the `/api/config` field, its NVS entry, and the checkbox/i18n strings in

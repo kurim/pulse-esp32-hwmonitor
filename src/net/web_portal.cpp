@@ -5,61 +5,62 @@
 
 #include <Arduino.h>
 #include <WiFi.h>
-#include <DNSServer.h>
+#include <WiFiManager.h>
 #include <ESPAsyncWebServer.h>
 #include <Update.h>
 #include <ArduinoJson.h>
 
 static AsyncWebServer s_server(80);
-static DNSServer      s_dns;
-static bool           s_ap_mode;
-static char           s_ip[16] = "0.0.0.0";
+static WiFiManager    s_wm;
+static bool           s_our_server_started;
 static char           s_ap_ssid[24];
 
 // ------------------------------------------------------------------
 // Eingebettete Config-Seite - woertlich aus dem esp-idf-Original
 // uebernommen (main/net/web_portal.c: INDEX_HTML), da reines HTML/JS/CSS
-// ohne ESP-IDF-Abhaengigkeit.
+// ohne ESP-IDF-Abhaengigkeit. Die WLAN-Karte (SSID/Passwort/Netzwerksuche)
+// ist seit dem Wechsel auf tzapu/WiFiManager raus - WLAN wird jetzt
+// ausschliesslich ueber WiFiManagers eigenes Setup-Portal konfiguriert,
+// dieser Server startet gar nicht erst, bevor eine WLAN-Verbindung steht
+// (siehe web_portal_loop()).
 // ------------------------------------------------------------------
 #include "web_portal_html.inc"
 
 // ------------------------------------------------------------------
-// WLAN
+// WLAN (alexhopeoconnor/WiFiManager v2.0.19 statt eigener STA/AP-Logik)
 // ------------------------------------------------------------------
-#define STA_TIMEOUT_MS 15000
-
-static bool wifi_connect_sta(void)
+// WiFiManager haelt seine eigenen Zugangsdaten in der WLAN-Treiber-eigenen
+// NVS-Ablage (WiFi.begin()-Persistenz), unabhaengig von app_config/
+// config_store.cpp - app_config hat deshalb keine wifi_ssid/wifi_pass-Felder
+// mehr.
+//
+// Diese Fork-Version ist intern durchgehend async (nativ auf
+// ESPAsyncWebServer aufgebaut) und kennt kein setConfigPortalBlocking()
+// mehr (im Original/aelteren Versionen vorhanden) - autoConnect() startet
+// bei fehlgeschlagener STA-Verbindung das Setup-Portal (offener AP +
+// Webserver + DNS, alles von WiFiManager selbst verwaltet) und kehrt sofort
+// zurueck, ohne auf dessen Ende zu warten (verifiziert im Fork-Quellcode:
+// startConfigPortal() blockiert nicht). web_portal_loop() muss dafuer jeden
+// Durchlauf wm.process() aufrufen - ohne diesen Aufruf passiert im Portal
+// schlicht nichts. Wichtig ist das aus demselben Grund wie zuvor: waere der
+// Verbindungsaufbau blockierend, wuerde loop() (und damit
+// display_ui_loop()/lv_timer_handler()) waehrend des gesamten
+// Setup-Portal-Wartens nicht laufen - das Display wuerde einfrieren (keine
+// Uhr, kein Touch, kein Refresh), obwohl display_ui_begin() bereits vor
+// web_portal_begin() lief, gerade damit AP-SSID/IP live sichtbar bleiben.
+//
+// Unser eigener AsyncWebServer (Config-Seite/API/OTA) teilt sich Port 80
+// mit WiFiManagers Portal-Webserver - beide gleichzeitig zu binden wuerde
+// kollidieren. Er startet deshalb bewusst NICHT hier in web_portal_begin(),
+// sondern erst einmalig in web_portal_loop(), sobald WiFi.status() ==
+// WL_CONNECTED und WiFiManagers Portal nicht mehr aktiv ist.
+void web_portal_begin(void)
 {
-    // Immer den WiFi-Treiber initialisieren (auch ohne konfigurierte SSID) -
-    // sonst schlaegt der WiFi.disconnect(true)-Aufruf in start_ap() mit
-    // ESP_ERR_WIFI_NOT_INIT fehl, da der Treiber nie hochgefahren wurde.
-    WiFi.mode(WIFI_STA);
-    if (strlen(app_config.wifi_ssid) == 0) return false;
-
-    WiFi.begin(app_config.wifi_ssid, app_config.wifi_pass);
-
-    uint32_t start = millis();
-    while (WiFi.status() != WL_CONNECTED && millis() - start < STA_TIMEOUT_MS) {
-        delay(100);
-    }
-    return WiFi.status() == WL_CONNECTED;
-}
-
-static void start_ap(void)
-{
-    s_ap_mode = true;
-    WiFi.disconnect(true);
-
     uint8_t mac[6];
-    WiFi.softAPmacAddress(mac);
+    WiFi.macAddress(mac);
     snprintf(s_ap_ssid, sizeof(s_ap_ssid), "ESP32-HWMon-%02x%02x", mac[4], mac[5]);
 
-    WiFi.mode(WIFI_AP);
-    WiFi.softAP(s_ap_ssid, nullptr /* offen */, 1, 0, 4);
-
-    strcpy(s_ip, "192.168.4.1");
-    s_dns.start(53, "*", WiFi.softAPIP());
-    log_i("Setup-AP aktiv: SSID '%s' (offen), IP 192.168.4.1", s_ap_ssid);
+    s_wm.autoConnect(s_ap_ssid); // offener AP (kein Passwort), wie zuvor
 }
 
 // ------------------------------------------------------------------
@@ -73,31 +74,11 @@ static void h_status(AsyncWebServerRequest *req)
         "\"cpu_temp\":%.1f,\"gpu_temp\":%.1f,\"cpu_power\":%.1f,\"gpu_power\":%.1f,"
         "\"fw_version\":\"%s\",\"free_heap\":%u}",
         wifi_connected ? "true" : "false", mqtt_connected ? "true" : "false",
-        serial_connected ? "true" : "false", (int)app_config.hw_source, s_ip,
+        serial_connected ? "true" : "false", (int)app_config.hw_source, web_portal_ip(),
         hw_info.cpu_load, hw_info.gpu_load, hw_info.cpu_temp, hw_info.gpu_temp,
         hw_info.cpu_power, hw_info.gpu_power, FW_VERSION,
         (unsigned)ESP.getFreeHeap());
     req->send(200, "application/json", String(buf, n));
-}
-
-// Scannt nach WLAN-Netzwerken. Anders als im esp-idf-Original (das kurzzeitig
-// auf APSTA umschaltet, um den Setup-AP waehrend des Scans weiterlaufen zu
-// lassen) blockiert WiFi.scanNetworks() hier synchron - fuer die Webportal-
-// Nutzung (gelegentlicher Klick auf "WLAN-Netzwerke suchen") akzeptabel.
-static void h_wifi_scan(AsyncWebServerRequest *req)
-{
-    int n = WiFi.scanNetworks();
-    JsonDocument doc;
-    JsonArray arr = doc.to<JsonArray>();
-    for (int i = 0; i < n; i++) {
-        JsonObject o = arr.add<JsonObject>();
-        o["ssid"] = WiFi.SSID(i);
-        o["rssi"] = WiFi.RSSI(i);
-    }
-    WiFi.scanDelete();
-    String out;
-    serializeJson(doc, out);
-    req->send(200, "application/json", out);
 }
 
 static void add_pin_or_null(JsonObject &d, const char *key, int16_t v)
@@ -110,8 +91,6 @@ static void h_config_get(AsyncWebServerRequest *req)
 {
     JsonDocument doc;
     JsonObject d = doc.to<JsonObject>();
-    d["wifi_ssid"] = app_config.wifi_ssid;
-    d["wifi_pass"] = "";
     d["hw_source"] = (int)app_config.hw_source;
     d["mqtt_host"] = app_config.mqtt_host;
     d["mqtt_port"] = app_config.mqtt_port;
@@ -259,8 +238,6 @@ static void h_config_post_body(AsyncWebServerRequest *req, uint8_t *data, size_t
     }
     JsonObject root = doc.as<JsonObject>();
 
-    cfg_str(root, "wifi_ssid",  app_config.wifi_ssid,  sizeof(app_config.wifi_ssid),  false);
-    cfg_str(root, "wifi_pass",  app_config.wifi_pass,  sizeof(app_config.wifi_pass),  true);
     if (root["hw_source"].is<int>()) app_config.hw_source = (hw_source_t)root["hw_source"].as<int>();
     cfg_str(root, "mqtt_host",  app_config.mqtt_host,  sizeof(app_config.mqtt_host),  false);
     if (root["mqtt_port"].is<int>()) app_config.mqtt_port = root["mqtt_port"].as<uint16_t>();
@@ -339,25 +316,17 @@ static void h_update_body(AsyncWebServerRequest *req, uint8_t *data, size_t len,
     }
 }
 
-static void h_captive_redirect(AsyncWebServerRequest *req)
+static void h_not_found(AsyncWebServerRequest *req)
 {
-    if (s_ap_mode) {
-        req->redirect("http://192.168.4.1/");
-        return;
-    }
     req->send(404, "text/plain", "Not found");
 }
 
-void web_portal_begin(void)
+// Startet unseren eigenen Server erst, nachdem WiFiManager fertig ist (siehe
+// Kommentar bei web_portal_begin()) - Port 80 ist bis dahin exklusiv
+// WiFiManagers Portal-Webserver vorbehalten.
+static void start_our_server(void)
 {
-    if (wifi_connect_sta()) {
-        wifi_connected = true;
-        strcpy(s_ip, WiFi.localIP().toString().c_str());
-        log_i("WLAN verbunden, IP %s", s_ip);
-    } else {
-        wifi_connected = false;
-        start_ap();
-    }
+    log_i("WLAN verbunden, IP %s", web_portal_ip());
 
     s_server.on("/", HTTP_GET, [](AsyncWebServerRequest *req) {
         req->send(200, "text/html", INDEX_HTML);
@@ -369,34 +338,49 @@ void web_portal_begin(void)
         nullptr,
         h_config_post_body);
     s_server.on("/api/displays", HTTP_GET, h_displays);
-    s_server.on("/api/wifi_scan", HTTP_GET, h_wifi_scan);
     s_server.on("/update", HTTP_POST,
         [](AsyncWebServerRequest *req) { /* Antwort erfolgt in h_update_body */ },
         nullptr,
         h_update_body);
-
-    // Bekannte Captive-Portal-Erkennungspfade der wichtigsten Betriebssysteme.
-    for (const char *path : { "/hotspot-detect.html", "/library/test/success.html",
-                               "/generate_204", "/gen_204", "/connecttest.txt", "/ncsi.txt" }) {
-        s_server.on(path, HTTP_GET, h_captive_redirect);
-    }
-    s_server.onNotFound(h_captive_redirect);
+    s_server.onNotFound(h_not_found);
 
     s_server.begin();
+    s_our_server_started = true;
 }
 
 void web_portal_loop(void)
 {
-    if (s_ap_mode) s_dns.processNextRequest();
+    s_wm.process();
+
+    if (!s_our_server_started && WiFi.status() == WL_CONNECTED && !s_wm.getConfigPortalActive()) {
+        wifi_connected = true;
+        start_our_server();
+    }
 }
 
-bool        web_portal_ap_mode(void)  { return s_ap_mode; }
-const char *web_portal_ip(void)       { return s_ip; }
-const char *web_portal_ap_ssid(void)  { return s_ap_ssid; }
+bool web_portal_ap_mode(void) { return s_wm.getConfigPortalActive(); }
 
+const char *web_portal_ip(void)
+{
+    static char buf[16];
+    IPAddress ip = s_wm.getConfigPortalActive() ? WiFi.softAPIP() : WiFi.localIP();
+    strcpy(buf, ip.toString().c_str());
+    return buf;
+}
+
+const char *web_portal_ap_ssid(void) { return s_ap_ssid; }
+
+// Loescht die von WiFiManager gespeicherten Zugangsdaten und startet neu -
+// beim naechsten Boot findet autoConnect() dann keine gespeicherte SSID
+// mehr und oeffnet automatisch das Setup-Portal. Anders als zuvor (sofortiger
+// Live-Wechsel in den AP-Modus ohne Neustart) bedeutet das jetzt einen
+// kurzen Reboot, in der Praxis kaum ein Unterschied: die aktuelle
+// WLAN-Verbindung geht in beiden Faellen sofort verloren.
 void web_portal_force_ap(void)
 {
     wifi_connected = false;
     mqtt_connected  = false;
-    start_ap();
+    s_wm.resetSettings();
+    delay(50);
+    ESP.restart();
 }

@@ -1,11 +1,23 @@
 # Name,     Type, SubType,  Offset,   Size,     Flags
-# 4 MB Flash, zwei OTA-App-Slots (je 1.75 MB) fuer OTA-Updates ueber das Webportal.
-# Auf 1.75 MB je Slot angehoben (vorher 1.5 MB): das Image enthaelt inzwischen
-# Treiber fuer 5 Displaytypen gleichzeitig (ILI9341/9488/ST7796S/GC9A01/SSD1309)
-# und kam je nach Zielchip auf bis zu ~1.62 MB - das passte in 1.5 MB nicht
-# mehr rein. 2x 1.75 MB + nvs/otadata/phy_init passen weiterhin komfortabel
-# in 4 MB (rechnerisch bleiben ~384 KB frei), davon 64 KB fuer die
-# coredump-Partition unten reserviert).
+# 4 MB Flash, zwei OTA-App-Slots (je 1.9375 MB) fuer OTA-Updates ueber das
+# Webportal. Auf 1.9375 MB je Slot angehoben (vorher 1.875 MB, davor 1.75 MB,
+# davor 1.5 MB): tzapu/WiFiManager (ersetzt die vorherige eigene WLAN-STA/AP-
+# Logik) allein bringt ca. 120 KB zusaetzlichen Code mit, mehr als der durch
+# die I8-Kodierung des Bootlogos gewonnene Puffer - Ergebnis war "program
+# size (1977299 bytes) is greater than maximum allowed (1966080 bytes)".
+# Um das ohne Antasten der bewusst fixen otadata-Adresse (siehe unten)
+# unterzubringen, ist die vormals separate coredump-Partition komplett
+# entfallen (ihr einziger Zweck war, eine harmlose Boot-Log-Zeile
+# "esp_core_dump_flash: No core dump partition found!" zu unterdruecken -
+# ohne sie ist das wieder der Zustand von vor deren Einfuehrung, kein
+# funktionaler Verlust). Die dadurch freien 64 KB plus die vorher am Ende
+# ungenutzten 64 KB reichen fuer genau einen weiteren 2x64-KB-Schritt.
+# 2x 1.9375 MB + nvs/otadata/phy_init fuellen die 4 MB jetzt bis auf den
+# letzten Block komplett aus (0 Byte Rest) - fuer weiteres Wachstum bleibt
+# ohne separate Partitionstabelle pro Zielchip (aktuell eine gemeinsame fuer
+# esp32/esp32s3/esp32c3, siehe README) kein Spielraum mehr; der naechste
+# Overflow braucht entweder eine echte Codegroessen-Reduktion oder den
+# Wechsel auf einen Chip mit mehr als 4 MB Flash.
 # otadata liegt bewusst bei 0xe000 (nicht 0xf000 wie im esp-idf-Original) -
 # der Arduino-ESP32-Core/pioarduino-Flash-Vorgang schreibt bei jedem Upload
 # automatisch boot_app0.bin (initialisiert otadata auf "boote App-Slot 0") an
@@ -17,6 +29,5 @@
 nvs,        data, nvs,      0x9000,   0x5000,
 otadata,    data, ota,      0xe000,   0x2000,
 phy_init,   data, phy,      0x11000,  0x1000,
-ota_0,      app,  ota_0,    0x20000,  0x1C0000,
-ota_1,      app,  ota_1,    0x1E0000, 0x1C0000,
-coredump,   data, coredump,         , 0x10000,
+ota_0,      app,  ota_0,    0x20000,  0x1F0000,
+ota_1,      app,  ota_1,    0x210000, 0x1F0000,

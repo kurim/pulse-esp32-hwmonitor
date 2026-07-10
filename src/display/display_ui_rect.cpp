@@ -7,6 +7,7 @@
 // ------------------------------------------------------------------
 #include "display_ui_internal.h"
 #include "../net/web_portal.h"
+#include "../bootlogo.h"
 
 #include <Arduino.h> // ESP.getFreeHeap() (Settings-Screen)
 #include <time.h>
@@ -37,7 +38,6 @@ static tile_ctx_t cpu_tile, gpu_tile;
 static lv_obj_t *lbl_time, *lbl_date;
 static lv_obj_t *lbl_weather, *lbl_humidity, *lbl_wind, *lbl_rain;
 static lv_obj_t *icon_wifi;
-static lv_obj_t *lbl_waiting;
 
 // Detailschirm-Widgets
 static lv_obj_t *det_title, *det_load, *det_temp, *det_power;
@@ -57,6 +57,10 @@ static lv_obj_t *standby_icon_temp, *standby_lbl_temp;
 static lv_obj_t *standby_icon_humidity, *standby_lbl_humidity;
 static lv_obj_t *standby_icon_wind, *standby_lbl_wind;
 static lv_obj_t *standby_icon_rain, *standby_lbl_rain;
+
+// Bootlogo-Screen (Bilddaten: bootlogo.c/.h) - wird beim Boot statt scr_main
+// gezeigt, siehe build_boot()/refresh_now().
+static bool s_boot_screen_active = true;
 
 static lv_obj_t *make_card(lv_obj_t *parent, int x, int y, int w, int h, lv_color_t border)
 {
@@ -300,21 +304,6 @@ void build_main(void)
     build_tile(scr_main, margin, tile_w, "CPU", &cpu_tile, SCR_CPU, false, COL_CPU_BAR_A, COL_CPU_BAR_B);
     build_tile(scr_main, margin + tile_w + gap, tile_w, "GPU", &gpu_tile, SCR_GPU, true, COL_GPU_BAR_A, COL_GPU_BAR_B);
 
-    // "Warte auf Daten"-Hinweis, ueberlagert die Kachel-Unterkante bis zur
-    // ersten Nachricht der konfigurierten Quelle (danach ausgeblendet). Text
-    // wird einmalig beim Boot passend zu app_config.hw_source gewaehlt - ein
-    // Quellenwechsel greift ohnehin erst nach einem Neustart (gleiches Muster
-    // wie Sprache/Displaytyp/Rotation).
-    lbl_waiting = make_label(scr_main,
-        (app_config.hw_source == HW_SOURCE_USB) ? ui_str(UI_STR_WAITING_DATA) : ui_str(UI_STR_WAITING_MQTT),
-        &lv_font_montserrat_14, COL_SUB);
-    lv_obj_set_width(lbl_waiting, s_hres - 12);
-    lv_obj_set_style_text_align(lbl_waiting, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_style_bg_color(lbl_waiting, COL_BG, 0);
-    lv_obj_set_style_bg_opa(lbl_waiting, LV_OPA_80, 0);
-    lv_obj_set_style_pad_ver(lbl_waiting, 2, 0);
-    lv_obj_set_pos(lbl_waiting, 6, CARD_Y + CARD_H - 18);
-
     // ---- Settings-Knopf (unten) ----
     lv_obj_t *settings_btn = lv_obj_create(scr_main);
     lv_obj_set_pos(settings_btn, 0, CARD_Y + CARD_H);
@@ -495,6 +484,32 @@ void build_standby(void)
 }
 
 // ------------------------------------------------------------------
+// Aufbau Bootlogo-Screen: wird von display_ui_begin() direkt nach dem
+// Panel-Init statt scr_main geladen und bleibt stehen, bis die erste
+// Nachricht der konfigurierten Quelle eintrifft (siehe refresh_now()) -
+// deckungsgleich mit der Anzeigedauer des vormaligen "Warte auf
+// Daten..."-Hinweises. Bildquelle: bootlogo.c/.h (200x120, aus dem
+// urspruenglich eingecheckten 800x480-Bild heruntergerechnet, siehe
+// Kommentar dort).
+// ------------------------------------------------------------------
+void build_boot(void)
+{
+    scr_boot = lv_obj_create(NULL);
+    style_screen(scr_boot);
+
+    lv_obj_t *logo = lv_image_create(scr_boot);
+    lv_image_set_src(logo, &bootlogo_img);
+    lv_obj_center(logo);
+
+    lv_obj_t *status = make_label(scr_boot,
+        (app_config.hw_source == HW_SOURCE_USB) ? ui_str(UI_STR_WAITING_DATA) : ui_str(UI_STR_WAITING_MQTT),
+        &lv_font_montserrat_14, COL_SUB);
+    lv_obj_set_width(status, s_hres - 12);
+    lv_obj_set_style_text_align(status, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(status, LV_ALIGN_BOTTOM_MID, 0, -14);
+}
+
+// ------------------------------------------------------------------
 // Dynamische Updates
 // ------------------------------------------------------------------
 static void update_tile(tile_ctx_t *tile, const history_t *hist, float load, float temp, float power)
@@ -591,11 +606,20 @@ void refresh_now(void)
                     : (wifi_connected ? COL_YELLOW : COL_WARN);
     lv_obj_set_style_bg_color(icon_wifi, sc, 0);
 
+    // --- Bootlogo -> Homescreen: einmaliger Wechsel weg vom Bootlogo-Screen,
+    // sobald die erste Nachricht der konfigurierten Quelle eintrifft.
+    // hw_info.ever_received kippt danach nie wieder auf false zurueck (siehe
+    // hw_data.cpp) - ein spaeter kurzzeitig abreissender Datenstrom loest
+    // also KEINE Rueckkehr zum Bootlogo aus, s_boot_screen_active bleibt
+    // damit fuer den Rest der Laufzeit false.
+    if (s_boot_screen_active && hw_info.ever_received) {
+        s_boot_screen_active = false;
+        lv_screen_load(scr_main);
+    }
+
     if (s_screen == SCR_MAIN) {
         update_tile(&cpu_tile, &cpu_history, hw_info.cpu_load, hw_info.cpu_temp, hw_info.cpu_power);
         update_tile(&gpu_tile, &gpu_history, hw_info.gpu_load, hw_info.gpu_temp, hw_info.gpu_power);
-        if (hw_info.ever_received) lv_obj_add_flag(lbl_waiting, LV_OBJ_FLAG_HIDDEN);
-        else                       lv_obj_clear_flag(lbl_waiting, LV_OBJ_FLAG_HIDDEN);
 
     } else if (s_screen == SCR_CPU || s_screen == SCR_GPU) {
         bool is_cpu = (s_screen == SCR_CPU);

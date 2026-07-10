@@ -211,18 +211,21 @@ boot fails right after flashing (`OTA app partition slot 1 is not
 bootable`), do one full chip erase first: `pio run -e esp32 -t erase` then
 reflash.
 
-Initial setup: WiFi connect/fallback-to-AP is handled by
-[tzapu/WiFiManager](https://github.com/tzapu/WiFiManager), not this
-project's own code - open AP **`ESP32-HWMon-XXXX`** → `http://192.168.4.1`
-→ pick/enter WiFi in WiFiManager's own portal → device connects and
-reboots into normal operation. Our own web portal (config page, `/api/*`,
-OTA) only starts once a WiFi connection is up - it no longer has a WiFi
-card at all (WiFiManager already handled that before this page ever loads).
-All its settings (MQTT/timezone/display type/pin assignment/OTA) are hidden
-behind "Show advanced settings" by default, matching the previous
-progressive-disclosure behavior minus the WiFi step. To reconfigure WiFi
-later, use "Restart into setup AP" (card "Settings") - this clears the
-stored WiFi credentials and reboots into WiFiManager's portal again.
+Initial setup: WiFi connect/fallback-to-AP is handled by a pinned fork of
+[tzapu/WiFiManager](https://github.com/tzapu/WiFiManager)
+([alexhopeoconnor/WiFiManager](https://github.com/alexhopeoconnor/WiFiManager),
+see the comment above `lib_deps` in `platformio.ini` for why it's pinned to a
+commit rather than a branch), not this project's own code - open AP
+**`ESP32-HWMon-XXXX`** → `http://192.168.4.1` → pick/enter WiFi in
+WiFiManager's own portal → device connects and reboots into normal
+operation. Our own web portal (config page, `/api/*`, OTA) only starts
+once a WiFi connection is up - it no longer has a WiFi card at all
+(WiFiManager already handled that before this page ever loads), and with
+no WiFi step left to hide, all its settings (MQTT/timezone/display
+type/pin assignment/OTA) are simply shown directly - no more "Show
+advanced settings" toggle. To reconfigure WiFi later, use "Restart into
+setup AP" (card "Settings") - this clears the stored WiFi credentials and
+reboots into WiFiManager's portal again.
 
 ### CI build (GitHub Actions)
 

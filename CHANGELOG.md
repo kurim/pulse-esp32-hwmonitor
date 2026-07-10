@@ -6,6 +6,24 @@ follows [Keep a Changelog](https://keepachangelog.com/), versioning follows
 
 ## [Unreleased]
 
+- **Switched to a fork of WiFiManager**
+  ([alexhopeoconnor/WiFiManager](https://github.com/alexhopeoconnor/WiFiManager)
+  instead of upstream `tzapu/WiFiManager`), pinned to a specific commit
+  rather than a branch in `platformio.ini` - the fork's own repo carries an
+  explicit warning that it's "not a drop-in replacement... assume core
+  web-portal architecture has changed... review the code before adopting".
+  Diffed the fork's `WiFiManager.h` against upstream 2.0.17 at the pinned
+  commit: the API we use (`autoConnect()`, `setConfigPortalBlocking()`,
+  `process()`, `getConfigPortalActive()`, `resetSettings()`) is currently
+  identical, so no code changes were needed beyond the dependency line -
+  pinning to a commit (instead of tracking the branch) is specifically so a
+  future breaking change on their end doesn't silently land on the next
+  `pio run`.
+- **Removed the "Show advanced settings" toggle** from the web portal: it
+  originally existed to keep the WiFi card (SSID/password) uncluttered on
+  first load, but that card is gone now that WiFiManager owns WiFi setup
+  (see above) - with nothing left to hide, the remaining settings
+  (MQTT/timezone/display type/pin assignment/OTA) are just always shown.
 - **Added a timezone preset dropdown** to the "Zeit" card in the web
   portal (`src/net/web_portal_html.inc`): the raw POSIX-TZ text field
   (`app_config.tz`, e.g. `CET-1CEST,M3.5.0,M10.5.0/3`) was the only way to

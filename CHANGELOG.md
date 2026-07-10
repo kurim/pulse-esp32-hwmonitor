@@ -6,6 +6,20 @@ follows [Keep a Changelog](https://keepachangelog.com/), versioning follows
 
 ## [Unreleased]
 
+- **Fix: firmware no longer fit the OTA app partition after adding
+  WiFiManager** (`program size (1977299 bytes) is greater than maximum
+  allowed (1966080 bytes)`, ~11 KB over) - the library alone adds roughly
+  120 KB of code, more than the ~110 KB of headroom the I8 boot logo
+  encoding had freed up. Raised both OTA app slots in `partitions.csv` from
+  1.875 MB to 1.9375 MB (+64 KB each) and **removed the `coredump`
+  partition** to free the flash for it (its only purpose was silencing a
+  harmless `esp_core_dump_flash: No core dump partition found!` boot log
+  line - no functional loss). This uses the **entire** 4 MB flash chip with
+  0 bytes to spare (2x 1.9375 MB + nvs/otadata/phy_init exactly fill it) -
+  there is no more room to grow within this shared 4 MB partition table
+  (esp32/esp32s3/esp32c3 all use the same `partitions.csv`). The next
+  overflow will need an actual code-size reduction or a per-chip partition
+  table for boards with more flash, not another size bump.
 - **Replaced the hand-rolled WiFi STA/AP logic with tzapu/WiFiManager**
   (`src/net/web_portal.cpp`): `wifi_connect_sta()`/`start_ap()` and the
   custom captive-portal-detection routes are gone, `WiFiManager` now owns

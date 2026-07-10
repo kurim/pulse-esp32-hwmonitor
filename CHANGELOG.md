@@ -6,22 +6,23 @@ follows [Keep a Changelog](https://keepachangelog.com/), versioning follows
 
 ## [Unreleased]
 
-- **Evaluated, then backed out of, a WiFiManager fork**
-  ([alexhopeoconnor/WiFiManager](https://github.com/alexhopeoconnor/WiFiManager)):
-  briefly switched `platformio.ini` to this fork, pinned to a specific commit
-  (its own repo warns it's "not a drop-in replacement... assume core
-  web-portal architecture has changed... review the code before adopting").
-  Diffing that commit against upstream `tzapu/WiFiManager` 2.0.17 showed
-  byte-identical code (`WiFiManager.cpp`, 4053 lines either way) - so no
-  actual benefit over upstream at that point in the fork's history. Real
-  builds then showed **non-deterministic program sizes** (~1.98 MB vs.
-  ~2.12 MB) across otherwise-identical rebuilds, pointing at unreliable
-  resolution of the git-URL-plus-commit-pin dependency spec (the fork's
-  current HEAD has since moved to a restructured, template-engine-based
-  portal that's presumably what was leaking in some of the time). Given the
-  pinned commit added nothing over upstream anyway, reverted to
-  `tzapu/WiFiManager@^2.0.17` (registry package, deterministic resolution)
-  rather than chase the caching issue.
+- **Switched to `alexhopeoconnor/WiFiManager` v2.0.19** (pinned tag, not
+  upstream `tzapu/WiFiManager`). Earlier in this fork's history an
+  arbitrary pinned commit turned out byte-identical to upstream 2.0.17
+  (no actual difference) and, separately, showed non-deterministic program
+  sizes across rebuilds pointing at unreliable git-commit-pin dependency
+  resolution - that commit was reverted in favor of plain upstream. `v2.0.19`
+  is a real, tagged release and a genuine rewrite, not a no-op fork: WiFiManager
+  is now split into 5 files under `lib/WiFiManager/` and built natively on
+  `ESPAsyncWebServer` instead of the classic blocking `WebServer`.
+  **`setConfigPortalBlocking()` no longer exists** - confirmed in the fork's
+  source that `autoConnect()`/`startConfigPortal()` never block waiting for
+  the portal to finish, so non-blocking is simply the only mode now;
+  `web_portal.cpp` just stopped calling it, nothing replaces it. Pulls in a
+  new transitive dependency, `alexhopeoconnor/DFTE` (the fork author's own
+  streaming template engine, v1.0.0, no tags yet - pinned to a commit in
+  `platformio.ini` since there's nothing else to pin to), and raises the
+  minimum `ESP32Async/ESPAsyncWebServer` version to 3.9.1.
 - **Removed the "Show advanced settings" toggle** from the web portal: it
   originally existed to keep the WiFi card (SSID/password) uncluttered on
   first load, but that card is gone now that WiFiManager owns WiFi setup

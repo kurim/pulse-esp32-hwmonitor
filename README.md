@@ -211,8 +211,11 @@ boot fails right after flashing (`OTA app partition slot 1 is not
 bootable`), do one full chip erase first: `pio run -e esp32 -t erase` then
 reflash.
 
-Initial setup: WiFi connect/fallback-to-AP is handled by
-[tzapu/WiFiManager](https://github.com/tzapu/WiFiManager), not this
+Initial setup: WiFi connect/fallback-to-AP is handled by a pinned fork of
+[tzapu/WiFiManager](https://github.com/tzapu/WiFiManager)
+([alexhopeoconnor/WiFiManager](https://github.com/alexhopeoconnor/WiFiManager)
+`v2.0.19`, see the comment above `lib_deps` in `platformio.ini` for what's
+actually different from upstream and why it's pinned to a tag), not this
 project's own code - open AP **`ESP32-HWMon-XXXX`** → `http://192.168.4.1`
 → pick/enter WiFi in WiFiManager's own portal → device connects and reboots into normal
 operation. Our own web portal (config page, `/api/*`, OTA) only starts

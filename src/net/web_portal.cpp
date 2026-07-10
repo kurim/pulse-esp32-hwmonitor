@@ -27,25 +27,27 @@ static char           s_ap_ssid[24];
 #include "web_portal_html.inc"
 
 // ------------------------------------------------------------------
-// WLAN (tzapu/WiFiManager statt eigener STA/AP-Logik)
+// WLAN (alexhopeoconnor/WiFiManager v2.0.19 statt eigener STA/AP-Logik)
 // ------------------------------------------------------------------
 // WiFiManager haelt seine eigenen Zugangsdaten in der WLAN-Treiber-eigenen
 // NVS-Ablage (WiFi.begin()-Persistenz), unabhaengig von app_config/
 // config_store.cpp - app_config hat deshalb keine wifi_ssid/wifi_pass-Felder
 // mehr.
 //
-// Nicht-blockierender Modus (setConfigPortalBlocking(false)): autoConnect()
-// kehrt sofort zurueck, egal ob die gespeicherten Zugangsdaten funktioniert
-// haben oder das Setup-Portal (offener AP + Webserver + DNS, alles von
-// WiFiManager selbst verwaltet) gestartet wurde. web_portal_loop() muss
-// dafuer jeden Durchlauf wm.process() aufrufen - ohne diesen Aufruf passiert
-// im Portal schlicht nichts. Der Grund fuer nicht-blockierend statt des
-// simpleren blockierenden autoConnect(): waere der Aufruf blockierend,
-// wuerde loop() (und damit display_ui_loop()/lv_timer_handler()) waehrend
-// des gesamten Setup-Portal-Wartens nicht laufen - das Display wuerde
-// einfrieren (keine Uhr, kein Touch, kein Refresh), obwohl display_ui_begin()
-// bereits vor web_portal_begin() lief, gerade damit AP-SSID/IP live sichtbar
-// bleiben.
+// Diese Fork-Version ist intern durchgehend async (nativ auf
+// ESPAsyncWebServer aufgebaut) und kennt kein setConfigPortalBlocking()
+// mehr (im Original/aelteren Versionen vorhanden) - autoConnect() startet
+// bei fehlgeschlagener STA-Verbindung das Setup-Portal (offener AP +
+// Webserver + DNS, alles von WiFiManager selbst verwaltet) und kehrt sofort
+// zurueck, ohne auf dessen Ende zu warten (verifiziert im Fork-Quellcode:
+// startConfigPortal() blockiert nicht). web_portal_loop() muss dafuer jeden
+// Durchlauf wm.process() aufrufen - ohne diesen Aufruf passiert im Portal
+// schlicht nichts. Wichtig ist das aus demselben Grund wie zuvor: waere der
+// Verbindungsaufbau blockierend, wuerde loop() (und damit
+// display_ui_loop()/lv_timer_handler()) waehrend des gesamten
+// Setup-Portal-Wartens nicht laufen - das Display wuerde einfrieren (keine
+// Uhr, kein Touch, kein Refresh), obwohl display_ui_begin() bereits vor
+// web_portal_begin() lief, gerade damit AP-SSID/IP live sichtbar bleiben.
 //
 // Unser eigener AsyncWebServer (Config-Seite/API/OTA) teilt sich Port 80
 // mit WiFiManagers Portal-Webserver - beide gleichzeitig zu binden wuerde
@@ -58,7 +60,6 @@ void web_portal_begin(void)
     WiFi.macAddress(mac);
     snprintf(s_ap_ssid, sizeof(s_ap_ssid), "ESP32-HWMon-%02x%02x", mac[4], mac[5]);
 
-    s_wm.setConfigPortalBlocking(false);
     s_wm.autoConnect(s_ap_ssid); // offener AP (kein Passwort), wie zuvor
 }
 

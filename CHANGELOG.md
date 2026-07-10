@@ -6,19 +6,22 @@ follows [Keep a Changelog](https://keepachangelog.com/), versioning follows
 
 ## [Unreleased]
 
-- **Switched to a fork of WiFiManager**
-  ([alexhopeoconnor/WiFiManager](https://github.com/alexhopeoconnor/WiFiManager)
-  instead of upstream `tzapu/WiFiManager`), pinned to a specific commit
-  rather than a branch in `platformio.ini` - the fork's own repo carries an
-  explicit warning that it's "not a drop-in replacement... assume core
-  web-portal architecture has changed... review the code before adopting".
-  Diffed the fork's `WiFiManager.h` against upstream 2.0.17 at the pinned
-  commit: the API we use (`autoConnect()`, `setConfigPortalBlocking()`,
-  `process()`, `getConfigPortalActive()`, `resetSettings()`) is currently
-  identical, so no code changes were needed beyond the dependency line -
-  pinning to a commit (instead of tracking the branch) is specifically so a
-  future breaking change on their end doesn't silently land on the next
-  `pio run`.
+- **Evaluated, then backed out of, a WiFiManager fork**
+  ([alexhopeoconnor/WiFiManager](https://github.com/alexhopeoconnor/WiFiManager)):
+  briefly switched `platformio.ini` to this fork, pinned to a specific commit
+  (its own repo warns it's "not a drop-in replacement... assume core
+  web-portal architecture has changed... review the code before adopting").
+  Diffing that commit against upstream `tzapu/WiFiManager` 2.0.17 showed
+  byte-identical code (`WiFiManager.cpp`, 4053 lines either way) - so no
+  actual benefit over upstream at that point in the fork's history. Real
+  builds then showed **non-deterministic program sizes** (~1.98 MB vs.
+  ~2.12 MB) across otherwise-identical rebuilds, pointing at unreliable
+  resolution of the git-URL-plus-commit-pin dependency spec (the fork's
+  current HEAD has since moved to a restructured, template-engine-based
+  portal that's presumably what was leaking in some of the time). Given the
+  pinned commit added nothing over upstream anyway, reverted to
+  `tzapu/WiFiManager@^2.0.17` (registry package, deterministic resolution)
+  rather than chase the caching issue.
 - **Removed the "Show advanced settings" toggle** from the web portal: it
   originally existed to keep the WiFi card (SSID/password) uncluttered on
   first load, but that card is gone now that WiFiManager owns WiFi setup

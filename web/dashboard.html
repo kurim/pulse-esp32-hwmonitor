@@ -1,0 +1,1355 @@
+<!doctype html>
+<html lang="de">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="/favicon.svg">
+  <title>PulseMQTT</title>
+  <style>
+    :root {
+      --bg: #0A0E14;
+      --cardcolor: #1E293B;
+      --line: #38BDF8;
+      --fontcolor: #FFFFFF;
+      --amber: #e3b341;
+      --red: #f0616d;
+      --blue: #5aa9ff;
+      --muted: #94A3B8;
+      --green: #2ecc71;
+      --accent: #1096E0;
+      --accent2: #1DB7E0;
+      --dim: var(--muted);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fontcolor);
+      font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      font-size: 14px;
+    }
+
+    header {
+      padding: 12px 20px;
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      background: #1e293b;
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .htop {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .logo img {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      display: grid;
+      place-items: center;
+      font-size: 19px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      box-shadow: 0 0 15px #15B4E5;
+    }
+
+    header h1 {
+      font-size: 18px;
+      margin: 0;
+    }
+
+    nav {
+      display: flex;
+      gap: 8px;
+    }
+
+    nav button,
+    .btn {
+      background: var(--cardcolor);
+      border: 1px solid #334155;
+      color: var(--fontcolor);
+      border-radius: 8px;
+      padding: 8px 14px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+
+    nav button.active {
+      border-color: var(--line);
+      color: var(--blue);
+    }
+
+    .spacer {
+      flex: 1;
+    }
+
+    .btn.primary {
+      background: var(--blue);
+      color: #04121f;
+      border-color: var(--blue);
+      font-weight: 600;
+    }
+
+    .btn.danger {
+      background: transparent;
+      color: var(--red);
+      border-color: var(--red);
+    }
+
+    main {
+      padding: 20px;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    .tab {
+      display: none;
+    }
+
+    .tab.active {
+      display: block;
+    }
+
+    .card {
+      background: var(--cardcolor);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 18px 20px;
+    }
+
+    .grid {
+      display: grid;
+      gap: 12px;
+    }
+
+    .grid-hw {
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    }
+
+    .grid-settings {
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    }
+
+    .info-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 0px;
+    }
+
+    .info-pill {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      padding: 7px 12px;
+      font-size: 12.5px;
+      white-space: nowrap;
+    }
+
+    .info-pill .label {
+      font-weight: 600;
+      margin-right: 6px;
+    }
+
+    .info-pill .value {
+      color: var(--muted);
+    }
+
+    .dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-right: 6px
+    }
+
+    .on {
+      background: var(--green);
+      box-shadow: 0 0 8px var(--green);
+    }
+
+    .off {
+      background: var(--red)
+    }
+
+    .idle {
+      background: var(--dim)
+    }
+
+    .hw-card .title {
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+    }
+
+    .hw-card .val {
+      font-size: 32px;
+      font-weight: 600;
+      margin: 6px 0;
+    }
+
+    .hw-card .bar-track {
+      background: #334155;
+      border-radius: 4px;
+      height: 6px;
+      overflow: hidden;
+    }
+
+    .hw-card .bar-fill {
+      background: var(--blue);
+      height: 100%;
+      width: 0%;
+      transition: width .3s;
+    }
+
+    .hw-card .sub {
+      margin-top: 8px;
+      color: #E2E8F0;
+      font-size: 13px;
+    }
+
+    .hw-card .sub .amber {
+      color: var(--amber);
+    }
+
+    .settings-section h3 {
+      margin-top: 0;
+      font-size: 14px;
+      color: var(--blue);
+    }
+
+    .field {
+      margin-bottom: 10px;
+    }
+
+    .field label {
+      display: block;
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+
+    .field input,
+    .field select {
+      width: 100%;
+      background: #0f172a;
+      border: 1px solid #334155;
+      color: var(--fontcolor);
+      border-radius: 6px;
+      padding: 8px 10px;
+      font-size: 13px;
+    }
+
+    .field input[type="range"] {
+      padding: 0;
+      accent-color: var(--blue);
+    }
+
+    .field input[type="color"] {
+      padding: 3px;
+      height: 38px;
+      cursor: pointer;
+    }
+
+    .row {
+      display: flex;
+      gap: 10px;
+    }
+
+    .row .field {
+      flex: 1;
+    }
+
+    .actions {
+      margin-top: 12px;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .status-line {
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+
+    #toast {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--cardcolor);
+      border: 1px solid var(--line);
+      padding: 10px 18px;
+      border-radius: 8px;
+      display: none;
+    }
+
+    .editor-palette {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+
+    .editor-layout {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      align-items: flex-start;
+    }
+
+    #editorCanvas {
+      position: relative;
+      background: #000;
+      border: 2px dashed var(--line);
+      border-radius: 12px;
+      overflow: hidden;
+      touch-action: none;
+      flex-shrink: 0;
+    }
+
+    .ed-widget {
+      position: absolute;
+      background: rgba(56, 189, 248, .15);
+      border: 1px solid var(--blue);
+      border-radius: 4px;
+      color: #fff;
+      font-size: 10px;
+      overflow: hidden;
+      cursor: move;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2px;
+      text-align: center;
+      user-select: none;
+    }
+
+    .ed-widget.selected {
+      border-color: var(--amber);
+      box-shadow: 0 0 6px var(--amber);
+    }
+
+    .editor-props {
+      min-width: 240px;
+      flex: 1;
+    }
+  </style>
+</head>
+
+<body>
+
+  <header>
+    <div class="htop">
+      <div class="logo"><img src="/favicon.svg" alt="Logo"></div>
+      <h1>PulseMQTT</h1>
+      <div class="spacer"></div>
+      <nav>
+        <button data-tab="dashboard" class="active">ℹ️ Dashboard</button>
+        <button data-tab="settings">⚙️ Settings</button>
+        <button data-tab="fota">💾 FOTA</button>
+        <button data-tab="editor" id="navEditor" style="display:none">🎨 Editor</button>
+        <button id="btnReboot" class="btn">🔄 Reboot</button>
+      </nav>
+    </div>
+      <div class="info-bar" id="infoBar">
+        <div class="info-pill">
+          <span class="label">WLAN</span><span class="dot" id="wifiDot"></span><span class="value" id="wifiVal">-</span>
+        </div>
+        <div class="info-pill">
+          <span class="label" id="connLabel">Verbindung</span><span class="dot" id="connDot"></span><span class="value" id="connVal">-</span>
+        </div>
+        <div class="info-pill">
+          <span class="label">Wetter</span><span class="dot" id="weatherDot"></span><span class="value" id="weatherVal">-</span>
+        </div>
+        <div class="info-pill">
+          <span class="label">Zeit</span><span class="value" id="timeVal">-</span>
+        </div>
+        <div class="info-pill">
+          <span class="label">ESP Temp</span><span class="value" id="espTempVal">-</span>
+        </div>
+        <div class="info-pill">
+          <span class="label">Speicher</span><span class="value" id="heapVal">-</span>
+        </div>
+      </div>
+  </header>
+
+  <main>
+
+    <section id="tab-dashboard" class="tab active">
+      <div class="grid grid-hw">
+        <div class="card hw-card">
+          <div class="title">CPU</div>
+          <div class="val" id="cpuLoad">-</div>
+          <div class="bar-track">
+            <div class="bar-fill" id="cpuBar"></div>
+          </div>
+          <div class="sub"><span class="amber" id="cpuTemp">-</span> &middot; <span id="cpuPower">-</span></div>
+        </div>
+        <div class="card hw-card">
+          <div class="title">GPU</div>
+          <div class="val" id="gpuLoad">-</div>
+          <div class="bar-track">
+            <div class="bar-fill" id="gpuBar"></div>
+          </div>
+          <div class="sub"><span class="amber" id="gpuTemp">-</span> &middot; <span id="gpuPower">-</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-settings" class="tab">
+      <div class="grid grid-settings">
+
+        <div class="card settings-section">
+          <h3>📶 WLAN</h3>
+          <div class="status-line"><span class="dot" id="wmDot"></span><span id="wmStatus">-</span></div>
+          <div class="field">
+            <label>Netzwerk (Scan)</label>
+            <select id="wifiScanList">
+              <option value="">- scan -</option>
+            </select>
+          </div>
+          <div class="field"><label>...oder SSID eingeben</label><input id="wifiSsid" placeholder="MyNetwork"></div>
+          <div class="field"><label>Passwort</label><input id="wifiPass" type="password"></div>
+          <div class="actions">
+            <button class="btn primary" id="btnWifiScan">Scan</button>
+            <button class="btn primary" id="btnWifiConnect">Verbinden &amp; speichern</button>
+            <button class="btn" id="btnWifiAp">Setup-Portal (AP)</button>
+          </div>
+        </div>
+
+        <div class="card settings-section">
+          <h3>⚙️ MQTT</h3>
+          <div class="row">
+            <div class="field"><label>Server</label><input id="mqttHost"></div>
+            <div class="field"><label>Port</label><input id="mqttPort" type="number"></div>
+          </div>
+          <div class="row">
+            <div class="field"><label>Benutzer</label><input id="mqttUser"></div>
+            <div class="field"><label>Passwort</label><input id="mqttPass" type="password"></div>
+          </div>
+          <div class="field"><label>Topic</label><input id="mqttTopic"></div>
+          <div class="field">
+            <label>Quelle</label>
+            <select id="hwSource">
+              <option value="0">MQTT</option>
+              <option value="1">USB/Seriell</option>
+            </select>
+          </div>
+          <div class="actions"><button class="btn primary" id="btnSaveMqtt">Speichern</button></div>
+        </div>
+
+        <div class="card settings-section">
+          <h3>🕐 Zeit</h3>
+          <div class="status-line"><span class="dot on"></span>Gerätezeit: <span id="deviceTime">-</span></div>
+          <div class="field">
+            <label>Zeitzone</label>
+            <select id="tzsel" onchange="tzPick()">
+              <option value="CET-1CEST,M3.5.0,M10.5.0/3">Europa – Berlin/Paris/Wien (CET/CEST)</option>
+              <option value="GMT0BST,M3.5.0/1,M10.5.0">UK – London (GMT/BST)</option>
+              <option value="WET0WEST,M3.5.0/1,M10.5.0">Portugal/Irland (WET/WEST)</option>
+              <option value="EET-2EEST,M3.5.0/3,M10.5.0/4">Osteuropa – Athen/Helsinki (EET/EEST)</option>
+              <option value="EST5EDT,M3.2.0,M11.1.0">USA – Eastern</option>
+              <option value="CST6CDT,M3.2.0,M11.1.0">USA – Central</option>
+              <option value="MST7MDT,M3.2.0,M11.1.0">USA – Mountain</option>
+              <option value="PST8PDT,M3.2.0,M11.1.0">USA – Pacific</option>
+              <option value="UTC0">UTC</option>
+              <option value="">— custom / POSIX —</option>
+            </select>
+          </div>
+          <div class="field"><label>POSIX TZ</label><input id="tz"></div>
+          <div class="field"><label>NTP-Server</label><input id="ntpServer"></div>
+          <div class="actions"><button class="btn primary" id="btnSaveTime">Speichern</button></div>
+        </div>
+
+        <div class="card settings-section">
+          <h3>🌥️ Wetter</h3>
+          <div class="field"><label><input type="checkbox" id="weatherEnabled" style="width:auto"> Aktiviert</label></div>
+          <div class="field"><label>OpenWeatherMap API-Key</label><input id="weatherKey"></div>
+          <div class="field"><label>Stadt</label><input id="weatherCity"></div>
+          <div class="field">
+            <label>Einheiten</label>
+            <select id="weatherUnits">
+              <option value="metric">Metrisch (&deg;C)</option>
+              <option value="imperial">Imperial (&deg;F)</option>
+            </select>
+          </div>
+          <div class="actions"><button class="btn primary" id="btnSaveWeather">Speichern</button></div>
+        </div>
+
+        <div class="card settings-section">
+          <h3>🖥️ Anzeige</h3>
+          <div class="field"><label>Board</label><input id="boardName" disabled></div>
+          <div class="field" id="displayTypeField" style="display:none">
+            <label>Anzeige-Typ</label>
+            <select id="displayType">
+              <option value="0">Kein Display (headless)</option>
+              <option value="4">GC9A01 (rund, 240x240, SPI)</option>
+              <option value="5">ILI9488 (320x480, SPI)</option>
+              <option value="6">ST7796S (320x480, SPI)</option>
+              <option value="7">SSD1309 (128x64, mono, I2C)</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Rotation</label>
+            <select id="rotation">
+              <option value="0">0&deg;</option>
+              <option value="1">90&deg;</option>
+              <option value="2">180&deg;</option>
+              <option value="3">270&deg;</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Helligkeit (<span id="brightVal">-</span>) <span id="brightUnsupported" style="display:none;color:var(--red)">- kein PWM-Pin auf diesem Board</span></label>
+            <input id="brightness" type="range" min="0" max="255">
+          </div>
+          <div class="field">
+            <label>Sprache</label>
+            <select id="language">
+              <option value="de">Deutsch</option>
+              <option value="en">English</option>
+            </select>
+          </div>
+          <div class="row" id="arcColorField" style="display:none">
+            <div class="field"><label>CPU Color</label><input id="cpuArcColor" type="color"></div>
+            <div class="field"><label>GPU Color</label><input id="gpuArcColor" type="color"></div>
+          </div>
+          <div class="field" id="standbyTimeoutField" style="display:none">
+            <label>Standby / Screensaver nach (Sekunden ohne Signal)</label>
+            <input id="standbyTimeout" type="number" min="5" max="3600">
+          </div>
+          <div class="actions"><button class="btn primary" id="btnSaveDisplay">Speichern</button></div>
+        </div>
+
+        <div class="card settings-section" id="pinOverridesCard" style="display:none">
+          <h3>🔌 Pins</h3>
+          <div class="status-line">Leer = eingebauter Standard des gewaehlten Anzeige-Typs. -1 = Pin bewusst nicht verdrahtet/nicht verwendet.</div>
+          <div class="field"><label>MOSI</label><input id="pinMosi" type="number" min="-1" max="48"></div>
+          <div class="field"><label>MISO</label><input id="pinMiso" type="number" min="-1" max="48"></div>
+          <div class="field"><label>SCLK</label><input id="pinSclk" type="number" min="-1" max="48"></div>
+          <div class="field"><label>CS</label><input id="pinCs" type="number" min="-1" max="48"></div>
+          <div class="field"><label>DC</label><input id="pinDc" type="number" min="-1" max="48"></div>
+          <div class="field"><label>RST</label><input id="pinRst" type="number" min="-1" max="48"></div>
+          <div class="field"><label>BL (Backlight)</label><input id="pinBl" type="number" min="-1" max="48"></div>
+          <div class="actions"><button class="btn primary" id="btnSavePins">Speichern</button></div>
+        </div>
+
+        <div class="card settings-section" id="pinOverridesI2cCard" style="display:none">
+          <h3>🔌 Pins (I2C)</h3>
+          <div class="status-line">Leer = eingebauter Standard (SDA 8 / SCL 9). -1 = Pin bewusst nicht verdrahtet/nicht verwendet.</div>
+          <div class="field"><label>SDA</label><input id="pinSda" type="number" min="-1" max="48"></div>
+          <div class="field"><label>SCL</label><input id="pinScl" type="number" min="-1" max="48"></div>
+          <div class="field"><label>RST</label><input id="pinI2cRst" type="number" min="-1" max="48"></div>
+          <div class="field"><label>I2C-Adresse (Hex, z.B. 3C)</label><input id="pinI2cAddr" type="text" maxlength="2"></div>
+          <div class="actions"><button class="btn primary" id="btnSavePinsI2c">Speichern</button></div>
+        </div>
+
+      </div>
+    </section>
+
+    <section id="tab-fota" class="tab">
+      <div class="card" style="max-width:520px">
+        <h3 style="margin-top:0;color:var(--blue)">⬆ Firmware</h3>
+        <div class="status-line">
+          Aktuell: <span id="fwVersion">-</span> (<span id="fwBoard">-</span>)<br>
+          Freier Speicher: <span id="fwHeap">-</span> &middot; Laufzeit: <span id="fwUptime">-</span>
+        </div>
+        <div class="field">
+          <label>Manuell flashen (.bin dieses Boards)</label>
+          <input type="file" id="otaFile" accept=".bin">
+        </div>
+        <div class="actions">
+          <button class="btn primary" id="btnOta">Flashen &amp; neustart</button>
+        </div>
+        <div id="otaProgress" style="margin-top:10px;font-size:12px;color:var(--muted)"></div>
+
+        <hr style="border-color:#334155;margin:20px 0">
+        <div class="status-line">Werkseinstellungen: L&ouml;scht WLAN, MQTT und alle Einstellungen, dann Neustart ins Setup-Portal.</div>
+        <div class="actions"><button class="btn danger" id="btnFactoryReset">Auf Werkseinstellungen zur&uuml;cksetzen</button></div>
+      </div>
+    </section>
+
+    <section id="tab-editor" class="tab">
+      <div class="card" style="margin-bottom:16px">
+        <h3 style="margin-top:0;color:var(--blue)">🎨 Dashboard-Editor</h3>
+        <div class="status-line">Nur auf eckigen Displays verfügbar. Widget aus der Palette hinzufügen, auf der Fläche verschieben, rechts Eigenschaften anpassen, dann speichern.</div>
+        <div class="editor-palette" id="editorPalette">
+          <button class="btn" data-type="datetime_card">+ Datum/Uhrzeit</button>
+          <button class="btn" data-type="weather_card">+ Wetter</button>
+          <button class="btn" data-type="cpu_card">+ CPU</button>
+          <button class="btn" data-type="gpu_card">+ GPU</button>
+          <button class="btn" data-type="chart_card">+ Verlauf</button>
+          <button class="btn" data-type="footer">+ Footer</button>
+        </div>
+      </div>
+      <div class="editor-layout">
+        <div id="editorCanvas"></div>
+        <div class="card editor-props" id="editorProps">
+          <div class="status-line">Kein Widget ausgewählt</div>
+        </div>
+      </div>
+      <div class="actions" style="margin-top:16px">
+        <button class="btn primary" id="btnEditorSave">Speichern &amp; anwenden</button>
+        <button class="btn" id="btnEditorReset">Auf Grundlayout zurücksetzen</button>
+        <button class="btn danger" id="btnEditorClear">Alles entfernen</button>
+      </div>
+    </section>
+
+  </main>
+
+  <div id="toast"></div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    let s_statusDeviceW = 240, s_statusDeviceH = 240; // Fallback bis der erste /api/status-Poll da ist
+
+    function toast(msg) {
+      const t = $('toast');
+      t.textContent = msg;
+      t.style.display = 'block';
+      clearTimeout(toast._h);
+      toast._h = setTimeout(() => t.style.display = 'none', 3000);
+    }
+
+    async function api(path, opts) {
+      // cache:'no-store' fuer alle API-Aufrufe - jede Antwort hier ist
+      // dynamisch, ein vom Browser zwischengespeichertes GET (z.B. fuer
+      // /api/layout/default) zeigte sonst veraltete Werte statt der
+      // aktuellen Server-Antwort.
+      const res = await fetch(path, { cache: 'no-store', ...opts });
+      if (!res.ok) throw new Error(await res.text());
+      const ct = res.headers.get('content-type') || '';
+      return ct.includes('json') ? res.json() : res.text();
+    }
+
+    // --- Tabs ---
+    // Direkt per URL erreichbar (/, /settings, /fota) statt nur client-seitig
+    // per data-tab umzuschalten - der Server liefert fuer alle drei Pfade
+    // dieselbe Seite (siehe web_portal.cpp::handleDashboard), hier wird beim
+    // Laden bzw. bei Browser-Vor/Zurueck anhand von location.pathname
+    // entschieden, welcher Tab aktiv ist.
+    function tabFromPath(path) {
+      const p = path.replace(/^\/+|\/+$/g, '');
+      return (p === 'settings' || p === 'fota' || p === 'editor') ? p : 'dashboard';
+    }
+
+    function activateTab(tab, pushUrl) {
+      document.querySelectorAll('nav button[data-tab]').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+      document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.id === 'tab-' + tab));
+      if (tab === 'settings') loadConfig();
+      if (tab === 'editor') { editorInit(s_statusDeviceW, s_statusDeviceH); editorLoad(); }
+      if (pushUrl) history.pushState({ tab }, '', tab === 'dashboard' ? '/' : '/' + tab);
+    }
+
+    document.querySelectorAll('nav button[data-tab]').forEach(btn => {
+      btn.addEventListener('click', () => activateTab(btn.dataset.tab, true));
+    });
+
+    window.addEventListener('popstate', () => activateTab(tabFromPath(location.pathname), false));
+
+    activateTab(tabFromPath(location.pathname), false);
+
+    $('btnReboot').addEventListener('click', async () => {
+      if (!confirm('Gerät wirklich neustarten?')) return;
+      await api('/api/reboot', { method: 'POST' });
+      toast('Neustart...');
+    });
+
+    // --- Dashboard polling ---
+    function fmtUptime(s) {
+      const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60);
+      return `${d}d ${h}h ${m}m`;
+    }
+
+    async function refreshStatus() {
+      let s;
+      try { s = await api('/api/status'); } catch (e) { return; }
+
+      $('wifiDot').className = 'dot ' + (s.wifi.connected ? 'on' : 'off');
+      $('wifiVal').textContent = s.wifi.connected ? `${s.wifi.ssid} · ${s.wifi.ip} · ${s.wifi.rssi} dBm` : 'getrennt';
+
+      // Settings-Tab "WLAN"-Karte: bewusst dieselbe Quelle (s.wifi, siehe
+      // wifi_connected in wifi_provision.cpp::onWiFiEvent) statt des
+      // WIFIMANAGER-eigenen /api/wifi/status - dessen Zustand bleibt im
+      // Normalbetrieb (Verbindung ueber gespeicherte Zugangsdaten via
+      // WiFi.begin(), siehe wifi_provision_begin()) dauerhaft "getrennt",
+      // weil s_wm dabei gar nicht erst zum Einsatz kommt (nur im Captive-
+      // Portal-Fallback aktiv).
+      $('wmDot').className = 'dot ' + (s.wifi.connected ? 'on' : 'off');
+      $('wmStatus').textContent = s.wifi.connected ? `Verbunden · ${s.wifi.ip}` : 'Getrennt';
+
+      if (s.source === 'mqtt') {
+        $('connLabel').textContent = 'MQTT';
+        $('connDot').className = 'dot ' + (s.mqtt.connected ? 'on' : 'off');
+        $('connVal').textContent = `${s.mqtt.host}:${s.mqtt.port} · ${s.mqtt.rx_count} Ticks`;
+      } else {
+        $('connLabel').textContent = 'USB';
+        $('connDot').className = 'dot ' + (s.usb.connected ? 'on' : 'off');
+        $('connVal').textContent = (s.usb.connected ? 'verbunden' : 'getrennt') + ` · ${s.usb.rx_count} Ticks`;
+      }
+
+      $('weatherDot').className = 'dot ' + (s.weather.connected ? 'on' : 'off');
+      $('weatherVal').textContent = s.weather.connected ? 'verbunden' : 'kein Empfang';
+
+      $('timeVal').textContent = s.time.iso ? s.time.iso.replace('T', ' ') : '-';
+      const deviceTimeEl = $('deviceTime');
+      if (deviceTimeEl) deviceTimeEl.textContent = s.time.iso ? s.time.iso.replace('T', ' ') : '-';
+      $('espTempVal').textContent = (s.esp.temp_c === null) ? 'n/a' : s.esp.temp_c.toFixed(1) + ' °C';
+      $('heapVal').textContent = (s.esp.free_heap / 1024).toFixed(0) + ' KB';
+
+      $('fwVersion').textContent = s.esp.fw_version;
+      $('fwBoard').textContent = s.esp.board_name;
+      $('fwHeap').textContent = (s.esp.free_heap / 1024).toFixed(0) + ' KB';
+      $('fwUptime').textContent = fmtUptime(s.esp.uptime_s);
+
+      // Dashboard-Editor nicht auf runden Displays (GC9A01) - Nav-Button
+      // sonst ausgeblendet, siehe display_layout.h.
+      if (s.display && s.display.layout_editor) {
+        $('navEditor').style.display = '';
+        s_statusDeviceW = s.display.w;
+        s_statusDeviceH = s.display.h;
+      } else {
+        $('navEditor').style.display = 'none';
+      }
+    }
+
+    async function refreshHw() {
+      let h;
+      try { h = await api('/api/hwdata'); } catch (e) { return; }
+
+      $('cpuLoad').textContent = h.cpu.load.toFixed(0) + '%';
+      $('cpuBar').style.width = Math.min(100, h.cpu.load) + '%';
+      $('cpuTemp').textContent = h.cpu.temp.toFixed(0) + '°C';
+      $('cpuPower').textContent = h.cpu.power.toFixed(0) + 'W';
+
+      $('gpuLoad').textContent = h.gpu.load.toFixed(0) + '%';
+      $('gpuBar').style.width = Math.min(100, h.gpu.load) + '%';
+      $('gpuTemp').textContent = h.gpu.temp.toFixed(0) + '°C';
+      $('gpuPower').textContent = h.gpu.power.toFixed(0) + 'W';
+    }
+
+    // 5s statt vormals 2s: jeder Poll ist ein HTTP-Request, den
+    // ESPAsyncWebServer/AsyncTCP auf dem ESP32 mit eigenen Allocations
+    // bedient - bei dauerhaft offenem Dashboard-Tab ueber viele Minuten ein
+    // moeglicher Beitrag zur Heap-Fragmentierung, die den Wetter-HTTPS-
+    // Handshake sporadisch scheitern laesst (siehe weather_service.cpp).
+    // Reduziert die Request-Rate um 60%, ohne die Live-Ansicht spuerbar
+    // traeger zu machen.
+    setInterval(refreshStatus, 5000);
+    setInterval(refreshHw, 5000);
+    refreshStatus();
+    refreshHw();
+
+    // --- Settings: general config ---
+    // true, wenn das Board den Displaytyp erst zur Laufzeit waehlt (siehe
+    // web_portal.cpp::handleGetConfig) - steuert, ob der "Anzeige-Typ"-
+    // Picker unten ueberhaupt sichtbar ist.
+    let s_dynamicDisplay = false;
+    // true, wenn das aktuell aktive Display rund ist (siehe display_layout.h
+    // displayIsRound()) - steuert, ob die Arc-Farbfelder sichtbar sind.
+    let s_displayRound = false;
+    // true, wenn das aktuell aktive Display monochrom ist (SSD1309, siehe
+    // display_layout.h displayIsMono()) - wie s_displayRound, aber ohne
+    // Arc-Farben (das Mono-Dashboard ist rein schwarz/weiss, siehe
+    // display_mono.cpp) und mit eigener I2C-Pin-Karte statt der SPI-Karte.
+    let s_displayMono = false;
+    // display_type-Wert der SSD1309-Option oben (<option value="7">) - als
+    // Konstante statt Magic Number an jeder Vergleichsstelle unten.
+    const SSD1309_TYPE = 7;
+    // Eingebaute Default-Pins je Displaytyp (siehe web_portal.cpp::handleGetConfig
+    // "display_defaults"/"display_defaults_i2c"), Schluessel = display_type-Wert
+    // als String.
+    let s_displayDefaults = {};
+    let s_displayDefaultsI2c = {};
+
+    // Zeigt die Defaults des aktuell gewaehlten Displaytyps als Platzhalter in
+    // den (leeren) Pin-Feldern - der Wert bleibt leer (= kein Override), der
+    // Nutzer sieht aber sofort, welcher Pin tatsaechlich verwendet wird.
+    function updatePinPlaceholders() {
+      const isI2c = $('displayType').value == SSD1309_TYPE;
+      $('pinOverridesCard').style.display = (s_dynamicDisplay && !isI2c) ? '' : 'none';
+      $('pinOverridesI2cCard').style.display = (s_dynamicDisplay && isI2c) ? '' : 'none';
+
+      const d = s_displayDefaults[$('displayType').value] || {};
+      const map = { pinMosi: 'mosi', pinMiso: 'miso', pinSclk: 'sclk', pinCs: 'cs', pinDc: 'dc', pinRst: 'rst', pinBl: 'bl' };
+      for (const [id, key] of Object.entries(map)) {
+        $(id).placeholder = d[key] !== undefined ? String(d[key]) : '';
+      }
+
+      const dI2c = s_displayDefaultsI2c[$('displayType').value] || {};
+      const mapI2c = { pinSda: 'sda', pinScl: 'scl', pinI2cRst: 'rst' };
+      for (const [id, key] of Object.entries(mapI2c)) {
+        $(id).placeholder = dI2c[key] !== undefined ? String(dI2c[key]) : '';
+      }
+      $('pinI2cAddr').placeholder = dI2c.addr !== undefined ? dI2c.addr.toString(16).toUpperCase() : '';
+    }
+    // Anzeige-Typ gewechselt (noch nicht gespeichert) -> Platzhalter der
+    // Pin-Felder sofort auf den Default des neu gewaehlten Typs umstellen,
+    // UND je nach Typ zwischen SPI- und I2C-Pin-Karte umschalten.
+    $('displayType').addEventListener('change', updatePinPlaceholders);
+
+    async function loadConfig() {
+      let c;
+      try { c = await api('/api/config'); } catch (e) { return; }
+      $('mqttHost').value = c.mqtt_host;
+      $('mqttPort').value = c.mqtt_port;
+      $('mqttUser').value = c.mqtt_user;
+      $('mqttPass').value = '';
+      $('mqttTopic').value = c.mqtt_topic;
+      $('hwSource').value = c.hw_source;
+      $('tz').value = c.tz;
+      // Dropdown auf den passenden Preset stellen, falls tz einem bekannten
+      // Wert entspricht - sonst auf "custom / POSIX" (leerer value).
+      const tzsel = $('tzsel');
+      const hasPreset = Array.from(tzsel.options).some(o => o.value === c.tz);
+      tzsel.value = hasPreset ? c.tz : '';
+      $('ntpServer').value = c.ntp_server;
+      $('weatherEnabled').checked = c.weather_enabled;
+      $('weatherKey').value = c.weather_api_key;
+      $('weatherCity').value = c.weather_city;
+      $('weatherUnits').value = c.weather_units;
+      $('boardName').value = c.board_name;
+      s_dynamicDisplay = !!c.dynamic_display;
+      $('displayTypeField').style.display = s_dynamicDisplay ? '' : 'none';
+      if (s_dynamicDisplay) $('displayType').value = c.display_type;
+      if (s_dynamicDisplay && c.pin_overrides) {
+        const po = c.pin_overrides;
+        $('pinMosi').value = po.mosi ?? '';
+        $('pinMiso').value = po.miso ?? '';
+        $('pinSclk').value = po.sclk ?? '';
+        $('pinCs').value   = po.cs   ?? '';
+        $('pinDc').value   = po.dc   ?? '';
+        $('pinRst').value  = po.rst  ?? '';
+        $('pinBl').value   = po.bl   ?? '';
+      }
+      if (s_dynamicDisplay && c.pin_overrides_i2c) {
+        const poi = c.pin_overrides_i2c;
+        $('pinSda').value    = poi.sda ?? '';
+        $('pinScl').value    = poi.scl ?? '';
+        $('pinI2cRst').value = poi.rst ?? '';
+        // Adresse kommt als Dezimalzahl vom Backend (siehe web_portal.cpp),
+        // im Feld aber hex (Konvention bei I2C-Adressen, z.B. "3C" statt "60").
+        $('pinI2cAddr').value = (poi.addr !== null && poi.addr !== undefined) ? poi.addr.toString(16).toUpperCase() : '';
+      }
+      s_displayDefaults = c.display_defaults || {};
+      s_displayDefaultsI2c = c.display_defaults_i2c || {};
+      // updatePinPlaceholders() blendet SPI-/I2C-Pin-Karte je nach Typ ein/aus
+      // (auch bei !s_dynamicDisplay - dann blendet es beide aus) - deshalb
+      // immer aufrufen statt wie die Pin-Werte oben auf s_dynamicDisplay zu
+      // gaten.
+      updatePinPlaceholders();
+      $('rotation').value = c.rotation;
+      $('brightness').value = c.brightness;
+      $('brightVal').textContent = c.brightness;
+      $('brightness').disabled = !c.has_backlight_pwm;
+      $('brightUnsupported').style.display = c.has_backlight_pwm ? 'none' : 'inline';
+      $('language').value = c.language;
+      s_displayRound = !!c.display_round;
+      s_displayMono = !!c.display_mono;
+      // CPU-/GPU-Farben faerben sowohl die Ringe des runden Displays
+      // (display_round.cpp) als auch Balken+Icons der CPU-/GPU-Karten im
+      // rechteckigen Dashboard-Editor (display_layout.cpp) - beim Mono-
+      // Dashboard (display_mono.cpp) gibt es dagegen keine Farbe, nur
+      // Schwarz/Weiss (siehe dortigen Kommentar zum 1bpp-Threshold), und bei
+      // komplett headless (BOARD_GENERIC + DISPLAY_NONE) auch nichts zu
+      // faerben.
+      const showAccentColors = !s_dynamicDisplay || (c.display_type !== 0 && !s_displayMono);
+      $('arcColorField').style.display = showAccentColors ? 'flex' : 'none';
+      // Standby/Screensaver ist im runden UND im Mono-Layout implementiert
+      // (display_round.cpp bzw. display_mono.cpp) - kein Editor auf Boards
+      // ohne diese Logik (rechteckiges Dashboard hat keinen Standby).
+      $('standbyTimeoutField').style.display = (s_displayRound || s_displayMono) ? '' : 'none';
+      if (showAccentColors) {
+        $('cpuArcColor').value = c.cpu_arc_color;
+        $('gpuArcColor').value = c.gpu_arc_color;
+      }
+      if (s_displayRound || s_displayMono) {
+        $('standbyTimeout').value = c.standby_timeout_s;
+      }
+    }
+
+    // Preset gewaehlt -> POSIX-TZ-Feld uebernehmen. "custom / POSIX" (leerer
+    // value) laesst das Feld unangetastet, damit man von einem Preset aus
+    // manuell weiter anpassen kann.
+    function tzPick() {
+      const v = $('tzsel').value;
+      if (v) $('tz').value = v;
+    }
+
+    // Helligkeit ist ein reiner GPIO/PWM-Write ohne Nebenwirkungen auf andere
+    // Subsysteme (siehe web_portal.cpp::handlePostConfig) - wird sofort beim
+    // Loslassen des Reglers angewendet, nicht erst nach "Speichern" + Neustart
+    // wie der Rest der Anzeige-Sektion.
+    $('brightness').addEventListener('input', () => $('brightVal').textContent = $('brightness').value);
+    $('brightness').addEventListener('change', async () => {
+      try {
+        await api('/api/config', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ brightness: parseInt($('brightness').value, 10) }),
+        });
+        toast('Helligkeit angewendet');
+      } catch (e) {
+        toast('Fehler beim Anwenden');
+      }
+    });
+
+    async function saveConfig(patch) {
+      try {
+        await api('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) });
+        toast('Gespeichert - Neustart erforderlich');
+      } catch (e) {
+        toast('Fehler beim Speichern');
+      }
+    }
+
+    $('btnSaveMqtt').addEventListener('click', () => saveConfig({
+      mqtt_host: $('mqttHost').value,
+      mqtt_port: parseInt($('mqttPort').value, 10),
+      mqtt_user: $('mqttUser').value,
+      mqtt_pass: $('mqttPass').value,
+      mqtt_topic: $('mqttTopic').value,
+      hw_source: parseInt($('hwSource').value, 10),
+    }));
+
+    $('btnSaveTime').addEventListener('click', () => saveConfig({
+      tz: $('tz').value,
+      ntp_server: $('ntpServer').value,
+    }));
+
+    $('btnSaveWeather').addEventListener('click', () => saveConfig({
+      weather_enabled: $('weatherEnabled').checked,
+      weather_api_key: $('weatherKey').value,
+      weather_city: $('weatherCity').value,
+      weather_units: $('weatherUnits').value,
+    }));
+
+    $('btnSaveDisplay').addEventListener('click', () => {
+      const patch = {
+        rotation: parseInt($('rotation').value, 10),
+        language: $('language').value,
+      };
+      // Nur mitschicken, wenn der Picker sichtbar war - sonst wuerde ein
+      // fest verdrahtetes Board (CYD, JC8048W550) bei jedem Speichern
+      // stillschweigend auf display_type=0 zurueckgesetzt.
+      if (s_dynamicDisplay) patch.display_type = parseInt($('displayType').value, 10);
+      if ($('arcColorField').style.display !== 'none') {
+        patch.cpu_arc_color = $('cpuArcColor').value;
+        patch.gpu_arc_color = $('gpuArcColor').value;
+      }
+      if (s_displayRound || s_displayMono) {
+        patch.standby_timeout_s = parseInt($('standbyTimeout').value, 10);
+      }
+      saveConfig(patch);
+    });
+
+    // Leeres Feld = kein Override (PIN_UNSET), sonst die eingegebene Zahl -
+    // auch -1 ("bewusst nicht verdrahtet") ist ein gueltiger echter Wert,
+    // siehe web_portal.cpp::handleGetConfig.
+    function pinVal(id) {
+      const v = $(id).value.trim();
+      return v === '' ? null : parseInt(v, 10);
+    }
+    $('btnSavePins').addEventListener('click', () => saveConfig({
+      pin_overrides: {
+        mosi: pinVal('pinMosi'),
+        miso: pinVal('pinMiso'),
+        sclk: pinVal('pinSclk'),
+        cs:   pinVal('pinCs'),
+        dc:   pinVal('pinDc'),
+        rst:  pinVal('pinRst'),
+        bl:   pinVal('pinBl'),
+      },
+    }));
+
+    // I2C-Adresse kommt als Hex-String rein (Konvention bei I2C, z.B. "3C"),
+    // geht aber als Dezimalzahl raus (siehe web_portal.cpp) - Basis 16 statt
+    // 10 wie bei pinVal() oben, sonst identisch (leer = kein Override).
+    function pinValHex(id) {
+      const v = $(id).value.trim();
+      return v === '' ? null : parseInt(v, 16);
+    }
+    $('btnSavePinsI2c').addEventListener('click', () => saveConfig({
+      pin_overrides_i2c: {
+        sda:  pinVal('pinSda'),
+        scl:  pinVal('pinScl'),
+        rst:  pinVal('pinI2cRst'),
+        addr: pinValHex('pinI2cAddr'),
+      },
+    }));
+
+    // --- Settings: WLAN (WiFiManager REST API) ---
+    // /api/wifi/scan ist zweistufig: der erste Aufruf stoesst nur einen
+    // asynchronen WiFi.scanNetworks() an und antwortet mit {"status":"scanning"}
+    // (kein Array!) - erst ein spaeterer Aufruf liefert das fertige Ergebnis
+    // als Array. Also pollen, bis ein Array zurueckkommt (Cooldown der Lib
+    // ist 2s, daher hier mit etwas Abstand alle 2.5s erneut versuchen).
+    function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+    $('btnWifiScan').addEventListener('click', async () => {
+      const list = $('wifiScanList');
+      list.innerHTML = '<option value="">Scanne...</option>';
+      try {
+        let nets = await api('/api/wifi/scan');
+        for (let i = 0; i < 6 && !Array.isArray(nets); i++) {
+          await sleep(2500);
+          nets = await api('/api/wifi/scan');
+        }
+        list.innerHTML = '<option value="">- scan -</option>';
+        if (!Array.isArray(nets)) {
+          toast('Scan dauert ungewöhnlich lange');
+          return;
+        }
+        nets.forEach(n => {
+          const ssid = n.ssid || n.SSID || n;
+          const opt = document.createElement('option');
+          opt.value = ssid; opt.textContent = ssid;
+          list.appendChild(opt);
+        });
+      } catch (e) {
+        toast('Scan fehlgeschlagen');
+      }
+    });
+    $('wifiScanList').addEventListener('change', () => {
+      if ($('wifiScanList').value) $('wifiSsid').value = $('wifiScanList').value;
+    });
+
+    $('btnWifiConnect').addEventListener('click', async () => {
+      const ssid = $('wifiSsid').value, pass = $('wifiPass').value;
+      if (!ssid) { toast('SSID fehlt'); return; }
+      try {
+        await api('/api/wifi/add', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ssid, password: pass }),
+        });
+        toast('Gespeichert - verbinde...');
+      } catch (e) {
+        toast('Fehler beim Verbinden');
+      }
+    });
+
+    $('btnWifiAp').addEventListener('click', async () => {
+      try {
+        await api('/api/wifi/softap/start', { method: 'POST' });
+        toast('Setup-AP gestartet');
+      } catch (e) {
+        toast('Fehler beim Start des Setup-Portals');
+      }
+    });
+
+    // --- FOTA ---
+    $('btnOta').addEventListener('click', async () => {
+      const file = $('otaFile').files[0];
+      if (!file) { toast('Keine Datei gewählt'); return; }
+      if (!confirm('Firmware jetzt flashen und neustarten?')) return;
+
+      const form = new FormData();
+      form.append('firmware', file);
+      $('otaProgress').textContent = 'Lade hoch...';
+
+      try {
+        const xhr = new XMLHttpRequest();
+        let uploadDone = false;
+        xhr.open('POST', '/api/ota');
+        xhr.timeout = 15000; // Verbindung reisst beim Neustart oft ab, bevor
+                              // die Antwort ankommt - nicht unbegrenzt haengen
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) {
+            const pct = Math.round(e.loaded / e.total * 100);
+            $('otaProgress').textContent = 'Lade hoch... ' + pct + '%';
+            if (pct >= 100) uploadDone = true;
+          }
+        };
+        xhr.onload = () => {
+          if (xhr.status === 200) {
+            $('otaProgress').textContent = 'Erfolgreich - Gerät startet neu...';
+            toast('Firmware geflasht, Neustart...');
+            $('otaFile').value = '';
+          } else {
+            $('otaProgress').textContent = 'Fehler: ' + xhr.responseText;
+          }
+        };
+        // Das ESP startet neu, sobald es geantwortet hat (siehe
+        // web_portal.cpp handleOtaDone()) - die HTTP-Antwort erreicht den
+        // Browser dabei haeufig nicht mehr rechtzeitig, bevor die Verbindung
+        // gekappt wird. Ist der Upload bereits vollstaendig hochgeladen
+        // (uploadDone), ist das der ERWARTETE Ablauf und kein Fehlschlag -
+        // nur ein Abbruch VOR 100% ist ein echter Upload-Fehler.
+        const handleDrop = () => {
+          if (uploadDone) {
+            $('otaProgress').textContent = 'Firmware geflasht - Gerät startet neu...';
+            toast('Firmware geflasht, Neustart...');
+            $('otaFile').value = '';
+          } else {
+            $('otaProgress').textContent = 'Upload fehlgeschlagen';
+          }
+        };
+        xhr.onerror = handleDrop;
+        xhr.ontimeout = handleDrop;
+        xhr.send(form);
+      } catch (e) {
+        $('otaProgress').textContent = 'Fehler: ' + e.message;
+      }
+    });
+
+    $('btnFactoryReset').addEventListener('click', async () => {
+      if (!confirm('Wirklich alle Einstellungen löschen und neu starten?')) return;
+      try {
+        await api('/api/factory_reset', { method: 'POST' });
+        toast('Werkseinstellungen wiederhergestellt - Neustart...');
+      } catch (e) {
+        toast('Fehler beim Zurücksetzen');
+      }
+    });
+
+    // --- Dashboard-Editor ---
+    // Bildet 1:1 auf das JSON ab, das die Firmware versteht (siehe
+    // display_layout.cpp): {"version":1,"widgets":[{"id","type","x","y","w","h","props"}]}.
+    // Skalierung ist reine Darstellungsgroesse im Browser (kleine Displays
+    // wie 240x240 waeren 1:1 unbequem klein zum Klicken/Ziehen), dynamisch
+    // berechnet damit auch grosse Displays (800x480) auf eine vernuenftige
+    // Canvas-Groesse passen statt riesig zu werden.
+    // Getrennte Breiten-/Hoehen-Obergrenze statt eines einzelnen Werts
+    // geteilt durch max(w,h): bei einem einzelnen Wert gewinnt bei breiten
+    // Displays (JC8048W550, 800x480) immer die Breite gegen die Grenze und
+    // die resultierende Canvas-Hoehe schrumpft ueberproportional (480x288 -
+    // wirkte "zu schmal"/kleiner als die CYD-Vorschau trotz 5x mehr Pixeln,
+    // User-Feedback). Mit getrennten Grenzen je Achse bekommt jede
+    // Seitenverhaeltnis-Form (breit/hoch/quadratisch) eine Canvas nahe der
+    // tatsaechlich verfuegbaren Flaeche.
+    const EDITOR_MAX_CANVAS_W = 640;
+    const EDITOR_MAX_CANVAS_H = 480;
+    let s_editorScale = 1.5;
+    let s_editorW = 240, s_editorH = 240; // tatsaechliche Geraete-Aufloesung
+    let s_layoutWidgets = [];
+    let s_selectedId = null;
+    let s_widgetCounter = 0;
+    let s_dragId = null, s_dragOffX = 0, s_dragOffY = 0;
+
+    function editorInit(w, h) {
+      s_editorW = w; s_editorH = h;
+      s_editorScale = Math.min(1.5, EDITOR_MAX_CANVAS_W / w, EDITOR_MAX_CANVAS_H / h);
+      const canvas = $('editorCanvas');
+      canvas.style.width = (w * s_editorScale) + 'px';
+      canvas.style.height = (h * s_editorScale) + 'px';
+    }
+
+    function editorWidgetLabel(w) {
+      if (w.type === 'chart_card') {
+        return w.type + ': ' + (w.props.source || 'cpu') + '/' + (w.props.metric || 'load');
+      }
+      return w.type;
+    }
+
+    function editorRender() {
+      const canvas = $('editorCanvas');
+      canvas.querySelectorAll('.ed-widget').forEach(e => e.remove());
+      s_layoutWidgets.forEach(w => {
+        const el = document.createElement('div');
+        el.className = 'ed-widget' + (w.id === s_selectedId ? ' selected' : '');
+        el.style.left = (w.x * s_editorScale) + 'px';
+        el.style.top = (w.y * s_editorScale) + 'px';
+        el.style.width = (w.w * s_editorScale) + 'px';
+        el.style.height = (w.h * s_editorScale) + 'px';
+        el.textContent = editorWidgetLabel(w);
+        el.dataset.id = w.id;
+        el.addEventListener('pointerdown', onEditorWidgetPointerDown);
+        canvas.appendChild(el);
+      });
+    }
+
+    function editorSelect(id) {
+      s_selectedId = id;
+      editorRender();
+      editorRenderProps();
+    }
+
+    function onEditorWidgetPointerDown(e) {
+      e.stopPropagation();
+      const id = e.currentTarget.dataset.id;
+      // Offset VOR editorSelect() greifen: editorSelect() -> editorRender()
+      // entfernt alle .ed-widget-Nodes und baut sie neu auf, danach ist
+      // e.currentTarget vom DOM abgehaengt und getBoundingClientRect()
+      // liefert nur noch {0,0,0,0} - daraus resultierte der "springt immer
+      // auf 0x0"-Bug beim Ziehen.
+      const rect = e.currentTarget.getBoundingClientRect();
+      s_dragOffX = e.clientX - rect.left;
+      s_dragOffY = e.clientY - rect.top;
+      s_dragId = id;
+      editorSelect(id);
+    }
+
+    // 10px-Raster statt pixelgenauem Verschieben - leichter deckungsgleich
+    // auszurichten als frei per Hand zu positionieren.
+    const EDITOR_GRID_PX = 5;
+    function snapToGrid(v) { return Math.round(v / EDITOR_GRID_PX) * EDITOR_GRID_PX; }
+
+    $('editorCanvas').addEventListener('pointermove', (e) => {
+      if (!s_dragId) return;
+      const w = s_layoutWidgets.find(w => w.id === s_dragId);
+      if (!w) return;
+      const canvasRect = $('editorCanvas').getBoundingClientRect();
+      const x = (e.clientX - canvasRect.left - s_dragOffX) / s_editorScale;
+      const y = (e.clientY - canvasRect.top - s_dragOffY) / s_editorScale;
+      w.x = Math.max(0, Math.min(s_editorW - w.w, snapToGrid(x)));
+      w.y = Math.max(0, Math.min(s_editorH - w.h, snapToGrid(y)));
+      editorRender();
+    });
+    window.addEventListener('pointerup', () => { s_dragId = null; });
+
+    // Feste Karten-Widgets (siehe display_layout.cpp) haben keine
+    // konfigurierbaren Props - Inhalt/Icons/Bindungen sind fest im Firmware-
+    // Code verdrahtet (dieselben Funktionen wie beim runden Display), nur
+    // Position/Groesse sind editierbar. Die frei konfigurierbaren
+    // label/slider/button/status-Primitive (freier Text, generische
+    // Bindung) sind entfernt - blieben im Editor ungenutzt.
+    const EDITOR_CARD_TYPES = ['datetime_card', 'weather_card', 'cpu_card', 'gpu_card', 'footer'];
+    // chart_card ist die einzige Ausnahme mit eigenen Props (Quelle/
+    // Messwert statt Text/Bindung) - eigener Zweig unten statt Aufnahme in
+    // EDITOR_CARD_TYPES.
+    const CHART_SOURCE_OPTIONS = [['cpu', 'CPU'], ['gpu', 'GPU']];
+    const CHART_METRIC_OPTIONS = [['load', 'Load'], ['temp', 'Temp'], ['power', 'Power'], ['temp_power', 'Temp + Power']];
+
+    function editorRenderProps() {
+      const panel = $('editorProps');
+      const w = s_layoutWidgets.find(w => w.id === s_selectedId);
+      if (!w) {
+        panel.innerHTML = '<div class="status-line">Kein Widget ausgewählt</div>';
+        return;
+      }
+      const isChart = w.type === 'chart_card';
+      let html = `
+        <div class="field"><label>Typ</label><input value="${w.type}" disabled></div>
+        <div class="row">
+          <div class="field"><label>X</label><input type="number" id="propX" value="${w.x}"></div>
+          <div class="field"><label>Y</label><input type="number" id="propY" value="${w.y}"></div>
+        </div>
+        <div class="row">
+          <div class="field"><label>Breite</label><input type="number" id="propW" value="${w.w}"></div>
+          <div class="field"><label>Höhe</label><input type="number" id="propH" value="${w.h}"></div>
+        </div>`;
+      if (isChart) {
+        const sourceOptionsHtml = CHART_SOURCE_OPTIONS
+          .map(([v, l]) => `<option value="${v}"${v === (w.props.source || 'cpu') ? ' selected' : ''}>${l}</option>`)
+          .join('');
+        const metricOptionsHtml = CHART_METRIC_OPTIONS
+          .map(([v, l]) => `<option value="${v}"${v === (w.props.metric || 'load') ? ' selected' : ''}>${l}</option>`)
+          .join('');
+        html += `
+          <div class="field"><label>Quelle</label><select id="propChartSource">${sourceOptionsHtml}</select></div>
+          <div class="field"><label>Messwert</label><select id="propChartMetric">${metricOptionsHtml}</select></div>`;
+      }
+      html += `<div class="actions">
+          <button class="btn primary" id="btnApplyProps">Übernehmen</button>
+          <button class="btn danger" id="btnDeleteWidget">Löschen</button>
+        </div>`;
+      panel.innerHTML = html;
+
+      $('btnApplyProps').addEventListener('click', () => {
+        w.x = Math.max(0, snapToGrid(parseInt($('propX').value, 10) || 0));
+        w.y = Math.max(0, snapToGrid(parseInt($('propY').value, 10) || 0));
+        w.w = Math.max(4, Math.min(s_editorW, parseInt($('propW').value, 10) || 20));
+        w.h = Math.max(4, Math.min(s_editorH, parseInt($('propH').value, 10) || 20));
+        if ($('propChartSource')) w.props.source = $('propChartSource').value;
+        if ($('propChartMetric')) w.props.metric = $('propChartMetric').value;
+        editorRender();
+        editorRenderProps();
+      });
+      $('btnDeleteWidget').addEventListener('click', () => {
+        s_layoutWidgets = s_layoutWidgets.filter(x => x.id !== s_selectedId);
+        s_selectedId = null;
+        editorRender();
+        editorRenderProps();
+      });
+    }
+
+    const EDITOR_DEFAULTS = {
+      datetime_card: { w: 150, h: 90, props: {} },
+      weather_card: { w: 150, h: 90, props: {} },
+      cpu_card: { w: 140, h: 140, props: {} },
+      gpu_card: { w: 140, h: 140, props: {} },
+      chart_card: { w: 150, h: 120, props: { source: 'cpu', metric: 'load' } },
+      footer: { w: 220, h: 44, props: {} },
+    };
+
+    function editorAddWidget(type) {
+      const d = EDITOR_DEFAULTS[type];
+      if (!d) return;
+      const id = 'w' + (++s_widgetCounter) + '_' + Date.now();
+      s_layoutWidgets.push({ id, type, x: 10, y: 10, w: d.w, h: d.h, props: { ...d.props } });
+      editorSelect(id);
+    }
+
+    document.querySelectorAll('#editorPalette button[data-type]').forEach(btn => {
+      btn.addEventListener('click', () => editorAddWidget(btn.dataset.type));
+    });
+
+    async function editorLoad() {
+      try {
+        const data = await api('/api/layout');
+        s_layoutWidgets = (data.widgets || []).map(w => ({ ...w, props: w.props || {} }));
+      } catch (e) {
+        s_layoutWidgets = [];
+      }
+      s_selectedId = null;
+      editorRender();
+      editorRenderProps();
+    }
+
+    $('btnEditorSave').addEventListener('click', async () => {
+      const payload = { version: 1, widgets: s_layoutWidgets };
+      try {
+        await api('/api/layout', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        toast('Layout gespeichert & angewendet');
+      } catch (e) {
+        toast('Fehler beim Speichern (zu groß oder Display nicht quadratisch?)');
+      }
+    });
+
+    // Speichert + wendet das Grundlayout SOFORT an (nicht nur im Editor-
+    // Puffer, erst mit einem separaten "Speichern"-Klick) - ein bereits
+    // gespeichertes Layout (auch ein leeres nach "Alles entfernen" +
+    // Speichern) wird dabei direkt ueberschrieben, sonst bliebe der Reset
+    // wirkungslos, bis man zusaetzlich noch "Speichern & anwenden" klickt.
+    $('btnEditorReset').addEventListener('click', async () => {
+      if (!confirm('Grundlayout wiederherstellen? Ueberschreibt das aktuell gespeicherte Layout sofort auf dem Geraet.')) return;
+      try {
+        const data = await api('/api/layout/default');
+        const widgets = (data.widgets || []).map(w => ({ ...w, props: w.props || {} }));
+        await api('/api/layout', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ version: 1, widgets }),
+        });
+        s_layoutWidgets = widgets;
+        s_selectedId = null;
+        editorRender();
+        editorRenderProps();
+        toast('Grundlayout wiederhergestellt');
+      } catch (e) {
+        toast('Fehler beim Zurücksetzen');
+      }
+    });
+
+    $('btnEditorClear').addEventListener('click', () => {
+      if (!confirm('Alle Widgets aus dem Editor entfernen?')) return;
+      s_layoutWidgets = [];
+      s_selectedId = null;
+      editorRender();
+      editorRenderProps();
+    });
+  </script>
+</body>
+
+</html>

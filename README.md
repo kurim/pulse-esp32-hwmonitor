@@ -229,11 +229,16 @@ reboots into WiFiManager's portal again.
 
 ### CI build (GitHub Actions)
 
-Not set up yet on this branch - the previous ESP-IDF-based CI workflow
-(`idf.py`/Docker) was removed since it no longer matches this PlatformIO/
-Arduino codebase. A PlatformIO-based replacement (`pio run -e ...` per
-target, matrix over esp32/esp32s3/esp32c3, release artifact upload analogous
-to the old workflow) is a planned follow-up, not yet implemented.
+`.github/workflows/build.yaml` replaces the old ESP-IDF-based workflow
+(`idf.py`/Docker), which no longer matched this PlatformIO/Arduino codebase.
+Matrix build over all seven `platformio.ini` envs (`esp32`, `esp32s3-4mb`,
+`esp32s3-8mb`, `esp32c3`, `cyd`, `cyd-v3`, `jc8048w550`) - not just the three
+chip families, since `cyd`/`cyd-v3`/`jc8048w550` carry their own board flags
+that a chip-only matrix couldn't express. No manual `esptool merge_bin` step
+needed: pioarduino already produces `firmware.factory.bin` (see above) on
+every build, which is uploaded as-is alongside the OTA-only `firmware.bin`.
+Runs on `workflow_dispatch` and on `v*` tag pushes (which also sets
+`FW_VERSION` from the tag and creates a GitHub release with all artifacts).
 
 > **Captive portal detection on phones can briefly exhaust sockets**:
 > iOS/Android/Windows check internet connectivity in the setup AP via

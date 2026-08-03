@@ -31,8 +31,8 @@ lv_obj_t *s_timeSecLbl = nullptr;
 lv_obj_t *s_arcSeconds = nullptr;
 
 // Standby: grosse zentrierte Uhr, CPU/GPU-Ringe UND die grosse Wetterzeile
-// ausgeblendet - stattdessen zeigt das 2x2-Raster (siehe unten) die
-// Gefuehlt-Temperatur samt Icon in kompakter Form. Zwei Ausloeser: kein
+// ausgeblendet - stattdessen zeigt das 2x2-Raster (siehe unten) dieselbe
+// Temperatur samt Icon in kompakter Form. Zwei Ausloeser: kein
 // hw_info-Update mehr seit
 // app_config.standby_timeout_s (s_standbyAuto merkt sich, dass DIESER Grund
 // aktiv ist, damit ein Signal-Comeback automatisch wieder aufweckt) oder
@@ -441,11 +441,12 @@ void displayRoundBuild(lv_obj_t *scr)
   lv_obj_set_style_text_color(s_weatherValLbl, lv_color_hex(0xE2E8F0), 0);
   lv_obj_set_style_text_font(s_weatherValLbl, &lv_font_montserrat_24, 0);
 
-  // Standby-Raster: oben Gefuehlt-Temperatur + Luftfeuchtigkeit
+  // Standby-Raster: oben Temperatur (derselbe Wert wie in der Primaerzeile,
+  // weather_info.temp_c - nicht feels_like_c) + Luftfeuchtigkeit
   // nebeneinander, darunter mittig eine kombinierte Zelle aus rotierendem
   // Windrichtungs-Pfeil mit Regenmenge/Windgeschwindigkeit als zweizeiliger
   // Wert darunter (ersetzt die vormals getrennten Regen-/Wind-Zellen).
-  // Gefuehlt-Zelle zeigt dasselbe dynamische Wetter-Icon wie die
+  // Temperatur-Zelle zeigt dasselbe dynamische Wetter-Icon wie die
   // Wetterzeile oben (statt eines statischen Thermometers) - Icon-Label
   // dafuer gemerkt, Startfarbe hier irrelevant (wird in displayRoundUpdate()
   // bei jedem Tick ueberschrieben). Luftfeuchtigkeit hat keine
@@ -601,8 +602,7 @@ void displayRoundUpdate(void)
     lv_obj_set_style_text_color(s_feelsIconLbl, lv_color_hex(feelsColor), 0);
     lv_obj_set_style_text_color(s_feelsValLbl, lv_color_hex(feelsColor), 0);
     lv_label_set_text(s_feelsIconLbl, weather_icon_mdi(weather_info.icon));
-    int feelsRounded = (int)(weather_info.feels_like_c + (weather_info.feels_like_c >= 0 ? 0.5f : -0.5f));
-    snprintf(buf, sizeof(buf), "%d\xc2\xb0" "C", feelsRounded);
+    snprintf(buf, sizeof(buf), "%d\xc2\xb0" "C", tempRounded);
     lv_label_set_text(s_feelsValLbl, buf);
 
     snprintf(buf, sizeof(buf), "%d%%", weather_info.humidity);

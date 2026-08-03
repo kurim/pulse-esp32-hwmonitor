@@ -64,10 +64,14 @@ inline Arduino_ESP32RGBPanel *rgbpanel = new Arduino_ESP32RGBPanel(
     GFX_R0, GFX_R1, GFX_R2, GFX_R3, GFX_R4,
     GFX_G0, GFX_G1, GFX_G2, GFX_G3, GFX_G4, GFX_G5,
     GFX_B0, GFX_B1, GFX_B2, GFX_B3, GFX_B4,
-    0, 8, 4, 8,
-    0, 8, 4, 8,
-    1, 14200000, false,
-    0, 0, LCD_WIDTH * 20
+      1, 40, 48, 40,        // hsync_polarity (1), front_porch (40), pulse_width (48), back_porch (40)
+      1, 13, 1, 31,         // vsync_polarity (1), front_porch (13), pulse_width (1), back_porch (31)
+      1,                    // pclk_active_neg (1 = fallende Flanke)
+      16000000,             // prefer_speed (16 MHz ist Standard für dieses Panel!)
+      false,                // useBigEndian
+      0,                    // de_idle_high
+      0,                    // pclk_idle_high
+      800 * 40              // bounce_buffer_size_px (16 Zeilen Bounce Buffer)
 );
 
 inline Arduino_RGB_Display *gfx = new Arduino_RGB_Display(
@@ -138,15 +142,32 @@ inline void boardDisplaySetBrightness(uint8_t level)
 // die GDMA kontinuierlich ausgibt - LVGL rendert im DIRECT-Modus direkt
 // hinein, ein Kopieren in einen separaten Draw-Buffer entfaellt.
 // -----------------------------------------------------------------------------
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
+#include "esp32s3/rom/cache.h"
+#endif
 
 inline void jc8048w550_flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map)
 {
-  uint16_t *fb = gfx->getFramebuffer();
-  int32_t rowBytes = (area->x2 - area->x1 + 1) * 2;
-  for (int32_t y = area->y1; y <= area->y2; y++)
-  {
-    Cache_WriteBack_Addr((uint32_t)(fb + (y * LCD_WIDTH) + area->x1), rowBytes);
-  }
+  uint16_t *fb = (uint16_t *)px_map;
+
+  // 1. In BYTES rechnen, um Zeiger-Arithmetik-Fallen bei uint16_t zu vermeiden:
+  uint32_t fb_byte_addr = (uint32_t)fb;
+  
+  // Offset in Bytes von der ersten Zeile bis zur x1 Position
+  uint32_t start_byte_offset = ((area->y1 * LCD_WIDTH) + area->x1) * sizeof(uint16_t);
+  uint32_t start_addr = fb_byte_addr + start_byte_offset;
+
+  // 2. Gesamtlänge der betroffenen Zeilen in Bytes
+  size_t total_bytes = (area->y2 - area->y1 + 1) * LCD_WIDTH * sizeof(uint16_t);
+
+  // 3. Cache Line Alignment (32 Byte Maskierung)
+  uint32_t aligned_start = start_addr & ~0x1F;
+  size_t aligned_size = (total_bytes + (start_addr - aligned_start) + 31) & ~0x1F;
+
+  // 4. L1-Cache der CPU erzwingen, die Daten sofort in den PSRAM zu flushen
+  Cache_WriteBack_Addr(aligned_start, aligned_size);
+
+  // 5. LVGL den Abschluss melden
   lv_display_flush_ready(disp);
 }
 

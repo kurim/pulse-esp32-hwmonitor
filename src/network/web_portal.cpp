@@ -453,7 +453,16 @@ void handleFactoryReset(AsyncWebServerRequest *request)
     ESP.restart();
 }
 
-void handleOtaUpload(AsyncWebServerRequest * /*request*/, String /*filename*/, size_t index,
+// Bisher komplett unbeobachtet (kein einziger log_*-Aufruf in diesem
+// Handler) - ein Fehlschlag zeigte sich im Serial-Log als nichts, nur als
+// "Upload fehlgeschlagen" im Browser (dashboard.html). Jetzt an jedem
+// Schritt geloggt, der stillschweigend fehlschlagen kann: Update.begin()
+// (z.B. zu wenig Platz in der Ziel-OTA-Partition - siehe partitions_4mb.csv,
+// die App-Partitionen sind mit den letzten Erweiterungen (Mono-Layout-
+// Editor, Forecast) auf ueber 90% Auslastung gewachsen, das wird knapp),
+// Update.write() (Rueckgabewert < len ist ein Fehler, Update.write() wirft
+// nicht) und Update.end().
+void handleOtaUpload(AsyncWebServerRequest * /*request*/, String filename, size_t index,
                       uint8_t *data, size_t len, bool final)
 {
     if (index == 0) {
@@ -461,13 +470,25 @@ void handleOtaUpload(AsyncWebServerRequest * /*request*/, String /*filename*/, s
         // shared_state.h) - unabhaengig vom Ausgang unten wieder freigegeben,
         // sonst bliebe er nach einem fehlgeschlagenen Update dauerhaft aus.
         ota_in_progress = true;
-        Update.begin(UPDATE_SIZE_UNKNOWN);
+        bool began = Update.begin(UPDATE_SIZE_UNKNOWN);
+        log_w("OTA-Upload gestartet: Datei='%s', freier Heap=%u Bytes, Update.begin()=%s",
+              filename.c_str(), ESP.getFreeHeap(), began ? "ok" : "FEHLGESCHLAGEN");
+        if (!began) {
+            log_e("Update.begin() fehlgeschlagen: %s", Update.errorString());
+        }
     }
     if (len) {
-        Update.write(data, len);
+        size_t written = Update.write(data, len);
+        if (written != len) {
+            log_e("Update.write() Kurzschreibung bei Offset %u: %u von %u Bytes, Fehler: %s",
+                  (unsigned)index, (unsigned)written, (unsigned)len, Update.errorString());
+        }
     }
     if (final) {
-        Update.end(true);
+        bool ok = Update.end(true);
+        log_w("OTA-Upload abgeschlossen bei Offset %u: Update.end()=%s%s",
+              (unsigned)(index + len), ok ? "ok" : "FEHLGESCHLAGEN",
+              ok ? "" : (String(", Fehler: ") + Update.errorString()).c_str());
         ota_in_progress = false;
     }
 }
@@ -475,6 +496,9 @@ void handleOtaUpload(AsyncWebServerRequest * /*request*/, String /*filename*/, s
 void handleOtaDone(AsyncWebServerRequest *request)
 {
     bool ok = !Update.hasError();
+    if (!ok) {
+        log_e("handleOtaDone: Update.hasError() -> %s", Update.errorString());
+    }
     AsyncWebServerResponse *response = request->beginResponse(
         ok ? 200 : 500, "application/json", ok ? "{\"ok\":true}" : "{\"ok\":false}");
     response->addHeader("Connection", "close");

@@ -3,7 +3,6 @@
 #include "display_draw.h"
 #include "display_layout.h"
 #include "display_round.h"
-#include "display_mono.h"
 
 // UNSCII-8 ist ein Bitmap-Font mit fester Zeichenbreite (Montserrat ist
 // proportional) - fuer die ASCII-Art Pflicht, sonst verrutscht die
@@ -14,8 +13,17 @@ static const char *kBootLogo =
     " / _,'/ U // /_ _\\ `. / _/ \n"
     "/_/   \\_,'/___//___,'/___/ ";
 
+// Reduzierte Wortmarke fuer Mono (SSD1309/SH1106, 128x64): das grosse
+// ASCII-Logo oben ist ~28 Zeichen breit und passt selbst mit unscii_8
+// (8px/Zeichen -> 224px) nicht auf 128px. unscii_16 ist aber, anders als der
+// Name suggeriert, dieselbe Glyphenbreite wie unscii_8 (nur 2x hoch skaliert,
+// 16px Vorschubbreite statt 8px, siehe lv_font_unscii_16.c) - "PULSE" kommt
+// damit auf 5*16=80px und passt bequem in die 128px Breite.
+static const char *kBootLogoMono = "PULSE";
+
 static lv_obj_t *s_bootLogo   = nullptr;
 static lv_obj_t *s_bootStatus = nullptr;
+static const char *s_activeLogo = kBootLogo;
 static size_t s_animIndex = 0;
 static char s_animBuffer[256];
 static volatile bool s_bootLogoAnimFinished = false;
@@ -26,8 +34,8 @@ bool displayIsBootAnimFinished() {
 }
 
 static void boot_logo_timer_cb(lv_timer_t * timer) {
-    if (kBootLogo[s_animIndex] != '\0' && s_animIndex < (sizeof(s_animBuffer) - 1)) {
-        s_animBuffer[s_animIndex] = kBootLogo[s_animIndex];
+    if (s_activeLogo[s_animIndex] != '\0' && s_animIndex < (sizeof(s_animBuffer) - 1)) {
+        s_animBuffer[s_animIndex] = s_activeLogo[s_animIndex];
         s_animIndex++;
         s_animBuffer[s_animIndex] = '\0';
         
@@ -129,12 +137,8 @@ void displayDrawInit()
     return;
   }
 
-  if (displayIsMono()) {
-    displayMonoBuild(scr);
-    return;
-  }
-
-  // Rechteckige Displays: kein statischer Platzhalter mehr - main.cpp ruft
+  // Rechteckige Displays UND Mono (eigene mono_*-Widget-Typen, siehe
+  // display_layout.cpp): kein statischer Platzhalter mehr - main.cpp ruft
   // direkt im Anschluss layout_apply() mit dem gespeicherten oder generierten
   // Grundlayout auf (siehe layout_default_json()), das wuerde einen hier
   // gebauten Platzhalter sofort wieder verwerfen.
@@ -142,15 +146,17 @@ void displayDrawInit()
 
 void displayDrawUpdate()
 {
-  // Rechteckige Displays aktualisieren sich ueber layout_refresh_bindings()
-  // (separat von main.cpp aufgerufen, siehe display_layout.cpp) - hier nur
-  // noch die runden/monochromen Sonder-Dashboards. Beide guarden sich selbst
-  // (no-op, wenn ihr jeweiliges *Build() nie lief).
+  // Rechteckige Displays UND Mono aktualisieren sich ueber
+  // layout_refresh_bindings() (separat von main.cpp aufgerufen, siehe
+  // display_layout.cpp) - hier nur noch das runde Sonder-Dashboard, das
+  // (physisch bedingt, siehe display_layout.h) nicht ueber den generischen
+  // Layout-Editor laeuft. Guardet sich selbst (no-op, wenn
+  // displayRoundBuild() nie lief).
   displayRoundUpdate();
-  displayMonoUpdate();
 }
 
 void displayDrawButtonPoll()
 {
   displayRoundButtonPoll();
+  displayMonoButtonPoll();
 }

@@ -11,14 +11,19 @@
 // aber physisch rund - "quadratisch" war die falsche Auflosungs-basierte
 // Abgrenzung, die eigentliche Achse ist rund vs. rechteckig, siehe
 // CLAUDE.md "lcd_ui_shape_t"). Alle rechteckigen Displays (auch nicht-
-// quadratische wie JC8048W550 800x480 oder ILI9488/ST7796S 320x480) sind
-// dagegen unproblematisch.
+// quadratische wie JC8048W550 800x480 oder ILI9488/ST7796S 320x480) UND das
+// monochrome Mono-Display (128x64, eigene Widget-Typen mono_*) laufen
+// darueber.
 
-// Baut das Layout aus einem JSON-Array von Widget-Objekten
-// ({"id","type","x","y","w","h","props"}) neu auf. Loescht dabei den
-// kompletten aktiven Screen (lv_obj_clean) - NUR aus dem LVGL-Task
-// (main.cpp setup()/loop()) aufrufen, niemals direkt aus einem Web-Handler.
-void layout_apply(JsonArrayConst widgets);
+// Baut das Layout aus zwei JSON-Arrays von Widget-Objekten
+// ({"id","type","x","y","w","h","props"}) neu auf: widgets = normales
+// Dashboard, standbyWidgets = zweites Set fuer den Standby-Zustand (nur bei
+// displayIsMono() ueberhaupt gebaut/genutzt, siehe
+// refresh_mono_standby_visibility() in display_layout.cpp - auf allen
+// anderen Displays einfach ein leeres Array). Loescht dabei den kompletten
+// aktiven Screen (lv_obj_clean) - NUR aus dem LVGL-Task (main.cpp
+// setup()/loop()) aufrufen, niemals direkt aus einem Web-Handler.
+void layout_apply(JsonArrayConst widgets, JsonArrayConst standbyWidgets);
 
 // Erstellt die interne Befehls-Queue - einmalig aus setup() aufrufen, bevor
 // layout_queue_push_apply() von anderen Tasks genutzt werden kann.
@@ -50,9 +55,10 @@ bool displayIsRound(void);
 // wahr.
 bool displayIsMono(void);
 
-// true, wenn das aktuell aktive Display rechteckig ist UND ueberhaupt
-// vorhanden (DISPLAY_NONE -> false). Rundes (GC9A01) oder monochromes
-// (SSD1309) Display oder kein Display -> false.
+// true, wenn das aktuell aktive Display den Layout-Editor unterstuetzt UND
+// ueberhaupt vorhanden ist (DISPLAY_NONE -> false). Eckige Farbdisplays UND
+// Mono (eigene Widget-Typen, siehe oben) -> true. Nur rundes Display
+// (GC9A01) -> false (siehe Begruendung oben).
 bool displaySupportsLayoutEditor(void);
 int16_t displayWidthPx(void);
 int16_t displayHeightPx(void);
@@ -78,3 +84,12 @@ bool touchCalibrationNeeded(void);
 // Abschliessen true (siehe display_layout.cpp), main.cpp kann das pollen,
 // um zum normalen Boot-Ablauf zurueckzukehren.
 void beginFirstBootTouchCalibration(void);
+
+// Liest die BOOT-Taste (jedes generische Devkit - Pin ist chip-abhaengig,
+// siehe Begruendung in display_layout.cpp) und schaltet damit manuell
+// zwischen Dashboard- und Standby-Layout um (unabhaengig vom automatischen
+// standby_timeout_s) - Mono-Gegenstueck zu displayRoundButtonPoll()
+// (display_round.h). No-op auf CYD/JC8048W550 und wenn gerade kein
+// Mono-Display aktiv ist. UNGEDROSSELT jede loop()-Iteration aufrufen,
+// siehe displayRoundButtonPoll()-Kommentar in display_draw.h fuer den Grund.
+void displayMonoButtonPoll(void);

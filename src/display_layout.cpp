@@ -254,6 +254,65 @@ lv_obj_t *build_hw_card(lv_obj_t *parent, bool isGpu) {
 lv_obj_t *create_cpu_card(lv_obj_t *parent, JsonObjectConst) { return build_hw_card(parent, false); }
 lv_obj_t *create_gpu_card(lv_obj_t *parent, JsonObjectConst) { return build_hw_card(parent, true); }
 
+// Flache CPU-/GPU-Karte: eigener zweiter Kartenstil neben build_hw_card()
+// oben, nicht dessen Ersatz - beide bleiben im Editor nebeneinander
+// waehlbar. User-Vorgabe anhand eines Referenzfotos: weisser Rahmen auf
+// schwarzem Grund, grosse Ueberschrift ("CPU"/"GPU"), darunter Last/Watt/
+// Temperatur als schlichte weisse Icon+Wert-Zeilen - bewusst OHNE
+// Akzentfarbe (app_config.cpu_arc_color/gpu_arc_color) und OHNE Balken,
+// anders als build_hw_card(). Eigene, lokale Style-Ueberschreibung von
+// style_card (lv_template.h) direkt auf der Karteninstanz - der gemeinsame
+// Stil (dunkler Slate-Hintergrund, gedaempfter Cyan-Rand) bleibt fuer alle
+// anderen Kartentypen unangetastet.
+struct HwCardFlatWidget {
+  bool isGpu;
+  lv_obj_t *loadLbl;
+  lv_obj_t *powerLbl;
+  lv_obj_t *tempLbl;
+};
+std::vector<HwCardFlatWidget> s_hwCardFlatWidgets;
+
+lv_obj_t *build_hw_card_flat(lv_obj_t *parent, bool isGpu) {
+  const lv_font_t *iconFont = is_big_display() ? &mdi_24 : &mdi_16;
+  card_container_t c = create_card(parent, 160, 200);
+  lv_obj_set_style_bg_color(c.card, lv_color_black(), 0);
+  lv_obj_set_style_bg_opa(c.card, LV_OPA_COVER, 0);
+  lv_obj_set_style_border_color(c.card, lv_color_white(), 0);
+  lv_obj_set_style_border_opa(c.card, LV_OPA_COVER, 0);
+  lv_obj_set_style_border_width(c.card, 3, 0);
+  lv_obj_set_style_radius(c.card, 16, 0);
+
+  lv_obj_t *title = lv_label_create(c.card);
+  lv_label_set_text(title, isGpu ? "GPU" : "CPU");
+  lv_obj_set_style_text_color(title, lv_color_white(), 0);
+  lv_obj_set_style_text_font(title, &lv_font_montserrat_32, 0);
+
+  // Icon+Wert-Zeile in Referenzfoto-Reihenfolge (Last, Watt, Temperatur) -
+  // anders als build_hw_card()'s Unterzeile (dort Temp+Watt zusammen NACH
+  // Last/Balken).
+  auto addRow = [&](const char *icon) {
+    lv_obj_t *row = create_icon_value_row(c.card);
+    lv_obj_t *iconLbl = lv_label_create(row);
+    lv_label_set_text(iconLbl, icon);
+    lv_obj_set_style_text_color(iconLbl, lv_color_white(), 0);
+    lv_obj_set_style_text_font(iconLbl, iconFont, 0);
+    lv_obj_t *valLbl = lv_label_create(row);
+    lv_label_set_text(valLbl, "");
+    lv_obj_set_style_text_color(valLbl, lv_color_white(), 0);
+    lv_obj_set_style_text_font(valLbl, &lv_font_montserrat_32, 0);
+    return valLbl;
+  };
+
+  lv_obj_t *loadLbl  = addRow(isGpu ? MDI_GPU : MDI_CHIP);
+  lv_obj_t *powerLbl = addRow(MDI_FLASH);
+  lv_obj_t *tempLbl  = addRow(MDI_THERMOMETER);
+
+  s_hwCardFlatWidgets.push_back({isGpu, loadLbl, powerLbl, tempLbl});
+  return c.card;
+}
+lv_obj_t *create_cpu_card_flat(lv_obj_t *parent, JsonObjectConst) { return build_hw_card_flat(parent, false); }
+lv_obj_t *create_gpu_card_flat(lv_obj_t *parent, JsonObjectConst) { return build_hw_card_flat(parent, true); }
+
 // Wetterkarte: 3 Zeilen statt 2 (User-Vorgabe "Wetter kann 3-zeilig, dann
 // sollte alles reinpassen") - Hauptzeile (Icon/Farbe dynamisch aus
 // weather_icon_mdi()/weather_icon_color(), siehe refresh_weather_card_widgets())
@@ -391,6 +450,424 @@ lv_obj_t *create_chart_card(lv_obj_t *parent, JsonObjectConst props) {
   return c.card;
 }
 
+// --- Mono-Widgets (SSD1309/SH1106, 128x64) ---
+//
+// Eigene, bewusst schlichte Widget-Typen statt der Karten oben - Mono hat
+// laut dem fruehreren display_mono.cpp-Kommentar (1bpp-Schwellwert-
+// Renderer, siehe disp_mono_oled_i2c::flushCb()) grundsaetzlich KEINE
+// anti-aliasing-faehigen Formen (keine Rundungen/Farbverlaeufe), nur harte
+// Rechtecke/Linien und die unscii-Bitmapfonts. create_card() (Rahmen mit
+// Radius) ist hier deshalb bewusst NICHT die Basis, anders als bei den
+// Karten-Widgets oben.
+struct MonoClockWidget   { lv_obj_t *lbl; };
+struct MonoDateWidget    { lv_obj_t *lbl; };
+struct MonoWeekdayWidget { lv_obj_t *lbl; };
+struct MonoWeatherWidget { lv_obj_t *lbl; };
+struct MonoStatWidget {
+  bool isGpu;
+  lv_obj_t *lbl;
+  lv_obj_t *bar;
+  lv_obj_t *statLbl;
+};
+struct MonoHwCardWidget {
+  bool isGpu;
+  lv_obj_t *loadLbl;
+  lv_obj_t *powerLbl;
+  lv_obj_t *tempLbl;
+};
+struct MonoLabelValueWidget {
+  lv_obj_t *valLbl;
+  String key;
+  String unit;
+};
+
+std::vector<MonoClockWidget>      s_monoClockWidgets;
+std::vector<MonoDateWidget>       s_monoDateWidgets;
+std::vector<MonoWeekdayWidget>    s_monoWeekdayWidgets;
+std::vector<MonoWeatherWidget>    s_monoWeatherWidgets;
+std::vector<MonoStatWidget>       s_monoStatWidgets;
+std::vector<MonoHwCardWidget>     s_monoHwCardWidgets;
+std::vector<MonoLabelValueWidget> s_monoLabelValueWidgets;
+
+// props["big"]: false = kleine Kopfzeilen-Uhr (unscii_8, wie im alten
+// hartcodierten Dashboard), true = grosse zentrierte Standby-Uhr
+// (unscii_16, wie der bisherige display_mono.cpp-Standby-Bildschirm). Die
+// Layout-Engine kennt die zugewiesene Groesse eines Widgets erst NACH dem
+// create()-Aufruf (layout_apply() setzt x/y/w/h danach, siehe unten) -
+// deshalb ein explizites Prop statt eine Grossenheuristik zur Bauzeit.
+// Text bewusst IMMER zentriert (nicht nur bei "big") - layout_apply() setzt
+// nach dem create()-Aufruf immer eine explizite Breite (lv_obj_set_size),
+// zentrierter Text sieht darin sowohl in einer schmalen Kopfzeilen-Haelfte
+// als auch ueber die volle 128px-Breite im Standby gut aus, kein Sonderfall
+// noetig.
+lv_obj_t *create_mono_clock(lv_obj_t *parent, JsonObjectConst props) {
+  bool big = props["big"] | false;
+  lv_obj_t *lbl = lv_label_create(parent);
+  lv_label_set_text(lbl, "");
+  lv_obj_set_style_text_color(lbl, lv_color_white(), 0);
+  lv_obj_set_style_text_font(lbl, big ? &lv_font_unscii_16 : &lv_font_unscii_8, 0);
+  lv_obj_set_style_text_align(lbl, LV_TEXT_ALIGN_CENTER, 0);
+  s_monoClockWidgets.push_back({lbl});
+  return lbl;
+}
+
+lv_obj_t *create_mono_date(lv_obj_t *parent, JsonObjectConst) {
+  lv_obj_t *lbl = lv_label_create(parent);
+  lv_label_set_text(lbl, "");
+  lv_obj_set_style_text_color(lbl, lv_color_white(), 0);
+  lv_obj_set_style_text_font(lbl, &lv_font_unscii_8, 0);
+  lv_obj_set_style_text_align(lbl, LV_TEXT_ALIGN_CENTER, 0);
+  s_monoDateWidgets.push_back({lbl});
+  return lbl;
+}
+
+lv_obj_t *create_mono_weekday(lv_obj_t *parent, JsonObjectConst) {
+  lv_obj_t *lbl = lv_label_create(parent);
+  lv_label_set_text(lbl, "");
+  lv_obj_set_style_text_color(lbl, lv_color_white(), 0);
+  lv_obj_set_style_text_font(lbl, &lv_font_unscii_8, 0);
+  lv_obj_set_style_text_align(lbl, LV_TEXT_ALIGN_CENTER, 0);
+  s_monoWeekdayWidgets.push_back({lbl});
+  return lbl;
+}
+
+// Nur die Temperatur (User-Vorgabe "Wetter (Temperatur)") - kein Grad-
+// Zeichen, dieselbe Einschraenkung wie beim CPU/GPU-Balken weiter unten:
+// unscii deckt nur ASCII 0x20-0x7E ab.
+lv_obj_t *create_mono_weather_temp(lv_obj_t *parent, JsonObjectConst) {
+  lv_obj_t *lbl = lv_label_create(parent);
+  lv_label_set_text(lbl, "--");
+  lv_obj_set_style_text_color(lbl, lv_color_white(), 0);
+  lv_obj_set_style_text_font(lbl, &lv_font_unscii_8, 0);
+  lv_obj_set_style_text_align(lbl, LV_TEXT_ALIGN_CENTER, 0);
+  s_monoWeatherWidgets.push_back({lbl});
+  return lbl;
+}
+
+// Verdichteter Tages-Forecast (forecast_info, siehe shared_state.h/
+// weather_service.cpp fetch_forecast()) als echte Tabelle (User-Vorgabe):
+// Kopfzeile mit Wochentagen, darunter "T" (Tageshoechst-)/"N" (Nacht-
+// Tiefst-)Zeile, Tage als Spalten. props["days"] (1..FORECAST_DAYS, Default
+// 3) waehlt die Spaltenzahl. Kein LVGL-Grid-Layout (lv_obj_set_style_grid_
+// *_dsc_array haelt einen ROHEN Zeiger auf das Deskriptor-Array fuer die
+// gesamte Objekt-Lebensdauer - in einem std::vector<MonoForecastWidget>
+// gespeichert waere der bei einer Vector-Reallokation (weiterer push_back)
+// ploetzlich dangling). Stattdessen 3 verschachtelte Flex-Zeilen: eine
+// schmale, feste Label-Spalte ("", "T", "N") + N Tages-Zellen mit
+// flex_grow(1) - da jede der 3 Zeilen dieselbe Struktur (1 feste + N
+// wachsende Zellen) und dieselbe Breite (lv_pct(100) der Box) hat, richten
+// sich die Spalten ueber alle 3 Zeilen hinweg exakt aus, ganz ohne
+// Grid-API. Kein Icon (Icon-Fonts sind auf diesem Renderer unsicher, siehe
+// Kommentar bei den Pixel-Icons weiter unten) - bei 3 Spalten in 128px
+// Breite waere ohnehin kein Platz dafuer.
+struct MonoForecastWidget {
+  lv_obj_t *dayLbls[FORECAST_DAYS];
+  lv_obj_t *hiLbls[FORECAST_DAYS];
+  lv_obj_t *loLbls[FORECAST_DAYS];
+  int colCount;
+};
+std::vector<MonoForecastWidget> s_monoForecastWidgets;
+
+lv_obj_t *create_mono_forecast(lv_obj_t *parent, JsonObjectConst props) {
+  int cols = props["days"] | 3;
+  if (cols < 1) cols = 1;
+  if (cols > FORECAST_DAYS) cols = FORECAST_DAYS;
+
+  lv_obj_t *box = lv_obj_create(parent);
+  lv_obj_remove_flag(box, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_style_bg_opa(box, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(box, 0, 0);
+  lv_obj_set_style_pad_all(box, 0, 0);
+  // Explizit gesetzt statt dem Theme-Default ueberlassen (User-Feedback:
+  // "8px sind zuviel") - lv_obj_create() erbt sonst den vom aktiven Theme
+  // vorgegebenen Row-Gap fuer Flex-Container, der zusaetzlich zur 8px
+  // hohen unscii_8-Zeile draufkommt.
+  lv_obj_set_style_pad_row(box, 4, 0);
+  lv_obj_set_layout(box, LV_LAYOUT_FLEX);
+  lv_obj_set_flex_flow(box, LV_FLEX_FLOW_COLUMN);
+
+  auto makeRow = [&]() {
+    lv_obj_t *row = lv_obj_create(box);
+    lv_obj_remove_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(row, 0, 0);
+    lv_obj_set_style_pad_all(row, 0, 0);
+    // Explizit klein statt dem Theme-Default ueberlassen (derselbe Grund
+    // wie beim pad_row oben) - bei mehr Spalten (User-Vorgabe: bis zu 5)
+    // summiert sich ein groesserer Default-Spaltenabstand schnell zu
+    // spuerbar weniger Platz pro Zelle auf, bis der Text (z.B. "27C")
+    // umbricht statt einzeilig zu bleiben.
+    lv_obj_set_style_pad_column(row, 2, 0);
+    lv_obj_set_width(row, lv_pct(100));
+    lv_obj_set_height(row, LV_SIZE_CONTENT);
+    lv_obj_set_layout(row, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+    return row;
+  };
+  auto makeLabelCell = [&](lv_obj_t *row, const char *text) {
+    lv_obj_t *lbl = lv_label_create(row);
+    lv_label_set_text(lbl, text);
+    lv_obj_set_style_text_color(lbl, lv_color_white(), 0);
+    lv_obj_set_style_text_font(lbl, &lv_font_unscii_8, 0);
+    lv_obj_set_width(lbl, 9); // 1 Zeichen (8px unscii_8) + 1px Luft
+    return lbl;
+  };
+  auto makeDayCell = [&](lv_obj_t *row) {
+    lv_obj_t *lbl = lv_label_create(row);
+    lv_label_set_text(lbl, "--");
+    lv_obj_set_style_text_color(lbl, lv_color_white(), 0);
+    lv_obj_set_style_text_font(lbl, &lv_font_unscii_8, 0);
+    lv_obj_set_style_text_align(lbl, LV_TEXT_ALIGN_CENTER, 0);
+    // CLIP statt des LVGL-Standards WRAP: reicht die Zellenbreite bei sehr
+    // vielen Spalten trotzdem nicht (z.B. 5 Tage auf 128px), soll lieber
+    // ein Zeichen abgeschnitten werden als dass die Zeile umbricht und
+    // dabei die Zeilenhoehe dieser einen Reihe gegenueber den anderen
+    // beiden verschiebt (genau das war das gemeldete Symptom: "C" landet
+    // eine Zeile drunter).
+    lv_label_set_long_mode(lbl, LV_LABEL_LONG_CLIP);
+    lv_obj_set_flex_grow(lbl, 1);
+    return lbl;
+  };
+
+  MonoForecastWidget w{};
+  w.colCount = cols;
+
+  lv_obj_t *headerRow = makeRow();
+  makeLabelCell(headerRow, "");
+  for (int i = 0; i < cols; i++) w.dayLbls[i] = makeDayCell(headerRow);
+
+  lv_obj_t *hiRow = makeRow();
+  makeLabelCell(hiRow, "T");
+  for (int i = 0; i < cols; i++) w.hiLbls[i] = makeDayCell(hiRow);
+
+  lv_obj_t *loRow = makeRow();
+  makeLabelCell(loRow, "N");
+  for (int i = 0; i < cols; i++) w.loLbls[i] = makeDayCell(loRow);
+
+  s_monoForecastWidgets.push_back(w);
+  return box;
+}
+
+// CPU-/GPU-Statuszeile: Label ("CPU 62%") + Balken + Temp/Watt-Zeile,
+// deckungsgleich mit dem alten hartcodierten display_mono.cpp-Dashboard,
+// nur als generische Widget-Fabrik statt fest verdrahteter Positionen.
+lv_obj_t *build_mono_stat(lv_obj_t *parent, bool isGpu) {
+  lv_obj_t *box = lv_obj_create(parent);
+  lv_obj_remove_flag(box, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_style_bg_opa(box, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(box, 0, 0);
+  lv_obj_set_style_pad_all(box, 0, 0);
+
+  lv_obj_t *lbl = lv_label_create(box);
+  lv_label_set_text(lbl, isGpu ? "GPU" : "CPU");
+  lv_obj_set_style_text_color(lbl, lv_color_white(), 0);
+  lv_obj_set_style_text_font(lbl, &lv_font_unscii_8, 0);
+  lv_obj_set_pos(lbl, 0, 0);
+
+  lv_obj_t *bar = lv_bar_create(box);
+  lv_obj_set_pos(bar, 0, 9);
+  lv_obj_set_size(bar, lv_pct(100), 5);
+  lv_obj_set_style_radius(bar, 0, LV_PART_MAIN);
+  lv_obj_set_style_radius(bar, 0, LV_PART_INDICATOR);
+  lv_obj_set_style_bg_opa(bar, LV_OPA_TRANSP, LV_PART_MAIN);
+  lv_obj_set_style_border_width(bar, 1, LV_PART_MAIN);
+  lv_obj_set_style_border_color(bar, lv_color_white(), LV_PART_MAIN);
+  lv_obj_set_style_bg_color(bar, lv_color_white(), LV_PART_INDICATOR);
+  lv_obj_set_style_bg_opa(bar, LV_OPA_COVER, LV_PART_INDICATOR);
+  lv_bar_set_range(bar, 0, 100);
+  lv_bar_set_value(bar, 0, LV_ANIM_OFF);
+
+  lv_obj_t *statLbl = lv_label_create(box);
+  lv_label_set_text(statLbl, "");
+  lv_obj_set_style_text_color(statLbl, lv_color_white(), 0);
+  lv_obj_set_style_text_font(statLbl, &lv_font_unscii_8, 0);
+  lv_obj_set_pos(statLbl, 0, 16);
+
+  s_monoStatWidgets.push_back({isGpu, lbl, bar, statLbl});
+  return box;
+}
+lv_obj_t *create_mono_cpu_stat(lv_obj_t *parent, JsonObjectConst) { return build_mono_stat(parent, false); }
+lv_obj_t *create_mono_gpu_stat(lv_obj_t *parent, JsonObjectConst) { return build_mono_stat(parent, true); }
+
+// Handgezeichnete 7x7-Pixel-Icons fuer die Mono-Karte unten - kein Icon-Font
+// (MDI-Fonts sind wie lv_font_montserrat_* mit --bpp 4/Antialiasing
+// generiert, siehe Kommentar oben in diesem Abschnitt), sondern dieselbe
+// Technik wie Pac-Man's Ziffern-Pellets (User-Referenz clock_pacman.cpp:
+// dort werden Ziffern aus einer 5x7-Bitmaske als reine Vollkreis-Pellets
+// gezeichnet, hart pixelweise, keine Kurven/Anti-Aliasing) bzw. wie das
+// bereits bestehende 4-Quadrate-"Icon" im Footer (create_footer()
+// weiter unten) - ein Bit pro Pixel, jedes gesetzte Bit wird als eigenes
+// 1px-Rechteck (radius 0, keine Rundung) gezeichnet. Ein Byte pro Zeile,
+// die 7 relevanten Spalten liegen in Bit 6 (links) bis Bit 0 (rechts).
+static const uint8_t kMonoIconChip[7] = {
+  0b0101010,
+  0b1111111,
+  0b1000001,
+  0b1000001,
+  0b1000001,
+  0b1111111,
+  0b0101010,
+};
+static const uint8_t kMonoIconFlash[7] = {
+  0b0000110, // . . . XX .  (Start oben rechts)
+  0b0001100, // . . XX . .
+  0b0011000, // . XX . . .
+  0b0111100, // . XXXX . .  (Scharfer Knick)
+  0b0000110, // . . . XX .
+  0b0001100, // . . XX . .
+  0b0011000, // . XX . . .  (Ende unten links)
+};
+static const uint8_t kMonoIconTherm[7] = {
+  0b0011000,
+  0b0010000,
+  0b0011000,
+  0b0010000,
+  0b0111000,
+  0b1111100,
+  0b0111000,
+};
+
+void draw_mono_pixel_icon(lv_obj_t *parent, const uint8_t rows[7], int16_t x, int16_t y) {
+  for (int8_t r = 0; r < 7; r++) {
+    for (int8_t c = 0; c < 7; c++) {
+      if (!(rows[r] & (1 << (6 - c)))) continue;
+      lv_obj_t *px = lv_obj_create(parent);
+      lv_obj_remove_flag(px, LV_OBJ_FLAG_SCROLLABLE);
+      lv_obj_set_style_radius(px, 0, 0);
+      lv_obj_set_style_border_width(px, 0, 0);
+      lv_obj_set_style_bg_color(px, lv_color_white(), 0);
+      lv_obj_set_style_bg_opa(px, LV_OPA_COVER, 0);
+      lv_obj_set_size(px, 1, 1);
+      lv_obj_set_pos(px, x + c, y + r);
+    }
+  }
+}
+
+// Mono-Variante der "flachen" Karte (cpu_card_flat/gpu_card_flat oben,
+// User-Referenzfoto: weisser Rahmen, grosse Ueberschrift, Last/Watt/Temp
+// als eigene Zeilen), jetzt MIT Icons (siehe draw_mono_pixel_icon() oben -
+// User-Vorgabe anhand von clock_pacman.cpp, dass handgezeichnete
+// Pixel-Icons anders als Icon-Fonts auf dem 1bpp-Renderer funktionieren)
+// und OHNE abgerundete Ecken (lv_obj_set_style_radius 0 - eine Rundung wird
+// von LVGL antialiasiert gezeichnet, exakt das Problem, das mono ueberall
+// sonst vermeidet). Last-Zeile nutzt fuer CPU UND GPU dasselbe Chip-Icon -
+// die Ueberschrift unterscheidet ohnehin schon zwischen beiden, ein
+// separates GPU-Icon bei 7x7px waere kaum unterscheidbar.
+// props["border"] (Default true): Rahmen ein-/ausschaltbar - User-Vorgabe,
+// manche Layouts wollen die Karte nur als unsichtbaren Platzhalter fuer
+// Last/Watt/Temp nutzen, ohne die Linien.
+// props["big"] (Default false): unscii_16 statt unscii_8 fuer alle 4 Zeilen
+// (Titel + 3 Werte) - User-Vorgabe fuer eine 64x64 grosse Karte ("Font
+// maximieren"). unscii_16 ist mit 16px Vorschubbreite pro Zeichen genauso
+// breit wie hoch (siehe Kommentar bei kBootLogoMono in display_draw.cpp) -
+// bei 64px Breite ist neben einem Icon (7px) UND vierstelligem Text
+// ("100%") in dieser Groesse kein Platz mehr, deshalb im big-Modus KEINE
+// Icons, nur die (dafuer maximal grossen) Zahlen.
+lv_obj_t *build_mono_hw_card(lv_obj_t *parent, bool isGpu, JsonObjectConst props) {
+  bool border = props["border"] | true;
+  bool big = props["big"] | false;
+  const lv_font_t *font = big ? &lv_font_unscii_16 : &lv_font_unscii_8;
+  int16_t rowH = big ? 16 : 10;
+
+  lv_obj_t *box = lv_obj_create(parent);
+  lv_obj_remove_flag(box, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_style_bg_opa(box, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_radius(box, 0, 0);
+  lv_obj_set_style_border_width(box, border ? 1 : 0, 0);
+  lv_obj_set_style_border_color(box, lv_color_white(), 0);
+  lv_obj_set_style_pad_all(box, big ? 0 : 2, 0);
+
+  lv_obj_t *title = lv_label_create(box);
+  lv_label_set_text(title, isGpu ? "GPU" : "CPU");
+  lv_obj_set_style_text_color(title, lv_color_white(), 0);
+  lv_obj_set_style_text_font(title, font, 0);
+  lv_obj_set_pos(title, big ? 0 : 2, big ? 0 : 1);
+
+  lv_obj_t *loadLbl = lv_label_create(box);
+  lv_label_set_text(loadLbl, "");
+  lv_obj_set_style_text_color(loadLbl, lv_color_white(), 0);
+  lv_obj_set_style_text_font(loadLbl, font, 0);
+
+  lv_obj_t *powerLbl = lv_label_create(box);
+  lv_label_set_text(powerLbl, "");
+  lv_obj_set_style_text_color(powerLbl, lv_color_white(), 0);
+  lv_obj_set_style_text_font(powerLbl, font, 0);
+
+  lv_obj_t *tempLbl = lv_label_create(box);
+  lv_label_set_text(tempLbl, "");
+  lv_obj_set_style_text_color(tempLbl, lv_color_white(), 0);
+  lv_obj_set_style_text_font(tempLbl, font, 0);
+
+  if (big) {
+    // Kein Icon (siehe Kommentar oben) - Zahl beginnt bei x=0, volle Breite.
+    lv_obj_set_pos(loadLbl, 0, rowH);
+    lv_obj_set_pos(powerLbl, 0, rowH * 2);
+    lv_obj_set_pos(tempLbl, 0, rowH * 3);
+  } else {
+    // Icon links (7px + 2px Abstand), Text ab x=11.
+    draw_mono_pixel_icon(box, kMonoIconChip, 2, 12);
+    lv_obj_set_pos(loadLbl, 11, 12);
+    draw_mono_pixel_icon(box, kMonoIconFlash, 2, 22);
+    lv_obj_set_pos(powerLbl, 11, 22);
+    draw_mono_pixel_icon(box, kMonoIconTherm, 2, 32);
+    lv_obj_set_pos(tempLbl, 11, 32);
+  }
+
+  s_monoHwCardWidgets.push_back({isGpu, loadLbl, powerLbl, tempLbl});
+  return box;
+}
+lv_obj_t *create_mono_cpu_card(lv_obj_t *parent, JsonObjectConst props) { return build_mono_hw_card(parent, false, props); }
+lv_obj_t *create_mono_gpu_card(lv_obj_t *parent, JsonObjectConst props) { return build_mono_hw_card(parent, true, props); }
+
+// Freistehende 1px-Linie (o.ae. per w/h frei skalierbar) - reiner weisser
+// Volltonblock ohne Rand/Rundung, exakt dasselbe Muster wie die frueher in
+// display_mono.cpp fest verdrahteten Trennlinien (dort "s_divider1/2"),
+// jetzt aber frei platzierbar/dimensionierbar ueber den Layout-Editor.
+// w/h bestimmen Ausrichtung: h klein + w gross -> horizontale Linie, w klein
+// + h gross -> vertikale Linie - kein eigenes Props-Feld noetig, das
+// generische x/y/w/h aus layout_apply() reicht.
+lv_obj_t *create_mono_line(lv_obj_t *parent, JsonObjectConst) {
+  lv_obj_t *o = lv_obj_create(parent);
+  lv_obj_remove_flag(o, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_style_radius(o, 0, 0);
+  lv_obj_set_style_border_width(o, 0, 0);
+  lv_obj_set_style_bg_color(o, lv_color_white(), 0);
+  lv_obj_set_style_bg_opa(o, LV_OPA_COVER, 0);
+  return o;
+}
+
+// Freies "Label - Wert": props["key"] bindet gegen einen der 6 festen
+// hw_info-Namen ODER (Fallback) gegen dyn_values (siehe shared_state.h/
+// hw_data.cpp) - die PC-App liefert mehr Sensorwerte als nur die 6
+// cpu_/gpu_-Grundfelder, dieses Widget macht sie ohne Firmware-Aenderung
+// nutzbar. props["label"] ist der Anzeigetext, props["unit"] ein freies
+// Suffix (z.B. "%", "C", "W", "MB").
+lv_obj_t *create_mono_label_value(lv_obj_t *parent, JsonObjectConst props) {
+  lv_obj_t *row = lv_obj_create(parent);
+  lv_obj_remove_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(row, 0, 0);
+  lv_obj_set_style_pad_all(row, 0, 0);
+  lv_obj_set_layout(row, LV_LAYOUT_FLEX);
+  lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(row, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+  lv_obj_t *labelLbl = lv_label_create(row);
+  lv_obj_set_style_text_color(labelLbl, lv_color_white(), 0);
+  lv_obj_set_style_text_font(labelLbl, &lv_font_unscii_8, 0);
+  lv_label_set_text(labelLbl, props["label"] | "");
+
+  lv_obj_t *valLbl = lv_label_create(row);
+  lv_obj_set_style_text_color(valLbl, lv_color_white(), 0);
+  lv_obj_set_style_text_font(valLbl, &lv_font_unscii_8, 0);
+  lv_label_set_text(valLbl, "--");
+
+  const char *key  = props["key"]  | "";
+  const char *unit = props["unit"] | "";
+  s_monoLabelValueWidgets.push_back({valLbl, String(key), String(unit)});
+  return row;
+}
+
 // --- Dashboard/Einstellungen als echte Tabs (Footer-Icons) ---
 //
 // Settings war zuerst ein Vollbild-Overlay ueber dem Dashboard - User-Vorgabe
@@ -409,6 +886,26 @@ lv_obj_t *s_footerObj = nullptr;
 lv_obj_t *s_dashboardPill = nullptr;
 lv_obj_t *s_settingsPill = nullptr;
 std::vector<lv_obj_t *> s_dashboardContentWidgets;
+
+// Nur bei displayIsMono() befuellt (siehe layout_apply()) - Widgets aus dem
+// zweiten, im Editor separat editierbaren Standby-Set. Werden beim Bau
+// erst einmal versteckt (LV_OBJ_FLAG_HIDDEN) und von
+// refresh_mono_standby_visibility() gegenlaeufig zu
+// s_dashboardContentWidgets ein-/ausgeblendet - dasselbe "beides bauen, nur
+// Sichtbarkeit umschalten"-Muster wie beim Dashboard/Settings-Tab oben,
+// nur mit Dashboard/Standby statt Dashboard/Settings.
+std::vector<lv_obj_t *> s_standbyWidgets;
+
+// Dasselbe Zustands-Dreigespann wie s_standby/s_standbyAuto/
+// s_manualToggleRequested in display_round.cpp (dort ausfuehrlich
+// begruendet: Auto-Standby darf ein manuelles Umschalten nicht
+// ueberschreiben, ein manuelles Umschalten muss aber den naechsten
+// Auto-Zyklus wieder uebernehmen koennen) - hier vor layout_apply()
+// deklariert (nicht erst bei refresh_mono_standby_visibility() weiter
+// unten), da layout_apply() sie bei jedem Rebuild zuruecksetzen muss.
+bool s_monoStandby = false;
+bool s_monoStandbyAuto = false;
+volatile bool s_monoManualToggleRequested = false;
 
 void set_pill_active(lv_obj_t *pill, bool active) {
   lv_obj_set_style_border_width(pill, active ? 2 : 1, 0);
@@ -768,9 +1265,22 @@ const WidgetTypeEntry kWidgetTypes[] = {
     {"datetime_card", create_datetime_card},
     {"cpu_card", create_cpu_card},
     {"gpu_card", create_gpu_card},
+    {"cpu_card_flat", create_cpu_card_flat},
+    {"gpu_card_flat", create_gpu_card_flat},
     {"weather_card", create_weather_card},
     {"chart_card", create_chart_card},
     {"footer", create_footer},
+    {"mono_clock", create_mono_clock},
+    {"mono_date", create_mono_date},
+    {"mono_weekday", create_mono_weekday},
+    {"mono_weather_temp", create_mono_weather_temp},
+    {"mono_forecast", create_mono_forecast},
+    {"mono_cpu_stat", create_mono_cpu_stat},
+    {"mono_gpu_stat", create_mono_gpu_stat},
+    {"mono_cpu_card", create_mono_cpu_card},
+    {"mono_gpu_card", create_mono_gpu_card},
+    {"mono_line", create_mono_line},
+    {"mono_label_value", create_mono_label_value},
 };
 
 enum class LayoutCmdType { kApplyFull };
@@ -784,7 +1294,7 @@ QueueHandle_t s_layoutQueue = nullptr;
 
 } // namespace
 
-void layout_apply(JsonArrayConst widgets) {
+void layout_apply(JsonArrayConst widgets, JsonArrayConst standbyWidgets) {
   lv_obj_t *scr = lv_scr_act();
   // lv_obj_clean() macht alle bisherigen s_widgets-Handles sofort ungueltig -
   // Map/Bindings deshalb VOR dem Neuaufbau leeren, nicht danach.
@@ -793,8 +1303,17 @@ void layout_apply(JsonArrayConst widgets) {
   s_widgets.clear();
   s_datetimeWidgets.clear();
   s_hwCardWidgets.clear();
+  s_hwCardFlatWidgets.clear();
   s_weatherCardWidgets.clear();
   s_chartCardWidgets.clear();
+  s_monoClockWidgets.clear();
+  s_monoDateWidgets.clear();
+  s_monoWeekdayWidgets.clear();
+  s_monoWeatherWidgets.clear();
+  s_monoForecastWidgets.clear();
+  s_monoStatWidgets.clear();
+  s_monoHwCardWidgets.clear();
+  s_monoLabelValueWidgets.clear();
   // Der Settings-Tab-Inhalt sowie Footer/Pill-Handles sind Kinder von scr -
   // lv_obj_clean() hat sie (falls vorhanden) gerade mit geloescht, die
   // Zeiger waeren sonst dangling. Tab-Zustand faellt bei jedem Rebuild
@@ -805,6 +1324,16 @@ void layout_apply(JsonArrayConst widgets) {
   s_dashboardPill = nullptr;
   s_settingsPill = nullptr;
   s_dashboardContentWidgets.clear();
+  s_standbyWidgets.clear();
+  // Standby-Zustand faellt bei jedem Rebuild zurueck auf "Dashboard sichtbar"
+  // (analog zu s_standby=s_standbyAuto=false in displayRoundBuild()) - ohne
+  // das bliebe ein vor dem Reset aktiver Standby (Timeout oder manuell per
+  // BOOT-Taste) bestehen und der neu gebaute Dashboard-Inhalt waere sofort
+  // wieder versteckt, obwohl "Auf Grundlayout zuruecksetzen" gerade erst
+  // ausgeloest wurde.
+  s_monoStandby = false;
+  s_monoStandbyAuto = false;
+  s_monoManualToggleRequested = false;
   s_activeTab = ActiveTab::kDashboard;
 
   for (JsonObjectConst w : widgets) {
@@ -832,6 +1361,33 @@ void layout_apply(JsonArrayConst widgets) {
     const char *id = w["id"] | "";
     if (id[0]) s_widgets[id] = o;
   }
+
+  // Zweites Widget-Set, nur bei Mono ueberhaupt befuellt (siehe
+  // layout_default_json() - auf allen anderen Aufloesungen ist
+  // standbyWidgets ein leeres Array, diese Schleife also ein No-Op).
+  // Anfangs immer versteckt - refresh_mono_standby_visibility() entscheidet
+  // pro Refresh-Zyklus, welches der beiden Sets sichtbar ist.
+  for (JsonObjectConst w : standbyWidgets) {
+    const char *type = w["type"] | "";
+    lv_obj_t *o = nullptr;
+    for (auto &e : kWidgetTypes) {
+      if (strcmp(e.type, type) == 0) {
+        o = e.create(scr, w["props"]);
+        break;
+      }
+    }
+    if (!o) {
+      log_w("display_layout: unbekannter Standby-Widget-Typ '%s'", type);
+      continue;
+    }
+    lv_obj_set_pos(o, w["x"] | 0, w["y"] | 0);
+    lv_obj_set_size(o, w["w"] | 60, w["h"] | 30);
+    lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);
+    s_standbyWidgets.push_back(o);
+
+    const char *id = w["id"] | "";
+    if (id[0]) s_widgets[id] = o;
+  }
 }
 
 void layout_queue_begin(void) {
@@ -854,7 +1410,7 @@ void layout_queue_process(void) {
   while (xQueueReceive(s_layoutQueue, &cmd, 0) == pdTRUE) {
     JsonDocument doc;
     if (deserializeJson(doc, *cmd.payload) == DeserializationError::Ok) {
-      layout_apply(doc["widgets"].as<JsonArrayConst>());
+      layout_apply(doc["widgets"].as<JsonArrayConst>(), doc["standby_widgets"].as<JsonArrayConst>());
     }
     delete cmd.payload;
   }
@@ -943,6 +1499,28 @@ static void refresh_hw_card_widgets(void) {
   }
 }
 
+static void refresh_hw_card_flat_widgets(void) {
+  if (s_hwCardFlatWidgets.empty()) return;
+  hw_data_lock();
+  float cpuLoad = hw_info.cpu_load, cpuTemp = hw_info.cpu_temp, cpuPower = hw_info.cpu_power;
+  float gpuLoad = hw_info.gpu_load, gpuTemp = hw_info.gpu_temp, gpuPower = hw_info.gpu_power;
+  hw_data_unlock();
+
+  char buf[16];
+  for (auto &w : s_hwCardFlatWidgets) {
+    float load  = w.isGpu ? gpuLoad  : cpuLoad;
+    float temp  = w.isGpu ? gpuTemp  : cpuTemp;
+    float power = w.isGpu ? gpuPower : cpuPower;
+
+    snprintf(buf, sizeof(buf), "%d%%", (int)(load + 0.5f));
+    lv_label_set_text(w.loadLbl, buf);
+    snprintf(buf, sizeof(buf), "%dW", (int)(power + 0.5f));
+    lv_label_set_text(w.powerLbl, buf);
+    snprintf(buf, sizeof(buf), "%d\xc2\xb0" "C", (int)(temp + 0.5f));
+    lv_label_set_text(w.tempLbl, buf);
+  }
+}
+
 static void refresh_weather_card_widgets(void) {
   if (s_weatherCardWidgets.empty() || !weather_info.valid) return;
 
@@ -1003,11 +1581,255 @@ static void refresh_chart_card_widgets(void) {
   hw_data_unlock();
 }
 
+static void refresh_mono_clock_widgets(void) {
+  if (s_monoClockWidgets.empty() && s_monoDateWidgets.empty() &&
+      s_monoWeekdayWidgets.empty() && s_monoWeatherWidgets.empty()) {
+    return;
+  }
+  time_t now = time(nullptr);
+  struct tm t;
+  localtime_r(&now, &t);
+  char buf[24];
+
+  if (!s_monoClockWidgets.empty()) {
+    strftime(buf, sizeof(buf), "%H:%M", &t);
+    for (auto &w : s_monoClockWidgets) lv_label_set_text(w.lbl, buf);
+  }
+  if (!s_monoDateWidgets.empty()) {
+    strftime(buf, sizeof(buf), "%d.%m.%Y", &t);
+    for (auto &w : s_monoDateWidgets) lv_label_set_text(w.lbl, buf);
+  }
+  if (!s_monoWeekdayWidgets.empty()) {
+    // %A = C-Locale-Wochentag (Englisch, im Projekt nirgends setlocale())
+    strftime(buf, sizeof(buf), "%A", &t);
+    for (auto &w : s_monoWeekdayWidgets) lv_label_set_text(w.lbl, buf);
+  }
+  if (!s_monoWeatherWidgets.empty()) {
+    bool valid = app_config.weather_enabled && weather_info.valid;
+    if (valid) {
+      int tempR = (int)(weather_info.temp_c + (weather_info.temp_c >= 0 ? 0.5f : -0.5f));
+      snprintf(buf, sizeof(buf), "%dC", tempR);
+    }
+    for (auto &w : s_monoWeatherWidgets) lv_label_set_text(w.lbl, valid ? buf : "--");
+  }
+}
+
+static void refresh_mono_forecast_widgets(void) {
+  if (s_monoForecastWidgets.empty()) return;
+  char buf[8];
+  for (auto &w : s_monoForecastWidgets) {
+    for (int i = 0; i < w.colCount; i++) {
+      if (forecast_info.valid && i < forecast_info.day_count) {
+        const forecast_day_t &d = forecast_info.days[i];
+        // date_epoch ist bereits lokal verschoben (siehe fetch_forecast() in
+        // weather_service.cpp) - gmtime_r statt localtime_r, sonst wuerde
+        // der Geraete-TZ-Offset ein zweites Mal angewendet.
+        time_t t = (time_t)d.date_epoch;
+        struct tm tmv;
+        gmtime_r(&t, &tmv);
+        lv_label_set_text(w.dayLbls[i], weather_weekday_abbr(tmv.tm_wday));
+        int hi = (int)(d.temp_max + (d.temp_max >= 0 ? 0.5f : -0.5f));
+        int lo = (int)(d.temp_min + (d.temp_min >= 0 ? 0.5f : -0.5f));
+        snprintf(buf, sizeof(buf), "%dC", hi);
+        lv_label_set_text(w.hiLbls[i], buf);
+        snprintf(buf, sizeof(buf), "%dC", lo);
+        lv_label_set_text(w.loLbls[i], buf);
+      } else {
+        lv_label_set_text(w.dayLbls[i], "--");
+        lv_label_set_text(w.hiLbls[i], "--");
+        lv_label_set_text(w.loLbls[i], "--");
+      }
+    }
+  }
+}
+
+static void refresh_mono_stat_widgets(void) {
+  if (s_monoStatWidgets.empty()) return;
+  hw_data_lock();
+  float cpuLoad = hw_info.cpu_load, cpuTemp = hw_info.cpu_temp, cpuPower = hw_info.cpu_power;
+  float gpuLoad = hw_info.gpu_load, gpuTemp = hw_info.gpu_temp, gpuPower = hw_info.gpu_power;
+  hw_data_unlock();
+
+  char buf[24];
+  for (auto &w : s_monoStatWidgets) {
+    float load  = w.isGpu ? gpuLoad  : cpuLoad;
+    float temp  = w.isGpu ? gpuTemp  : cpuTemp;
+    float power = w.isGpu ? gpuPower : cpuPower;
+
+    int loadPct = (int)(load + 0.5f);
+    snprintf(buf, sizeof(buf), "%s %d%%", w.isGpu ? "GPU" : "CPU", loadPct);
+    lv_label_set_text(w.lbl, buf);
+    lv_bar_set_value(w.bar, loadPct, LV_ANIM_OFF);
+
+    int tempR  = (int)(temp + 0.5f);
+    int powerR = (int)(power + 0.5f);
+    snprintf(buf, sizeof(buf), "%dC %dW", tempR, powerR);
+    lv_label_set_text(w.statLbl, buf);
+  }
+}
+
+static void refresh_mono_hw_card_widgets(void) {
+  if (s_monoHwCardWidgets.empty()) return;
+  hw_data_lock();
+  float cpuLoad = hw_info.cpu_load, cpuTemp = hw_info.cpu_temp, cpuPower = hw_info.cpu_power;
+  float gpuLoad = hw_info.gpu_load, gpuTemp = hw_info.gpu_temp, gpuPower = hw_info.gpu_power;
+  hw_data_unlock();
+
+  char buf[16];
+  for (auto &w : s_monoHwCardWidgets) {
+    float load  = w.isGpu ? gpuLoad  : cpuLoad;
+    float temp  = w.isGpu ? gpuTemp  : cpuTemp;
+    float power = w.isGpu ? gpuPower : cpuPower;
+
+    snprintf(buf, sizeof(buf), "%d%%", (int)(load + 0.5f));
+    lv_label_set_text(w.loadLbl, buf);
+    snprintf(buf, sizeof(buf), "%dW", (int)(power + 0.5f));
+    lv_label_set_text(w.powerLbl, buf);
+    snprintf(buf, sizeof(buf), "%dC", (int)(temp + 0.5f));
+    lv_label_set_text(w.tempLbl, buf);
+  }
+}
+
+// props["key"] gegen die 6 festen hw_info-Namen pruefen, sonst Fallback auf
+// dyn_values (siehe shared_state.h/hw_data.cpp) - deckt sowohl die
+// Grundwerte als auch beliebige weitere vom PC-Client gesendete Felder ab.
+static void refresh_mono_label_value_widgets(void) {
+  if (s_monoLabelValueWidgets.empty()) return;
+  hw_data_lock();
+  float cpuLoad = hw_info.cpu_load, cpuTemp = hw_info.cpu_temp, cpuPower = hw_info.cpu_power;
+  float gpuLoad = hw_info.gpu_load, gpuTemp = hw_info.gpu_temp, gpuPower = hw_info.gpu_power;
+
+  char buf[24];
+  for (auto &w : s_monoLabelValueWidgets) {
+    const char *key = w.key.c_str();
+    bool found = true;
+    float val = 0;
+    if (strcmp(key, "cpu_load") == 0)       val = cpuLoad;
+    else if (strcmp(key, "cpu_temp") == 0)  val = cpuTemp;
+    else if (strcmp(key, "cpu_power") == 0) val = cpuPower;
+    else if (strcmp(key, "gpu_load") == 0)  val = gpuLoad;
+    else if (strcmp(key, "gpu_temp") == 0)  val = gpuTemp;
+    else if (strcmp(key, "gpu_power") == 0) val = gpuPower;
+    else {
+      found = false;
+      for (int i = 0; i < dyn_values_count; i++) {
+        if (strncmp(dyn_values[i].key, key, sizeof(dyn_values[i].key)) == 0) {
+          val = dyn_values[i].value;
+          found = true;
+          break;
+        }
+      }
+    }
+    if (found) {
+      snprintf(buf, sizeof(buf), "%d%s", (int)(val + (val >= 0 ? 0.5f : -0.5f)), w.unit.c_str());
+      lv_label_set_text(w.valLbl, buf);
+    } else {
+      lv_label_set_text(w.valLbl, "--");
+    }
+  }
+  hw_data_unlock();
+}
+
+// Standby-Auswertung fuer Mono: dieselbe Formel wie zuvor im hartcodierten
+// display_mono.cpp (app_config.standby_timeout_s als Trigger, weiterhin im
+// Web-UI editierbar) - baut jetzt aber kein eigenes Widget mehr, sondern
+// blendet nur zwischen den beiden vom Layout-Editor gebauten Sets um
+// (s_dashboardContentWidgets/s_standbyWidgets), analog zum bestehenden
+// Dashboard/Settings-Tab-Umschalter oben in dieser Datei. s_monoStandby/
+// s_monoStandbyAuto/s_monoManualToggleRequested sind weiter oben (vor
+// layout_apply()) deklariert, siehe dortiger Kommentar.
+static void refresh_mono_standby_visibility(void) {
+  if (!displayIsMono() || s_standbyWidgets.empty()) return;
+
+  hw_data_lock();
+  bool everReceived  = hw_info.ever_received;
+  int64_t lastUpdate = hw_info.last_update_ms;
+  hw_data_unlock();
+
+  bool autoStandby = app_config.standby_timeout_s > 0 && everReceived &&
+                      (now_ms() - lastUpdate) > (int64_t)app_config.standby_timeout_s * 1000;
+
+  if (autoStandby) {
+    s_monoStandby = true;
+    s_monoStandbyAuto = true;
+  } else if (s_monoStandbyAuto) {
+    s_monoStandby = false;
+    s_monoStandbyAuto = false;
+  }
+  if (s_monoManualToggleRequested) {
+    s_monoManualToggleRequested = false;
+    s_monoStandby = !s_monoStandby;
+    s_monoStandbyAuto = false;
+  }
+
+  for (lv_obj_t *o : s_dashboardContentWidgets) {
+    if (s_monoStandby) lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);
+    else lv_obj_remove_flag(o, LV_OBJ_FLAG_HIDDEN);
+  }
+  for (lv_obj_t *o : s_standbyWidgets) {
+    if (s_monoStandby) lv_obj_remove_flag(o, LV_OBJ_FLAG_HIDDEN);
+    else lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);
+  }
+}
+
+// BOOT-Taste als manueller Standby-Umschalter, exaktes Gegenstueck zu
+// displayRoundButtonPoll() (display_round.cpp) - dort ausfuehrlich
+// begruendet: Pin ist chip-abhaengig (C3: GPIO9, ESP32/S3: GPIO0 - auf dem
+// real getesteten ESP32-S3-Zero sind BOOT und RESET zwei getrennte
+// physische Taster, GPIO0 haengt NICHT an RST). Eigene Debounce-Variablen
+// statt Code-Teilung mit displayRoundButtonPoll() - beide Funktionen laufen
+// JEDEN loop()-Takt unabhaengig vom aktiven Display (siehe
+// displayDrawButtonPoll() in display_draw.cpp), reine Duplikation von ~15
+// Zeilen ist hier lesbarer als eine gemeinsame Abstraktion fuer zwei
+// Aufrufer.
+#if defined(BOARD_GENERIC)
+
+void displayMonoButtonPoll(void) {
+#if CONFIG_IDF_TARGET_ESP32C3
+  constexpr uint8_t kButtonPin = 9;
+#else
+  constexpr uint8_t kButtonPin = 0;
+#endif
+  constexpr uint32_t kDebounceMs = 40;
+
+  static bool initialized = false;
+  static bool lastLevel = true; // INPUT_PULLUP: HIGH = losgelassen
+  static uint32_t lastChangeMs = 0;
+
+  if (!initialized) {
+    pinMode(kButtonPin, INPUT_PULLUP);
+    initialized = true;
+  }
+
+  bool level = digitalRead(kButtonPin) != 0;
+  uint32_t now = millis();
+  if (level != lastLevel && (now - lastChangeMs) >= kDebounceMs) {
+    lastChangeMs = now;
+    if (lastLevel && !level) { // fallende Flanke: losgelassen -> gedrueckt
+      s_monoManualToggleRequested = true;
+    }
+    lastLevel = level;
+  }
+}
+
+#else
+
+void displayMonoButtonPoll(void) {}
+
+#endif
+
 void layout_refresh_bindings(void) {
   refresh_datetime_widgets();
   refresh_hw_card_widgets();
+  refresh_hw_card_flat_widgets();
   refresh_weather_card_widgets();
   refresh_chart_card_widgets();
+  refresh_mono_clock_widgets();
+  refresh_mono_forecast_widgets();
+  refresh_mono_stat_widgets();
+  refresh_mono_hw_card_widgets();
+  refresh_mono_label_value_widgets();
+  refresh_mono_standby_visibility();
 }
 
 // Nur auf der CYD relevant (XPT2046-Touch) - true, solange Touch noch nie
@@ -1048,8 +1870,12 @@ bool displayIsRound(void) {
 
 bool displayIsMono(void) {
 #if defined(BOARD_GENERIC)
-  // SSD1309 ist aktuell das einzige monochrome Display im Sortiment.
-  return app_config.display_type == DISPLAY_GENERIC_SSD1309;
+  // SSD1309 und SH1106 sind die monochromen Displays im Sortiment - beide
+  // nutzen denselben Treiber (displays/mono_oled_i2c.h) und dieselben
+  // mono_*-Widget-Typen ueber den generischen Layout-Editor (siehe
+  // kWidgetTypes oben in dieser Datei).
+  return app_config.display_type == DISPLAY_GENERIC_SSD1309 ||
+         app_config.display_type == DISPLAY_GENERIC_SH1106;
 #else
   return false;
 #endif
@@ -1058,10 +1884,13 @@ bool displayIsMono(void) {
 bool displaySupportsLayoutEditor(void) {
 #if defined(BOARD_GENERIC)
   // DISPLAY_NONE (kein Display gewaehlt/verkabelt) -> false, sonst wuerde
-  // der Editor-Tab ohne jedes Display angeboten.
-  return app_config.display_type != DISPLAY_NONE && !displayIsRound() && !displayIsMono();
+  // der Editor-Tab ohne jedes Display angeboten. Mono hat eigene
+  // Widget-Typen (mono_*, siehe kWidgetTypes) und laeuft seitdem ueber
+  // denselben layout_apply()-Pfad wie die eckigen Farbdisplays - nur rund
+  // bleibt aussen vor (siehe Begruendung in display_layout.h).
+  return app_config.display_type != DISPLAY_NONE && !displayIsRound();
 #else
-  return !displayIsRound() && !displayIsMono();
+  return !displayIsRound();
 #endif
 }
 
@@ -1081,6 +1910,45 @@ int16_t displayHeightPx(void) {
 #endif
 }
 
+// Grundlayout fuer Mono (128x64): Dashboard reproduziert 1:1 das alte
+// hartcodierte display_mono.cpp-Layout (Datum links/Uhr rechts als
+// Kopfzeile, CPU-/GPU-Statuszeile darunter). standby_widgets ist "Variante
+// 1" aus der Anfrage (grosse Uhr + Datum + Wochentag, siehe Referenzfoto) -
+// "Variante 2" (Uhr+Datum+Wetter) gibt es nur als Preset im Web-Editor
+// (dashboard.html), nicht hier, da sie ohne konfiguriertes Wetter-API
+// bloss "--" anzeigen wuerde.
+static String mono_layout_default_json(void) {
+  JsonDocument doc;
+  doc["version"] = 1;
+  JsonArray widgets = doc["widgets"].to<JsonArray>();
+
+  auto addWidget = [&](JsonArray arr, const char *id, const char *type,
+                        int16_t x, int16_t y, int16_t ww, int16_t hh, bool big = false) {
+    JsonObject o = arr.add<JsonObject>();
+    o["id"] = id;
+    o["type"] = type;
+    o["x"] = x;
+    o["y"] = y;
+    o["w"] = ww;
+    o["h"] = hh;
+    if (big) o["props"]["big"] = true;
+  };
+
+  addWidget(widgets, "date1", "mono_date",      0,  0, 80, 10);
+  addWidget(widgets, "clk1",  "mono_clock",    80,  0, 48, 10);
+  addWidget(widgets, "cpu1",  "mono_cpu_stat",  0, 13, 128, 24);
+  addWidget(widgets, "gpu1",  "mono_gpu_stat",  0, 38, 128, 24);
+
+  JsonArray standby = doc["standby_widgets"].to<JsonArray>();
+  addWidget(standby, "sclk1", "mono_clock",   0,  4, 128, 18, /*big=*/true);
+  addWidget(standby, "sdate1","mono_date",    0, 26, 128, 10);
+  addWidget(standby, "sday1", "mono_weekday", 0, 40, 128, 10);
+
+  String out;
+  serializeJson(doc, out);
+  return out;
+}
+
 // Grundlayout fuer eckige Farbdisplays: 2x2-Raster (Datum/Uhrzeit + Wetter
 // oben, CPU + GPU unten) plus Footer, nachgebaut vom User handgebauten
 // Referenzfoto. Fuer die CYD (320x240) an echter Hardware bestaetigte
@@ -1089,11 +1957,18 @@ int16_t displayHeightPx(void) {
 // vorgegeben. Skaliert linear mit der Bildschirmhoehe (scale = h/240) fuer
 // groessere Displays wie das JC8048W550, damit die Proportionen erhalten
 // bleiben statt auf 800x480 winzig zu wirken. Im Editor laesst sich danach
-// ohnehin jede Karte frei verschieben/skalieren.
+// ohnehin jede Karte frei verschieben/skalieren. Mono (128x64) hat ein
+// eigenes Grundlayout (mono_layout_default_json() oben, eigene
+// mono_*-Widget-Typen).
 String layout_default_json(int16_t w, int16_t h) {
+  if (w == 128 && h == 64) {
+    return mono_layout_default_json();
+  }
+
   JsonDocument doc;
   doc["version"] = 1;
   JsonArray widgets = doc["widgets"].to<JsonArray>();
+  doc["standby_widgets"].to<JsonArray>(); // leer - nur Mono nutzt Standby-Layouts
 
   int16_t margin = 5;
   int16_t gap = 10;

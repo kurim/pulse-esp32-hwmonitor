@@ -294,7 +294,7 @@
       display: none;
     }
 
-    .editor-palette {
+    .editor-palette, .editor-mode-switch, .editor-presets {
       display: flex;
       gap: 8px;
       margin-bottom: 12px;
@@ -475,7 +475,10 @@
         <div class="card settings-section">
           <h3>🌥️ Wetter</h3>
           <div class="field"><label><input type="checkbox" id="weatherEnabled" style="width:auto"> Aktiviert</label></div>
-          <div class="field"><label>OpenWeatherMap API-Key</label><input id="weatherKey"></div>
+          <div class="field">
+            <label>OpenWeatherMap API-Key (<a href="https://openweathermap.org/api" target="_blank" rel="noopener">API-Key holen</a>)</label>
+            <input id="weatherKey">
+          </div>
           <div class="field"><label>Stadt</label><input id="weatherCity"></div>
           <div class="field">
             <label>Einheiten</label>
@@ -498,6 +501,7 @@
               <option value="5">ILI9488 (320x480, SPI)</option>
               <option value="6">ST7796S (320x480, SPI)</option>
               <option value="7">SSD1309 (128x64, mono, I2C)</option>
+              <option value="8">SH1106 (128x64, mono, I2C)</option>
             </select>
           </div>
           <div class="field">
@@ -551,6 +555,7 @@
           <div class="field"><label>SCL</label><input id="pinScl" type="number" min="-1" max="48"></div>
           <div class="field"><label>RST</label><input id="pinI2cRst" type="number" min="-1" max="48"></div>
           <div class="field"><label>I2C-Adresse (Hex, z.B. 3C)</label><input id="pinI2cAddr" type="text" maxlength="2"></div>
+          <div class="status-line">Bild zeigt etwas an, wirkt aber horizontal verschoben/verzerrt? Dann statt SSD1309 den Anzeige-Typ "SH1106" waehlen (oben) - viele als "SSD1306-kompatibel" verkaufte Panels (z.B. GME12864-77/SSD1315) brauchen den internen 2px-Versatz, den echtes SSD1306/SSD1309 nicht hat.</div>
           <div class="actions"><button class="btn primary" id="btnSavePinsI2c">Speichern</button></div>
         </div>
 
@@ -582,15 +587,16 @@
     <section id="tab-editor" class="tab">
       <div class="card" style="margin-bottom:16px">
         <h3 style="margin-top:0;color:var(--blue)">🎨 Dashboard-Editor</h3>
-        <div class="status-line">Nur auf eckigen Displays verfügbar. Widget aus der Palette hinzufügen, auf der Fläche verschieben, rechts Eigenschaften anpassen, dann speichern.</div>
-        <div class="editor-palette" id="editorPalette">
-          <button class="btn" data-type="datetime_card">+ Datum/Uhrzeit</button>
-          <button class="btn" data-type="weather_card">+ Wetter</button>
-          <button class="btn" data-type="cpu_card">+ CPU</button>
-          <button class="btn" data-type="gpu_card">+ GPU</button>
-          <button class="btn" data-type="chart_card">+ Verlauf</button>
-          <button class="btn" data-type="footer">+ Footer</button>
+        <div class="status-line" id="editorIntro">Widget aus der Palette hinzufügen, auf der Fläche verschieben, rechts Eigenschaften anpassen, dann speichern.</div>
+        <div class="editor-mode-switch" id="editorModeSwitch" style="display:none;margin-bottom:10px">
+          <button class="btn" data-mode="dashboard">Dashboard-Layout</button>
+          <button class="btn" data-mode="standby">Standby-Layout</button>
         </div>
+        <div class="editor-presets" id="editorPresets" style="display:none;margin-bottom:10px">
+          <button class="btn" id="btnPresetClockDateDay">Vorlage: Uhr + Datum + Tag</button>
+          <button class="btn" id="btnPresetClockDateWeather">Vorlage: Uhr + Datum + Wetter</button>
+        </div>
+        <div class="editor-palette" id="editorPalette"></div>
       </div>
       <div class="editor-layout">
         <div id="editorCanvas"></div>
@@ -643,11 +649,19 @@
       return (p === 'settings' || p === 'fota' || p === 'editor') ? p : 'dashboard';
     }
 
-    function activateTab(tab, pushUrl) {
+    async function activateTab(tab, pushUrl) {
       document.querySelectorAll('nav button[data-tab]').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
       document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.id === 'tab-' + tab));
       if (tab === 'settings') loadConfig();
-      if (tab === 'editor') { editorInit(s_statusDeviceW, s_statusDeviceH); editorLoad(); }
+      if (tab === 'editor') {
+        // loadConfig() befuellt s_displayMono/s_displayRound (siehe dort) -
+        // MUSS vor editorInit() durchgelaufen sein, sonst zeigt die Palette
+        // beim allerersten Editor-Besuch (ohne vorherigen Settings-Tab-
+        // Aufruf) faelschlich die Karten-Typen statt der Mono-Typen.
+        await loadConfig();
+        editorInit(s_statusDeviceW, s_statusDeviceH);
+        editorLoad();
+      }
       if (pushUrl) history.pushState({ tab }, '', tab === 'dashboard' ? '/' : '/' + tab);
     }
 
@@ -758,14 +772,15 @@
     // true, wenn das aktuell aktive Display rund ist (siehe display_layout.h
     // displayIsRound()) - steuert, ob die Arc-Farbfelder sichtbar sind.
     let s_displayRound = false;
-    // true, wenn das aktuell aktive Display monochrom ist (SSD1309, siehe
-    // display_layout.h displayIsMono()) - wie s_displayRound, aber ohne
-    // Arc-Farben (das Mono-Dashboard ist rein schwarz/weiss, siehe
+    // true, wenn das aktuell aktive Display monochrom ist (SSD1309 ODER
+    // SH1106, siehe display_layout.h displayIsMono()) - wie s_displayRound,
+    // aber ohne Arc-Farben (das Mono-Dashboard ist rein schwarz/weiss, siehe
     // display_mono.cpp) und mit eigener I2C-Pin-Karte statt der SPI-Karte.
     let s_displayMono = false;
-    // display_type-Wert der SSD1309-Option oben (<option value="7">) - als
-    // Konstante statt Magic Number an jeder Vergleichsstelle unten.
+    // display_type-Werte der I2C-Mono-Optionen oben (<option value="7"/"8">) -
+    // als Konstanten statt Magic Numbers an jeder Vergleichsstelle unten.
     const SSD1309_TYPE = 7;
+    const SH1106_TYPE = 8;
     // Eingebaute Default-Pins je Displaytyp (siehe web_portal.cpp::handleGetConfig
     // "display_defaults"/"display_defaults_i2c"), Schluessel = display_type-Wert
     // als String.
@@ -776,7 +791,7 @@
     // den (leeren) Pin-Feldern - der Wert bleibt leer (= kein Override), der
     // Nutzer sieht aber sofort, welcher Pin tatsaechlich verwendet wird.
     function updatePinPlaceholders() {
-      const isI2c = $('displayType').value == SSD1309_TYPE;
+      const isI2c = $('displayType').value == SSD1309_TYPE || $('displayType').value == SH1106_TYPE;
       $('pinOverridesCard').style.display = (s_dynamicDisplay && !isI2c) ? '' : 'none';
       $('pinOverridesI2cCard').style.display = (s_dynamicDisplay && isI2c) ? '' : 'none';
 
@@ -1130,22 +1145,116 @@
     const EDITOR_MAX_CANVAS_H = 480;
     let s_editorScale = 1.5;
     let s_editorW = 240, s_editorH = 240; // tatsaechliche Geraete-Aufloesung
-    let s_layoutWidgets = [];
+
+    // Zwei getrennt editierbare Widget-Sets statt eines einzelnen Arrays -
+    // "standby" ist nur auf Mono ueberhaupt sichtbar/nutzbar (siehe
+    // editorRenderPalette()), auf allen anderen Displays bleibt es ein
+    // leeres, nie angezeigtes Array. s_editorMode waehlt, welches Set
+    // gerade auf der Canvas/im Props-Panel aktiv ist.
+    let s_editorSets = { dashboard: [], standby: [] };
+    let s_editorMode = 'dashboard';
+    function activeWidgets() { return s_editorSets[s_editorMode]; }
+    function setActiveWidgets(arr) { s_editorSets[s_editorMode] = arr; }
+
     let s_selectedId = null;
     let s_widgetCounter = 0;
     let s_dragId = null, s_dragOffX = 0, s_dragOffY = 0;
+    // Feldnamen-Vorschlaege fuers mono_label_value-Key-Feld: die 6 festen
+    // hw_info-Namen + alles, was der PC-Client gerade zusaetzlich sendet
+    // (dyn_values, siehe hw_data.cpp) - befuellt beim Betreten des Editor-Tabs.
+    let s_dynKeys = [];
+    function newWidgetId() { return 'w' + (++s_widgetCounter) + '_' + Date.now(); }
 
     function editorInit(w, h) {
       s_editorW = w; s_editorH = h;
-      s_editorScale = Math.min(1.5, EDITOR_MAX_CANVAS_W / w, EDITOR_MAX_CANVAS_H / h);
+      // Kleine Displays (Mono, 128x64) bekommen einen hoeheren Zoom-Deckel
+      // als die eckigen Farbdisplays - sonst waere die Canvas kaum noch
+      // bedienbar (128x64 * 1.5 = 192x96 CSS-Px). Gleiche Pixelflaechen-
+      // Heuristik wie is_big_display() in display_layout.cpp.
+      const scaleCap = (w * h <= 100 * 100) ? 6 : 1.5;
+      s_editorScale = Math.min(scaleCap, EDITOR_MAX_CANVAS_W / w, EDITOR_MAX_CANVAS_H / h);
+      s_editorGridPx = (w * h <= 100 * 100) ? 1 : 5;
       const canvas = $('editorCanvas');
       canvas.style.width = (w * s_editorScale) + 'px';
       canvas.style.height = (h * s_editorScale) + 'px';
+      editorRenderPalette();
     }
+
+    const MONO_PALETTE = [
+      ['mono_clock', '+ Uhr'],
+      ['mono_date', '+ Datum'],
+      ['mono_weekday', '+ Wochentag'],
+      ['mono_weather_temp', '+ Wetter (Temp)'],
+      ['mono_forecast', '+ Vorhersage'],
+      ['mono_cpu_stat', '+ CPU'],
+      ['mono_gpu_stat', '+ GPU'],
+      ['mono_cpu_card', '+ CPU (Karte)'],
+      ['mono_gpu_card', '+ GPU (Karte)'],
+      ['mono_line', '+ Linie'],
+      ['mono_label_value', '+ Label - Wert'],
+    ];
+    const CARD_PALETTE = [
+      ['datetime_card', '+ Datum/Uhrzeit'],
+      ['weather_card', '+ Wetter'],
+      ['cpu_card', '+ CPU'],
+      ['gpu_card', '+ GPU'],
+      ['cpu_card_flat', '+ CPU (flach)'],
+      ['gpu_card_flat', '+ GPU (flach)'],
+      ['chart_card', '+ Verlauf'],
+      ['footer', '+ Footer'],
+    ];
+
+    // Palette UND Modus-Umschalter/Vorlagen sind kontextuell: Mono hat
+    // eigene kleine Widget-Typen UND ein zweites (Standby-)Set, die eckigen
+    // Farbdisplays haben nur die Karten-Typen und kein Standby-Layout
+    // (Standby ist dort nicht implementiert, siehe app_config.standby_timeout_s
+    // in shared_state.h).
+    function editorRenderPalette() {
+      const list = s_displayMono ? MONO_PALETTE : CARD_PALETTE;
+      $('editorPalette').innerHTML = list.map(([type, label]) =>
+        `<button class="btn" data-type="${type}">${label}</button>`).join('');
+      $('editorModeSwitch').style.display = s_displayMono ? '' : 'none';
+      $('editorIntro').textContent = s_displayMono
+        ? 'Widget aus der Palette hinzufügen, auf der Fläche verschieben, rechts Eigenschaften anpassen. Dashboard- und Standby-Layout sind getrennt editierbar (oben umschaltbar).'
+        : 'Widget aus der Palette hinzufügen, auf der Fläche verschieben, rechts Eigenschaften anpassen, dann speichern.';
+      document.querySelectorAll('#editorModeSwitch button[data-mode]')
+        .forEach(b => b.classList.toggle('primary', b.dataset.mode === s_editorMode));
+      editorUpdatePresetVisibility();
+    }
+
+    function editorUpdatePresetVisibility() {
+      $('editorPresets').style.display = (s_displayMono && s_editorMode === 'standby') ? '' : 'none';
+    }
+
+    document.querySelectorAll('#editorModeSwitch button[data-mode]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        s_editorMode = btn.dataset.mode;
+        s_selectedId = null;
+        document.querySelectorAll('#editorModeSwitch button[data-mode]')
+          .forEach(b => b.classList.toggle('primary', b.dataset.mode === s_editorMode));
+        editorUpdatePresetVisibility();
+        editorRender();
+        editorRenderProps();
+      });
+    });
+
+    // Event-Delegation statt Einzel-Listener pro Button - die Palette wird
+    // bei jedem Tab-Eintritt/Displaywechsel per innerHTML neu gerendert
+    // (editorRenderPalette()), Einzel-Listener wuerden dabei verloren gehen.
+    $('editorPalette').addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-type]');
+      if (btn) editorAddWidget(btn.dataset.type);
+    });
 
     function editorWidgetLabel(w) {
       if (w.type === 'chart_card') {
         return w.type + ': ' + (w.props.source || 'cpu') + '/' + (w.props.metric || 'load');
+      }
+      if (w.type === 'mono_label_value') {
+        return 'Label-Wert: ' + (w.props.label || w.props.key || '?');
+      }
+      if (w.type === 'mono_clock' && w.props.big) {
+        return 'Uhr (groß)';
       }
       return w.type;
     }
@@ -1153,7 +1262,7 @@
     function editorRender() {
       const canvas = $('editorCanvas');
       canvas.querySelectorAll('.ed-widget').forEach(e => e.remove());
-      s_layoutWidgets.forEach(w => {
+      activeWidgets().forEach(w => {
         const el = document.createElement('div');
         el.className = 'ed-widget' + (w.id === s_selectedId ? ' selected' : '');
         el.style.left = (w.x * s_editorScale) + 'px';
@@ -1188,14 +1297,17 @@
       editorSelect(id);
     }
 
-    // 10px-Raster statt pixelgenauem Verschieben - leichter deckungsgleich
-    // auszurichten als frei per Hand zu positionieren.
-    const EDITOR_GRID_PX = 5;
-    function snapToGrid(v) { return Math.round(v / EDITOR_GRID_PX) * EDITOR_GRID_PX; }
+    // 5px-Raster statt pixelgenauem Verschieben - leichter deckungsgleich
+    // auszurichten als frei per Hand zu positionieren. Auf kleinen Displays
+    // (Mono, 128x64) ist 5px aber zu grob (User-Feedback) - dieselbe
+    // Pixelflaechen-Heuristik wie beim Zoom-Deckel in editorInit() schaltet
+    // dort auf 1px (effektiv kein Snapping) um.
+    let s_editorGridPx = 5;
+    function snapToGrid(v) { return Math.round(v / s_editorGridPx) * s_editorGridPx; }
 
     $('editorCanvas').addEventListener('pointermove', (e) => {
       if (!s_dragId) return;
-      const w = s_layoutWidgets.find(w => w.id === s_dragId);
+      const w = activeWidgets().find(w => w.id === s_dragId);
       if (!w) return;
       const canvasRect = $('editorCanvas').getBoundingClientRect();
       const x = (e.clientX - canvasRect.left - s_dragOffX) / s_editorScale;
@@ -1206,27 +1318,26 @@
     });
     window.addEventListener('pointerup', () => { s_dragId = null; });
 
-    // Feste Karten-Widgets (siehe display_layout.cpp) haben keine
-    // konfigurierbaren Props - Inhalt/Icons/Bindungen sind fest im Firmware-
-    // Code verdrahtet (dieselben Funktionen wie beim runden Display), nur
-    // Position/Groesse sind editierbar. Die frei konfigurierbaren
-    // label/slider/button/status-Primitive (freier Text, generische
-    // Bindung) sind entfernt - blieben im Editor ungenutzt.
-    const EDITOR_CARD_TYPES = ['datetime_card', 'weather_card', 'cpu_card', 'gpu_card', 'footer'];
-    // chart_card ist die einzige Ausnahme mit eigenen Props (Quelle/
-    // Messwert statt Text/Bindung) - eigener Zweig unten statt Aufnahme in
-    // EDITOR_CARD_TYPES.
+    // chart_card (Quelle/Messwert) und mono_label_value (Key/Label/Unit)
+    // sind die einzigen Typen mit eigenen Props - alle anderen (Karten UND
+    // die uebrigen Mono-Widgets) haben nur Position/Groesse, Inhalt/
+    // Bindungen sind fest im Firmware-Code verdrahtet (siehe
+    // display_layout.cpp). Kein generisches Prop-System - bewusste
+    // Entscheidung im Projekt (siehe dortiger Kommentar), hier fortgesetzt.
     const CHART_SOURCE_OPTIONS = [['cpu', 'CPU'], ['gpu', 'GPU']];
     const CHART_METRIC_OPTIONS = [['load', 'Load'], ['temp', 'Temp'], ['power', 'Power'], ['temp_power', 'Temp + Power']];
 
     function editorRenderProps() {
       const panel = $('editorProps');
-      const w = s_layoutWidgets.find(w => w.id === s_selectedId);
+      const w = activeWidgets().find(w => w.id === s_selectedId);
       if (!w) {
         panel.innerHTML = '<div class="status-line">Kein Widget ausgewählt</div>';
         return;
       }
       const isChart = w.type === 'chart_card';
+      const isLabelValue = w.type === 'mono_label_value';
+      const isMonoCard = w.type === 'mono_cpu_card' || w.type === 'mono_gpu_card';
+      const isForecast = w.type === 'mono_forecast';
       let html = `
         <div class="field"><label>Typ</label><input value="${w.type}" disabled></div>
         <div class="row">
@@ -1248,6 +1359,28 @@
           <div class="field"><label>Quelle</label><select id="propChartSource">${sourceOptionsHtml}</select></div>
           <div class="field"><label>Messwert</label><select id="propChartMetric">${metricOptionsHtml}</select></div>`;
       }
+      if (isLabelValue) {
+        const dynOptionsHtml = s_dynKeys.map(k => `<option value="${k}">`).join('');
+        html += `
+          <div class="field"><label>Anzeigetext</label><input id="propLvLabel" value="${w.props.label || ''}"></div>
+          <div class="field">
+            <label>Feldname (aus PC-App)</label>
+            <input id="propLvKey" value="${w.props.key || ''}" list="lvKeyList">
+            <datalist id="lvKeyList">${dynOptionsHtml}</datalist>
+          </div>
+          <div class="field"><label>Einheit (z.B. %, C, W, MB)</label><input id="propLvUnit" value="${w.props.unit || ''}"></div>`;
+      }
+      if (isMonoCard) {
+        const borderChecked = w.props.border !== false ? 'checked' : '';
+        const bigChecked = w.props.big ? 'checked' : '';
+        html += `
+          <div class="field"><label><input type="checkbox" id="propBorder" ${borderChecked}> Rahmen anzeigen</label></div>
+          <div class="field"><label><input type="checkbox" id="propBig" ${bigChecked}> Große Schrift (kein Icon, für ~64x64)</label></div>`;
+      }
+      if (isForecast) {
+        html += `
+          <div class="field"><label>Tage (1-5)</label><input type="number" id="propFcDays" min="1" max="5" value="${w.props.days || 3}"></div>`;
+      }
       html += `<div class="actions">
           <button class="btn primary" id="btnApplyProps">Übernehmen</button>
           <button class="btn danger" id="btnDeleteWidget">Löschen</button>
@@ -1257,15 +1390,24 @@
       $('btnApplyProps').addEventListener('click', () => {
         w.x = Math.max(0, snapToGrid(parseInt($('propX').value, 10) || 0));
         w.y = Math.max(0, snapToGrid(parseInt($('propY').value, 10) || 0));
-        w.w = Math.max(4, Math.min(s_editorW, parseInt($('propW').value, 10) || 20));
-        w.h = Math.max(4, Math.min(s_editorH, parseInt($('propH').value, 10) || 20));
+        // Untergrenze 1px statt vorher 4px - mono_line (siehe display_layout.cpp)
+        // braucht genau 1px in der jeweils "duennen" Achse, um als scharfe
+        // Trennlinie statt eines breiten Balkens zu wirken.
+        w.w = Math.max(1, Math.min(s_editorW, parseInt($('propW').value, 10) || 20));
+        w.h = Math.max(1, Math.min(s_editorH, parseInt($('propH').value, 10) || 20));
         if ($('propChartSource')) w.props.source = $('propChartSource').value;
         if ($('propChartMetric')) w.props.metric = $('propChartMetric').value;
+        if ($('propLvLabel')) w.props.label = $('propLvLabel').value;
+        if ($('propLvKey')) w.props.key = $('propLvKey').value;
+        if ($('propLvUnit')) w.props.unit = $('propLvUnit').value;
+        if ($('propBorder')) w.props.border = $('propBorder').checked;
+        if ($('propBig')) w.props.big = $('propBig').checked;
+        if ($('propFcDays')) w.props.days = Math.max(1, Math.min(5, parseInt($('propFcDays').value, 10) || 3));
         editorRender();
         editorRenderProps();
       });
       $('btnDeleteWidget').addEventListener('click', () => {
-        s_layoutWidgets = s_layoutWidgets.filter(x => x.id !== s_selectedId);
+        setActiveWidgets(activeWidgets().filter(x => x.id !== s_selectedId));
         s_selectedId = null;
         editorRender();
         editorRenderProps();
@@ -1277,36 +1419,80 @@
       weather_card: { w: 150, h: 90, props: {} },
       cpu_card: { w: 140, h: 140, props: {} },
       gpu_card: { w: 140, h: 140, props: {} },
+      cpu_card_flat: { w: 160, h: 200, props: {} },
+      gpu_card_flat: { w: 160, h: 200, props: {} },
       chart_card: { w: 150, h: 120, props: { source: 'cpu', metric: 'load' } },
       footer: { w: 220, h: 44, props: {} },
+      mono_clock: { w: 80, h: 18, props: {} },
+      mono_date: { w: 100, h: 10, props: {} },
+      mono_weekday: { w: 100, h: 10, props: {} },
+      mono_weather_temp: { w: 60, h: 10, props: {} },
+      mono_forecast: { w: 100, h: 32, props: { days: 3 } },
+      mono_cpu_stat: { w: 128, h: 24, props: {} },
+      mono_gpu_stat: { w: 128, h: 24, props: {} },
+      mono_cpu_card: { w: 64, h: 64, props: { border: true, big: true } },
+      mono_gpu_card: { w: 64, h: 64, props: { border: true, big: true } },
+      mono_line: { w: 100, h: 1, props: {} },
+      mono_label_value: { w: 100, h: 10, props: { key: '', label: '', unit: '' } },
     };
 
     function editorAddWidget(type) {
       const d = EDITOR_DEFAULTS[type];
       if (!d) return;
-      const id = 'w' + (++s_widgetCounter) + '_' + Date.now();
-      s_layoutWidgets.push({ id, type, x: 10, y: 10, w: d.w, h: d.h, props: { ...d.props } });
+      const id = newWidgetId();
+      activeWidgets().push({ id, type, x: 10, y: 10, w: d.w, h: d.h, props: { ...d.props } });
       editorSelect(id);
     }
 
-    document.querySelectorAll('#editorPalette button[data-type]').forEach(btn => {
-      btn.addEventListener('click', () => editorAddWidget(btn.dataset.type));
-    });
+    // Vorlagen fuers Standby-Layout (nur Mono) - client-seitig, kein
+    // Server-Roundtrip. Ersetzen das Standby-Set komplett, direkt danach
+    // frei weiter anpassbar (Groesse/Position/Loeschen wie jedes andere
+    // Widget) und erst mit "Speichern & anwenden" persistiert.
+    function applyPreset(widgets) {
+      setActiveWidgets(widgets.map(w => ({ ...w, id: newWidgetId(), props: { ...w.props } })));
+      s_selectedId = null;
+      editorRender();
+      editorRenderProps();
+    }
+    $('btnPresetClockDateDay').addEventListener('click', () => applyPreset([
+      { type: 'mono_clock', x: 0, y: 4, w: 128, h: 18, props: { big: true } },
+      { type: 'mono_date', x: 0, y: 26, w: 128, h: 10, props: {} },
+      { type: 'mono_weekday', x: 0, y: 40, w: 128, h: 10, props: {} },
+    ]));
+    $('btnPresetClockDateWeather').addEventListener('click', () => applyPreset([
+      { type: 'mono_clock', x: 0, y: 4, w: 128, h: 18, props: { big: true } },
+      { type: 'mono_date', x: 0, y: 26, w: 128, h: 10, props: {} },
+      { type: 'mono_weather_temp', x: 0, y: 40, w: 128, h: 10, props: {} },
+    ]));
+
+    async function editorLoadDynKeys() {
+      if (!s_displayMono) { s_dynKeys = []; return; }
+      const fixed = ['cpu_load', 'cpu_temp', 'cpu_power', 'gpu_load', 'gpu_temp', 'gpu_power'];
+      try {
+        const h = await api('/api/hwdata');
+        s_dynKeys = [...new Set([...fixed, ...Object.keys(h.extra || {})])];
+      } catch (e) {
+        s_dynKeys = fixed;
+      }
+    }
 
     async function editorLoad() {
       try {
         const data = await api('/api/layout');
-        s_layoutWidgets = (data.widgets || []).map(w => ({ ...w, props: w.props || {} }));
+        s_editorSets.dashboard = (data.widgets || []).map(w => ({ ...w, props: w.props || {} }));
+        s_editorSets.standby = (data.standby_widgets || []).map(w => ({ ...w, props: w.props || {} }));
       } catch (e) {
-        s_layoutWidgets = [];
+        s_editorSets.dashboard = [];
+        s_editorSets.standby = [];
       }
+      await editorLoadDynKeys();
       s_selectedId = null;
       editorRender();
       editorRenderProps();
     }
 
     $('btnEditorSave').addEventListener('click', async () => {
-      const payload = { version: 1, widgets: s_layoutWidgets };
+      const payload = { version: 1, widgets: s_editorSets.dashboard, standby_widgets: s_editorSets.standby };
       try {
         await api('/api/layout', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1328,11 +1514,13 @@
       try {
         const data = await api('/api/layout/default');
         const widgets = (data.widgets || []).map(w => ({ ...w, props: w.props || {} }));
+        const standbyWidgets = (data.standby_widgets || []).map(w => ({ ...w, props: w.props || {} }));
         await api('/api/layout', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ version: 1, widgets }),
+          body: JSON.stringify({ version: 1, widgets, standby_widgets: standbyWidgets }),
         });
-        s_layoutWidgets = widgets;
+        s_editorSets.dashboard = widgets;
+        s_editorSets.standby = standbyWidgets;
         s_selectedId = null;
         editorRender();
         editorRenderProps();
@@ -1343,8 +1531,8 @@
     });
 
     $('btnEditorClear').addEventListener('click', () => {
-      if (!confirm('Alle Widgets aus dem Editor entfernen?')) return;
-      s_layoutWidgets = [];
+      if (!confirm('Alle Widgets im aktuell angezeigten Layout entfernen?')) return;
+      setActiveWidgets([]);
       s_selectedId = null;
       editorRender();
       editorRenderProps();

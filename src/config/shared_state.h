@@ -4,7 +4,7 @@
 #include "board_config.h"
 #include "pin_override.h"
 
-#define FW_VERSION "0.3.4"
+#define FW_VERSION "0.3.10"
 
 // Ringpuffer-Laenge fuer Verlaufsdiagramme (60 Samples = ~1 Min bei 1 Wert/Sek)
 #define HIST_LEN 60
@@ -30,6 +30,7 @@ typedef enum {
     DISPLAY_GENERIC_ILI9488,
     DISPLAY_GENERIC_ST7796S,
     DISPLAY_GENERIC_SSD1309,
+    DISPLAY_GENERIC_SH1106,
 } display_type_t;
 
 inline display_type_t board_profile_default(void) {
@@ -76,10 +77,11 @@ typedef struct {
 
     pin_override_t pin_overrides;
 
-    // Nur fuer DISPLAY_GENERIC_SSD1309 wirksam - eigene Struct statt
+    // Nur fuer DISPLAY_GENERIC_SSD1309/DISPLAY_GENERIC_SH1106 wirksam (beide
+    // teilen sich dieses Feld, siehe pin_override.h) - eigene Struct statt
     // pin_overrides, da I2C eine andere Pin-Form hat (SDA/SCL statt
-    // MOSI/MISO/SCLK/CS/DC), siehe pin_override.h.
-    pin_override_i2c_t ssd1309_pins;
+    // MOSI/MISO/SCLK/CS/DC).
+    pin_override_i2c_t mono_i2c_pins;
 
     // Nur fuer XPT2046-Touch (CYD) wirksam, siehe cyd_2432s028r.h. Rohe
     // ADC-Grenzwerte (0-4095), ueber den "Touch kalibrieren"-Knopf im
@@ -111,6 +113,24 @@ typedef struct {
     bool  ever_received;
 } hw_info_t;
 
+// Spiegelt JEDEN numerischen Top-Level-Key aus dem hw-Data-JSON wider,
+// nicht nur die 6 festen cpu_/gpu_-Felder oben - Basis fuer das
+// "Label - Wert"-Widget im Mono-Layout-Editor (display_layout.cpp), das an
+// beliebige vom PC-Client gesendete Felder binden koennen soll (die App
+// liefert mehr als nur die 6 Grundwerte). Fester Cap statt dynamischer
+// Allokation - 24*32 Bytes sind auf jedem Zielchip vernachlaessigbar, ein
+// std::map waere hier reiner Overhead. Ueberzaehlige Keys (>DYN_VALUES_MAX)
+// werden still verworfen, kein Fehlerpfad noetig - dieselbe Haltung wie
+// beim 4096-Byte-Limit in layout_store.h. Zugriff ebenfalls nur zwischen
+// hw_data_lock()/hw_data_unlock().
+#define DYN_VALUES_MAX 24
+typedef struct {
+    char  key[24];
+    float value;
+} dyn_value_t;
+extern dyn_value_t dyn_values[DYN_VALUES_MAX];
+extern int         dyn_values_count;
+
 // Zuletzt abgerufene Wetterdaten (OpenWeatherMap), siehe weather_service.cpp.
 typedef struct {
     bool  valid;
@@ -125,6 +145,31 @@ typedef struct {
     char  icon[8];
 } weather_info_t;
 
+// Auf Tage verdichteter Forecast (OpenWeatherMap "5 day / 3 hour forecast",
+// selber kostenloser Standard-Plan wie die Current-Weather-API oben, siehe
+// weather_service.cpp) - die rohen 3h-Schritte werden dort pro Kalendertag
+// zu Min/Max verdichtet, hier liegt nur noch das Ergebnis. Kein eigener
+// Mutex-Schutz (wie weather_info oben) - ein/derselbe Task schreibt, Leser
+// (LVGL-Refresh) lesen nur primitive Felder, ein gelegentlicher zerrissener
+// Lesevorgang ist hier folgenlos, dieselbe Haltung wie bei weather_info.
+// 5 statt 4 - die OWM-Forecast-Antwort deckt bis zu 5 Kalendertage ab (40
+// Eintraege x 3h = 120h), der erste davon ist "heute" (nur die restlichen
+// Stunden ab jetzt, meist unvollstaendig). User-Vorgabe: bis zu 4 volle
+// Folgetage zusaetzlich zu "heute" sichtbar machen.
+#define FORECAST_DAYS 5
+typedef struct {
+    int32_t date_epoch; // Mitternacht des Tages, lokale Zeit, Unix-Sekunden
+    float   temp_min;
+    float   temp_max;
+    char    icon[8];    // Icon-Code der Mittags-naechsten 3h-Stufe des Tages
+} forecast_day_t;
+typedef struct {
+    bool  valid;
+    int64_t last_fetch_ms;
+    int   day_count; // wie viele der folgenden Slots gueltig sind (<= FORECAST_DAYS)
+    forecast_day_t days[FORECAST_DAYS];
+} forecast_info_t;
+
 // Ringpuffer fuer Verlaufsdiagramme, siehe history_push() in shared_state.cpp.
 typedef struct {
     float load[HIST_LEN];
@@ -136,6 +181,7 @@ typedef struct {
 extern app_config_t   app_config;
 extern hw_info_t      hw_info;
 extern weather_info_t weather_info;
+extern forecast_info_t forecast_info;
 extern history_t      cpu_history;
 extern history_t      gpu_history;
 extern volatile bool  wifi_connected;

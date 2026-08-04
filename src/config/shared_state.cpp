@@ -6,7 +6,10 @@
 
 app_config_t   app_config;
 hw_info_t      hw_info;
+dyn_value_t    dyn_values[DYN_VALUES_MAX];
+int            dyn_values_count = 0;
 weather_info_t weather_info;
+forecast_info_t forecast_info;
 history_t      cpu_history;
 history_t      gpu_history;
 volatile bool  wifi_connected = false;
@@ -44,7 +47,7 @@ void config_set_defaults(app_config_t *cfg)
     cfg->gpu_arc_color = 0x9B41FE; // Violett
     strcpy(cfg->language, "de");
     pin_override_set_defaults(&cfg->pin_overrides);
-    pin_override_i2c_set_defaults(&cfg->ssd1309_pins);
+    pin_override_i2c_set_defaults(&cfg->mono_i2c_pins);
     // Grober Startwert bis zur ersten echten Kalibrierung ueber den
     // "Touch kalibrieren"-Knopf (siehe app_config_t-Kommentar) - nur fuer
     // die CYD relevant.

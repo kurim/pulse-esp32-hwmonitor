@@ -17,6 +17,14 @@ const char *weather_wind_compass(int deg)
     return dirs[idx % 8];
 }
 
+const char *weather_weekday_abbr(int wday)
+{
+    static const char *dirs_de[] = { "So", "Mo", "Di", "Mi", "Do", "Fr", "Sa" };
+    static const char *dirs_en[] = { "Su", "Mo", "Tu", "We", "Th", "Fr", "Sa" };
+    const char **names = (strcmp(app_config.language, "en") == 0) ? dirs_en : dirs_de;
+    return names[((wday % 7) + 7) % 7];
+}
+
 // owmCode[2] ist bei OWM immer 'd' oder 'n' (Tag/Nacht-Suffix) - ungeprueft
 // gelesen ist das sicher, auch wenn der String mal nur 2 Zeichen haette:
 // owmCode[1] ist an dieser Stelle bereits als != '\0' bestaetigt, ein
@@ -133,6 +141,105 @@ static void fetch_weather(void)
     http.end();
 }
 
+// Forecast wird seltener als das aktuelle Wetter aktualisiert (aendert sich
+// langsamer, und die Antwort ist mit bis zu 40 3h-Eintraegen deutlich
+// groesser als die Current-Weather-Antwort - weniger Abrufe schonen Heap/
+// Funknetz).
+#define FORECAST_FETCH_INTERVAL_MS (30 * 60 * 1000)
+
+// 5 Day / 3 Hour Forecast API (https://openweathermap.org/forecast5) -
+// selber kostenloser Standard-Plan wie die Current-Weather-API oben, keine
+// zusaetzliche "One Call"-Subscription noetig. Liefert bis zu 40 Eintraege
+// im 3h-Raster; hier zu Tagen verdichtet (Gruppierung nach Kalendertag in
+// lokaler Zeit ueber city.timezone, einen Sekunden-Offset zu UTC). Min/Max
+// je Tag aus allen Eintraegen dieses Tages, Icon von der Mittags-naechsten
+// Stufe (bester Kompromiss fuer einen einzigen repraesentativen Icon-Code
+// pro Tag - Vormittag und Nachmittag koennen durchaus unterschiedliche
+// Icons haben).
+static void fetch_forecast(void)
+{
+    if (!app_config.weather_enabled || strlen(app_config.weather_api_key) == 0) return;
+    if (!wifi_connected) return;
+
+    const char *owm_lang = (strcmp(app_config.language, "en") == 0) ? "en" : "de";
+    char url[320];
+    // HTTP statt HTTPS: dieselbe Heap-Fragmentierungs-Begruendung wie bei
+    // fetch_weather() oben.
+    snprintf(url, sizeof(url),
+             "http://api.openweathermap.org/data/2.5/forecast?q=%s&appid=%s&units=%s&lang=%s",
+             app_config.weather_city, app_config.weather_api_key, app_config.weather_units, owm_lang);
+
+    HTTPClient http;
+    http.setTimeout(8000);
+    if (!http.begin(url)) {
+        log_e("http.begin() fehlgeschlagen (Forecast) fuer Stadt='%s'", app_config.weather_city);
+        return;
+    }
+
+    int status = http.GET();
+    log_w("GET Forecast-API -> HTTP %d (Stadt='%s')", status, app_config.weather_city);
+    if (status == 200) {
+        JsonDocument doc;
+        DeserializationError err = deserializeJson(doc, http.getStream());
+        if (err == DeserializationError::Ok) {
+            int32_t tzOffset = doc["city"]["timezone"] | 0;
+            JsonArrayConst list = doc["list"].as<JsonArrayConst>();
+
+            forecast_day_t days[FORECAST_DAYS];
+            int32_t bestNoonDist[FORECAST_DAYS];
+            int dayCount = 0;
+
+            for (JsonObjectConst entry : list) {
+                int64_t dt = entry["dt"] | (int64_t)0;
+                if (dt == 0) continue;
+                int64_t localDt = dt + tzOffset;
+                int32_t dayStart = (int32_t)(localDt - (localDt % 86400));
+                int32_t secOfDay = (int32_t)(localDt % 86400);
+
+                int idx = -1;
+                for (int i = 0; i < dayCount; i++) {
+                    if (days[i].date_epoch == dayStart) { idx = i; break; }
+                }
+                if (idx < 0) {
+                    if (dayCount >= FORECAST_DAYS) continue; // weitere Tage ignorieren
+                    idx = dayCount++;
+                    days[idx].date_epoch = dayStart;
+                    days[idx].temp_min = days[idx].temp_max = entry["main"]["temp"] | 0.0f;
+                    days[idx].icon[0] = '\0';
+                    bestNoonDist[idx] = 999999; // groesser als jeder moegliche Abstand (max 43200s)
+                }
+
+                float temp = entry["main"]["temp"] | days[idx].temp_min;
+                if (temp < days[idx].temp_min) days[idx].temp_min = temp;
+                if (temp > days[idx].temp_max) days[idx].temp_max = temp;
+
+                int32_t noonDist = abs(secOfDay - 12 * 3600);
+                if (noonDist < bestNoonDist[idx]) {
+                    bestNoonDist[idx] = noonDist;
+                    const char *icon = entry["weather"][0]["icon"];
+                    if (icon) strlcpy(days[idx].icon, icon, sizeof(days[idx].icon));
+                }
+            }
+
+            if (dayCount > 0) {
+                for (int i = 0; i < dayCount; i++) forecast_info.days[i] = days[i];
+                forecast_info.day_count = dayCount;
+                forecast_info.valid = true;
+                forecast_info.last_fetch_ms = now_ms();
+                log_w("Forecast aktualisiert: %d Tage", dayCount);
+            } else {
+                log_e("Forecast-Antwort ohne verwertbare 'list'-Eintraege");
+            }
+        } else {
+            log_e("Forecast JSON-Parse-Fehler: %s", err.c_str());
+        }
+    } else {
+        String body = http.getString();
+        log_e("Forecast HTTP-Fehler %d, Antwort: %s", status, body.c_str());
+    }
+    http.end();
+}
+
 static void weather_task(void *arg)
 {
     for (;;) {
@@ -145,13 +252,22 @@ static void weather_task(void *arg)
                 now_ms() - weather_info.last_fetch_ms > FETCH_INTERVAL_MS) {
                 fetch_weather();
             }
+            if (forecast_info.last_fetch_ms == 0 ||
+                now_ms() - forecast_info.last_fetch_ms > FORECAST_FETCH_INTERVAL_MS) {
+                fetch_forecast();
+            }
         }
-        vTaskDelay(pdMS_TO_TICKS(30 * 1000)); // alle 30 s pruefen, Abruf nur alle 10 Min
+        vTaskDelay(pdMS_TO_TICKS(30 * 1000)); // alle 30 s pruefen, Abrufe seltener (siehe oben)
     }
 }
 
 void weather_service_begin(void)
 {
     weather_info.valid = false;
-    xTaskCreate(weather_task, "weather", 6144, NULL, 4, NULL);
+    forecast_info.valid = false;
+    forecast_info.day_count = 0;
+    // Etwas mehr Stack als vorher (6144) - die Forecast-Antwort ist mit bis
+    // zu 40 3h-Eintraegen deutlich groesser als die Current-Weather-Antwort,
+    // JSON-Parsing und HTTPClient-Stream brauchen entsprechend mehr Rahmen.
+    xTaskCreate(weather_task, "weather", 8192, NULL, 4, NULL);
 }

@@ -15,9 +15,9 @@ void displayRoundBuild(lv_obj_t *scr);
 // (Signal-Timeout und/oder Button, siehe displayRoundButtonPoll()).
 void displayRoundUpdate(void);
 
-// Liest die Standby-Taste (BOOT-Taste, nur ESP32-C3) - unabhaengig vom
-// 500ms-Update-Takt aus displayRoundUpdate() aufrufen, damit ein kurzer
-// Tastendruck nicht zwischen zwei Polls verloren geht. No-op auf allen
-// anderen Targets. Merkt sich einen Tastendruck bis zum naechsten
-// displayRoundUpdate()-Aufruf.
+// Liest die Standby-Taste (BOOT-Taste, jedes generische Devkit - Pin ist
+// chip-abhaengig, siehe display_round.cpp) - unabhaengig vom 500ms-Update-
+// Takt aus displayRoundUpdate() aufrufen, damit ein kurzer Tastendruck
+// nicht zwischen zwei Polls verloren geht. No-op auf CYD/JC8048W550.
+// Merkt sich einen Tastendruck bis zum naechsten displayRoundUpdate()-Aufruf.
 void displayRoundButtonPoll(void);

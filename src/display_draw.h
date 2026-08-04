@@ -13,7 +13,9 @@ void displayDrawSetBootStatus(const char *text);
 // Normale UI. Setzt voraus, dass displayDrawBootScreen() vorher lief (entfernt
 // dessen Logo/Statuszeile) und baut das Hauptlayout auf. Waehlt automatisch
 // zwischen dem runden Arc-Dashboard (GC9A01, siehe displayIsRound()) und dem
-// rechteckigen Card-Layout.
+// generischen Layout-Editor-Pfad (rechteckige Card-Widgets ODER Mono-
+// mono_*-Widgets, siehe display_layout.cpp - main.cpp ruft layout_apply()
+// direkt im Anschluss auf).
 void displayDrawInit();
 
 // Aktualisiert die Live-Werte des runden Arc-Dashboards (CPU/GPU/Uhrzeit)
@@ -22,10 +24,12 @@ void displayDrawInit();
 // Periodisch aus main.cpp loop() aufrufen, gedrosselt.
 void displayDrawUpdate();
 
-// Liest die Standby-Taste des runden Dashboards (no-op auf allen anderen
-// Boards/Displays) - UNGEDROSSELT jede loop()-Iteration aufrufen, sonst
-// koennte ein kurzer Tastendruck zwischen zwei displayDrawUpdate()-Takten
-// (500ms) verloren gehen.
+// Liest die BOOT-Taste als manuellen Standby-Umschalter fuer rundes UND
+// Mono-Display (no-op auf allen anderen Boards/Displays UND ausserhalb des
+// ESP32-C3, siehe displayRoundButtonPoll()/displayMonoButtonPoll() in
+// display_round.h/display_layout.h) - UNGEDROSSELT jede loop()-Iteration
+// aufrufen, sonst koennte ein kurzer Tastendruck zwischen zwei
+// displayDrawUpdate()-Takten (500ms) verloren gehen.
 void displayDrawButtonPoll();
 
 bool displayIsBootAnimFinished();

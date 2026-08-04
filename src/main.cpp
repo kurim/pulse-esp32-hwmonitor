@@ -194,7 +194,7 @@ void loop() {
             }
             JsonDocument doc;
             if (deserializeJson(doc, saved) == DeserializationError::Ok) {
-              layout_apply(doc["widgets"].as<JsonArrayConst>());
+              layout_apply(doc["widgets"].as<JsonArrayConst>(), doc["standby_widgets"].as<JsonArrayConst>());
             }
           }
           screenSwitched = true;

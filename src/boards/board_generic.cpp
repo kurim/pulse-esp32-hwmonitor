@@ -5,7 +5,7 @@
 #include <Arduino.h>
 #include "shared_state.h"
 #include "displays/display_factory.h"
-#include "displays/ssd1309.h"
+#include "displays/mono_oled_i2c.h"
 
 namespace {
 
@@ -13,10 +13,9 @@ namespace {
 // auf DisplayType (display_factory.h, nur die selbst verdrahtbaren SPI-
 // Panels) abbilden. DISPLAY_NONE sowie die Werte der fest verdrahteten
 // Boards sind auf generischer Hardware nicht moeglich - false zurueckgeben.
-// SSD1309 bewusst NICHT hier drin: anderer Treibertyp (Adafruit_GFX statt
-// Arduino_GFX), eigener I2C-Pfad statt display_factory.h - siehe die
-// SSD1309-Zweige unten in boardHasDisplay()/initBoardDisplay()/
-// initLvglDisplay().
+// SSD1309/SH1106 bewusst NICHT hier drin: anderer Treibertyp, eigener
+// I2C-Pfad statt display_factory.h - siehe die Sonderfaelle unten in
+// boardHasDisplay()/initBoardDisplay()/initLvglDisplay().
 bool mapDisplayType(display_type_t in, DisplayType &out) {
   switch (in) {
     case DISPLAY_GENERIC_GC9A01:  out = DisplayType::GC9A01;  return true;
@@ -26,24 +25,31 @@ bool mapDisplayType(display_type_t in, DisplayType &out) {
   }
 }
 
+bool isMonoI2c(display_type_t t) {
+  return t == DISPLAY_GENERIC_SSD1309 || t == DISPLAY_GENERIC_SH1106;
+}
+
 } // namespace
 
 bool boardHasDisplay() {
-  if (app_config.display_type == DISPLAY_GENERIC_SSD1309) return true;
+  if (isMonoI2c(app_config.display_type)) return true;
   DisplayType t;
   return mapDisplayType(app_config.display_type, t);
 }
 
 bool initBoardDisplay() {
-  if (app_config.display_type == DISPLAY_GENERIC_SSD1309) {
-    bool ok = disp_ssd1309::initDisplay(&app_config.ssd1309_pins);
+  if (isMonoI2c(app_config.display_type)) {
+    bool sh1106 = app_config.display_type == DISPLAY_GENERIC_SH1106;
+    auto chip = sh1106 ? disp_mono_oled_i2c::Chip::kSh1106 : disp_mono_oled_i2c::Chip::kSsd1306;
+    bool ok = disp_mono_oled_i2c::initDisplay(&app_config.mono_i2c_pins, chip);
     // g_lcdWidth/g_lcdHeight/g_boardName sind eigentlich display_factory.h-
     // Globals (Arduino_GFX-Pfad) - hier trotzdem mitgesetzt, damit
     // displayWidthPx()/displayHeightPx()/BOARD_NAME (siehe display_layout.cpp,
-    // web_portal.cpp) fuer SSD1309 ohne weitere Sonderfaelle funktionieren.
-    g_lcdWidth  = disp_ssd1309::WIDTH;
-    g_lcdHeight = disp_ssd1309::HEIGHT;
-    g_boardName = disp_ssd1309::NAME;
+    // web_portal.cpp) fuer SSD1309/SH1106 ohne weitere Sonderfaelle
+    // funktionieren.
+    g_lcdWidth  = disp_mono_oled_i2c::WIDTH;
+    g_lcdHeight = disp_mono_oled_i2c::HEIGHT;
+    g_boardName = sh1106 ? "SH1106" : "SSD1309";
     return ok;
   }
 
@@ -58,8 +64,8 @@ bool initBoardDisplay() {
 }
 
 void initLvglDisplay() {
-  if (app_config.display_type == DISPLAY_GENERIC_SSD1309) {
-    disp_ssd1309::initLvglDisplay();
+  if (isMonoI2c(app_config.display_type)) {
+    disp_mono_oled_i2c::initLvglDisplay();
     return;
   }
   initLvglDisplaySelected();

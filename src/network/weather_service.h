@@ -11,6 +11,13 @@ void weather_service_begin(void);
 // um (deutsch oder englisch je nach app_config.language).
 const char *weather_wind_compass(int deg);
 
+// 2-Buchstaben-Wochentagsabkuerzung (deutsch oder englisch je nach
+// app_config.language), wday in struct-tm-Konvention (0=Sonntag/Sunday).
+// Fuer den Forecast (forecast_info in shared_state.h) - dessen date_epoch
+// ist bereits lokal verschoben, siehe Kommentar in weather_service.cpp
+// fetch_forecast().
+const char *weather_weekday_abbr(int wday);
+
 // Ordnet einen OpenWeatherMap-Icon-Code (weather_info.icon, z.B. "01d",
 // "10n" - 2-stellige Bedingungs-ID + Tag/Nacht-Suffix) dem passendsten MDI-
 // Weather-Icon aus mdi_icons.h zu. Nur 5 Wetter-Icons vorhanden - kein

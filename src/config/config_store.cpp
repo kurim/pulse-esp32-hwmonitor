@@ -65,10 +65,10 @@ void config_store_load(app_config_t *cfg)
     }
     if (s_prefs.isKey("pin_ov_i2c")) {
         size_t len = s_prefs.getBytesLength("pin_ov_i2c");
-        if (len == sizeof(cfg->ssd1309_pins)) {
-            s_prefs.getBytes("pin_ov_i2c", &cfg->ssd1309_pins, len);
+        if (len == sizeof(cfg->mono_i2c_pins)) {
+            s_prefs.getBytes("pin_ov_i2c", &cfg->mono_i2c_pins, len);
         } else {
-            pin_override_i2c_set_defaults(&cfg->ssd1309_pins);
+            pin_override_i2c_set_defaults(&cfg->mono_i2c_pins);
         }
     }
 
@@ -109,7 +109,7 @@ void config_store_save(const app_config_t *cfg)
     s_prefs.putUInt  ("gpu_col",    cfg->gpu_arc_color);
     s_prefs.putString("language",   cfg->language);
     s_prefs.putBytes ("pin_ov",     &cfg->pin_overrides, sizeof(cfg->pin_overrides));
-    s_prefs.putBytes ("pin_ov_i2c", &cfg->ssd1309_pins,  sizeof(cfg->ssd1309_pins));
+    s_prefs.putBytes ("pin_ov_i2c", &cfg->mono_i2c_pins, sizeof(cfg->mono_i2c_pins));
 
     s_prefs.putShort ("touch_xmin", cfg->touch_x_min);
     s_prefs.putShort ("touch_xmax", cfg->touch_x_max);

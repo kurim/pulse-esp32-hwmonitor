@@ -24,11 +24,16 @@ inline void pin_override_set_defaults(pin_override_t *p) {
   *p = pin_override_t{};
 }
 
-// I2C-Pendant zu pin_override_t, fuer das SSD1309-OLED (include/displays/
-// ssd1309.h) - andere Pin-Form (SDA/SCL statt MOSI/MISO/SCLK/CS/DC), deshalb
-// eigenes Layout statt pin_override_t mit ungenutzten Feldern zu ueberladen.
-// i2c_addr 0 = kein Override (0x00 ist keine gueltige I2C-Adresse), analog zu
-// PIN_UNSET bei den Pin-Feldern.
+// I2C-Pendant zu pin_override_t, fuer die monochromen I2C-OLEDs
+// (include/displays/ssd1309.h: DISPLAY_GENERIC_SSD1309 und
+// DISPLAY_GENERIC_SH1106 teilen sich dieselbe Pin-Form/dasselbe Feld
+// app_config.mono_i2c_pins, da immer nur einer der beiden Typen gleichzeitig
+// gewaehlt sein kann - dieselbe Konvention wie GC9A01/ILI9488/ST7796S, die
+// sich ebenfalls ein gemeinsames pin_overrides teilen). Andere Pin-Form
+// (SDA/SCL statt MOSI/MISO/SCLK/CS/DC), deshalb eigenes Layout statt
+// pin_override_t mit ungenutzten Feldern zu ueberladen. i2c_addr 0 = kein
+// Override (0x00 ist keine gueltige I2C-Adresse), analog zu PIN_UNSET bei
+// den Pin-Feldern.
 typedef struct {
   int8_t  sda      = PIN_UNSET;
   int8_t  scl      = PIN_UNSET;

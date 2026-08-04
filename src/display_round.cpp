@@ -625,16 +625,23 @@ void displayRoundUpdate(void)
   }
 }
 
-// BOOT-Taste als Standby-Umschalter ist nur auf dem ESP32-C3 sinnvoll: dort
-// ist GPIO9 die BOOT-Taste (siehe CLAUDE.md "Nav-Button fuer Profile ohne
-// Touch") und der einzige aktuell verdrahtete C3-Aufbau hat kein Touch.
-// Auf ESP32/S3 waere GPIO9 ein frei belegbarer Pin ohne physischen Taster
-// dahinter - dort bliebe die Funktion ohnehin wirkungslos.
-#if defined(BOARD_GENERIC) && CONFIG_IDF_TARGET_ESP32C3
+// BOOT-Taste als Standby-Umschalter, auf jedem generischen Devkit sinnvoll
+// (kein CYD/JC8048W550 - die haben Touch und keine freie BOOT-Taste dafuer).
+// Pin ist chip-abhaengig: C3 hat seine BOOT-Taste auf GPIO9 (siehe CLAUDE.md
+// "Nav-Button fuer Profile ohne Touch"), auf ESP32/S3-Devkits (u.a. dem real
+// getesteten ESP32-S3-Zero) liegt sie auf GPIO0 - dort sind BOOT und RESET
+// zwei getrennte physische Taster, GPIO0 ist NICHT mit RST kurzgeschlossen
+// (fruehere Annahme "auf ESP32/S3 kein physischer Taster dahinter" war
+// falsch, User-Feedback anhand echter Hardware).
+#if defined(BOARD_GENERIC)
 
 void displayRoundButtonPoll(void)
 {
+#if CONFIG_IDF_TARGET_ESP32C3
   constexpr uint8_t kButtonPin = 9;
+#else
+  constexpr uint8_t kButtonPin = 0;
+#endif
   constexpr uint32_t kDebounceMs = 40;
 
   static bool initialized = false;

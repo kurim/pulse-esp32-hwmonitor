@@ -14,7 +14,7 @@
 // die Konstanten (disp_gc9a01::DEFAULT_MOSI etc.) sind pro Target bereits
 // korrekt aufgeloest (siehe CLAUDE.md-Fallstrick zu GPIO23 auf dem C3).
 #include "displays/display_factory.h"
-#include "displays/ssd1309.h"
+#include "displays/mono_oled_i2c.h"
 #endif
 
 // Von extra_script_gzip_web.py aus web/dashboard.html erzeugt und ueber
@@ -107,6 +107,14 @@ void handleHwData(AsyncWebServerRequest *request)
     gpu["load"] = hw_info.gpu_load;
     gpu["temp"] = hw_info.gpu_temp;
     gpu["power"] = hw_info.gpu_power;
+
+    // Alle zusaetzlich vom PC-Client gesendeten Felder (siehe hw_data.cpp/
+    // shared_state.h dyn_values) - Basis fuer die Key-Vorschlagsliste des
+    // "Label - Wert"-Widgets im Mono-Layout-Editor (dashboard.html).
+    JsonObject extra = doc["extra"].to<JsonObject>();
+    for (int i = 0; i < dyn_values_count; i++) {
+        extra[dyn_values[i].key] = dyn_values[i].value;
+    }
     hw_data_unlock();
 
     String out;
@@ -174,19 +182,19 @@ void handleGetConfig(AsyncWebServerRequest *request)
     putPin("rst",  app_config.pin_overrides.rst);
     putPin("bl",   app_config.pin_overrides.bl);
 
-    // SSD1309 (I2C statt SPI) hat eine eigene, kleinere Pin-Form - eigenes
-    // JSON-Objekt statt die 7 SPI-Felder oben mit ungenutzten Werten zu
-    // ueberladen. i2c_addr 0 = kein Override (0x00 ist keine gueltige I2C-
-    // Adresse), analog zu PIN_UNSET bei den Pin-Feldern.
+    // SSD1309/SH1106 (I2C statt SPI) teilen sich eine eigene, kleinere
+    // Pin-Form - eigenes JSON-Objekt statt die 7 SPI-Felder oben mit
+    // ungenutzten Werten zu ueberladen. i2c_addr 0 = kein Override (0x00 ist
+    // keine gueltige I2C-Adresse), analog zu PIN_UNSET bei den Pin-Feldern.
     JsonObject pinsI2c = doc["pin_overrides_i2c"].to<JsonObject>();
     auto putPinI2c = [&](const char *key, int8_t v) {
         if (v == PIN_UNSET) pinsI2c[key] = nullptr; else pinsI2c[key] = v;
     };
-    putPinI2c("sda", app_config.ssd1309_pins.sda);
-    putPinI2c("scl", app_config.ssd1309_pins.scl);
-    putPinI2c("rst", app_config.ssd1309_pins.rst);
-    if (app_config.ssd1309_pins.i2c_addr == 0) pinsI2c["addr"] = nullptr;
-    else pinsI2c["addr"] = app_config.ssd1309_pins.i2c_addr;
+    putPinI2c("sda", app_config.mono_i2c_pins.sda);
+    putPinI2c("scl", app_config.mono_i2c_pins.scl);
+    putPinI2c("rst", app_config.mono_i2c_pins.rst);
+    if (app_config.mono_i2c_pins.i2c_addr == 0) pinsI2c["addr"] = nullptr;
+    else pinsI2c["addr"] = app_config.mono_i2c_pins.i2c_addr;
 
 #if defined(BOARD_GENERIC)
     // Eingebaute Default-Pins je Displaytyp - Schluessel sind die display_type_t-
@@ -212,14 +220,20 @@ void handleGetConfig(AsyncWebServerRequest *request)
     addDefaults("6", disp_st7796s::DEFAULT_MOSI, disp_st7796s::DEFAULT_MISO, disp_st7796s::DEFAULT_SCLK,
                 disp_st7796s::DEFAULT_CS, disp_st7796s::DEFAULT_DC, disp_st7796s::DEFAULT_RST, disp_st7796s::DEFAULT_BL);
 
-    // SSD1309 - eigene Default-Tabelle, andere Pin-Form (I2C statt SPI, siehe
-    // pin_overrides_i2c oben).
+    // SSD1309/SH1106 - eigene Default-Tabelle, andere Pin-Form (I2C statt
+    // SPI, siehe pin_overrides_i2c oben). Beide teilen sich dieselbe
+    // Verkabelung/denselben Treiber-Header (mono_oled_i2c.h), daher
+    // identische Werte unter beiden display_type-Schluesseln.
     JsonObject defaultsI2c = doc["display_defaults_i2c"].to<JsonObject>();
-    JsonObject ssd1309Defaults = defaultsI2c["7"].to<JsonObject>();
-    ssd1309Defaults["sda"]  = disp_ssd1309::DEFAULT_SDA;
-    ssd1309Defaults["scl"]  = disp_ssd1309::DEFAULT_SCL;
-    ssd1309Defaults["rst"]  = disp_ssd1309::DEFAULT_RST;
-    ssd1309Defaults["addr"] = disp_ssd1309::DEFAULT_ADDR;
+    auto addDefaultsI2c = [&](const char *key) {
+        JsonObject o = defaultsI2c[key].to<JsonObject>();
+        o["sda"]  = disp_mono_oled_i2c::DEFAULT_SDA;
+        o["scl"]  = disp_mono_oled_i2c::DEFAULT_SCL;
+        o["rst"]  = disp_mono_oled_i2c::DEFAULT_RST;
+        o["addr"] = disp_mono_oled_i2c::DEFAULT_ADDR;
+    };
+    addDefaultsI2c("7"); // DISPLAY_GENERIC_SSD1309
+    addDefaultsI2c("8"); // DISPLAY_GENERIC_SH1106
 #endif
 
     String out;
@@ -300,7 +314,7 @@ void handlePostConfig(AsyncWebServerRequest *request)
         setPin("bl",   app_config.pin_overrides.bl);
     }
 
-    // SSD1309-Pins (I2C) - eigenes Objekt, eigene Feldnamen, siehe
+    // SSD1309/SH1106-Pins (I2C) - eigenes Objekt, eigene Feldnamen, siehe
     // handleGetConfig()/pin_overrides_i2c. "addr" ist uint8_t statt int8_t
     // (0 = kein Override) statt PIN_UNSET, eigener Zweig statt setPin().
     if (doc["pin_overrides_i2c"].is<JsonObject>()) {
@@ -309,11 +323,11 @@ void handlePostConfig(AsyncWebServerRequest *request)
             JsonVariant v = po[key];
             field = v.is<int>() ? (int8_t)v.as<int>() : PIN_UNSET;
         };
-        setPin("sda", app_config.ssd1309_pins.sda);
-        setPin("scl", app_config.ssd1309_pins.scl);
-        setPin("rst", app_config.ssd1309_pins.rst);
+        setPin("sda", app_config.mono_i2c_pins.sda);
+        setPin("scl", app_config.mono_i2c_pins.scl);
+        setPin("rst", app_config.mono_i2c_pins.rst);
         JsonVariant addr = po["addr"];
-        app_config.ssd1309_pins.i2c_addr = addr.is<int>() ? (uint8_t)addr.as<int>() : 0;
+        app_config.mono_i2c_pins.i2c_addr = addr.is<int>() ? (uint8_t)addr.as<int>() : 0;
     }
 
     config_store_save(&app_config);
@@ -364,13 +378,17 @@ void handlePostLayout(AsyncWebServerRequest *request)
     // Speichern) wuerde sonst dauerhaft einen leeren Screen persistieren -
     // von aussen nicht mehr von "noch nie gespeichert" unterscheidbar, aber
     // OHNE den Fallback auf das generierte Grundlayout, da der JSON-String
-    // selbst nicht leer ist (siehe layout_store_load()). Stattdessen wird
+    // selbst nicht leer ist (siehe layout_store_load()). Nur "leer", wenn
+    // BEIDE Arrays leer sind - ein Standby-only oder Dashboard-only
+    // gespeichertes Layout (nur auf Mono ueberhaupt relevant) darf nicht
+    // faelschlich als Reset gewertet werden. Stattdessen wird
     // der Store in diesem Fall geleert, damit GET /api/layout und der
     // naechste Boot wieder auf das Grundlayout zurueckfallen - konsistent
     // mit "Auf Grundlayout zuruecksetzen" statt einer Sackgasse.
     JsonDocument doc;
     bool isEmpty = deserializeJson(doc, s_layoutBody) == DeserializationError::Ok &&
-                   doc["widgets"].as<JsonArrayConst>().size() == 0;
+                   doc["widgets"].as<JsonArrayConst>().size() == 0 &&
+                   doc["standby_widgets"].as<JsonArrayConst>().size() == 0;
     if (isEmpty) {
         layout_store_clear();
         String defaultJson = layout_default_json(displayWidthPx(), displayHeightPx());
@@ -410,6 +428,16 @@ void handleDashboard(AsyncWebServerRequest *request)
         web_dashboard_html_gz_start,
         web_dashboard_html_gz_end - web_dashboard_html_gz_start);
     response->addHeader("Content-Encoding", "gzip");
+    // Ohne diesen Header darf der Browser eine ALTE HTML/JS-Version zwischen-
+    // speichern und bei einem normalen Reload (nicht Hard-Refresh) weiter
+    // ausliefern, obwohl die Firmware auf dem Geraet laengst aktueller ist -
+    // fuehrte konkret dazu, dass der Editor mit veraltetem JS gegen einen
+    // neuen Server sprach (z.B. kein "standby_widgets" im POST-Body) und
+    // Aktionen wie "Auf Grundlayout zuruecksetzen" scheinbar wirkungslos
+    // blieben. Die /api/*-Endpunkte hatten dieses Problem schon vorher nicht
+    // (siehe deren eigene "Cache-Control: no-store"), nur die Seite selbst
+    // (HTML+JS) war ungeschuetzt.
+    response->addHeader("Cache-Control", "no-store");
     request->send(response);
 }
 
@@ -490,8 +518,18 @@ void web_portal_begin(void)
             s_configBody.concat((const char *)data, len);
             (void)total;
         });
-    s_server.on("/api/layout", HTTP_GET, handleGetLayout);
+    // Reihenfolge wichtig: ESPAsyncWebServer behandelt einen einfachen
+    // String-URI wie "/api/layout" als "BackwardCompatible"-Matcher, der
+    // regex-aequivalent zu ^/api/layout(/.*)?$ ist - passt also OHNE
+    // weiteres Zutun auch auf "/api/layout/default". Handler werden in
+    // Registrierungsreihenfolge geprueft, der erste Treffer gewinnt (siehe
+    // AsyncWebServer::_attachHandler()) - stuende "/api/layout" zuerst,
+    // wuerde JEDE Anfrage an "/api/layout/default" von handleGetLayout()
+    // beantwortet (liefert das GESPEICHERTE statt des generierten
+    // Grundlayouts) und handleGetLayoutDefault() waere faktisch toter Code.
+    // Der spezifischere Pfad muss deshalb zuerst registriert werden.
     s_server.on("/api/layout/default", HTTP_GET, handleGetLayoutDefault);
+    s_server.on("/api/layout", HTTP_GET, handleGetLayout);
     s_server.on(
         "/api/layout", HTTP_POST, handlePostLayout, nullptr,
         [](AsyncWebServerRequest * /*request*/, uint8_t *data, size_t len, size_t index, size_t total) {

@@ -21,9 +21,35 @@ const char *github_ota_latest_version(void);
 const char *github_ota_error(void);
 bool        github_ota_update_available(void);
 
-// Laedt das von github_ota_check() gefundene Asset herunter und flasht es
-// (dieselbe Update.begin()/write()/end()-Maschinerie wie handleOtaUpload()
-// in web_portal.cpp fuer lokale Uploads) - blockierend, startet das Geraet
-// bei Erfolg neu. Setzt einen vorherigen erfolgreichen github_ota_check()
+enum GithubOtaState {
+    GITHUB_OTA_IDLE = 0,
+    GITHUB_OTA_RUNNING = 1,
+    GITHUB_OTA_SUCCESS = 2,
+    GITHUB_OTA_ERROR = 3,
+};
+
+// Startet Download+Flash des von github_ota_check() gefundenen Assets in
+// einem eigenen FreeRTOS-Task (dieselbe Update.begin()/write()/end()-
+// Maschinerie wie handleOtaUpload() in web_portal.cpp fuer lokale Uploads).
+// Kehrt SOFORT zurueck - blockiert NICHT den aufrufenden Task. Das ist
+// bewusst anders als github_ota_check(): eine vorherige Version fuehrte
+// Download+Flash synchron im AsyncTCP-Request-Handler aus, was diesen Task
+// fuer die gesamte Dauer blockierte - bei einem Image, dessen Download+
+// Flash-Schreiben laenger als CONFIG_ESP_TASK_WDT_TIMEOUT_S (siehe
+// platformio.ini) dauerte, loeste das den Task-Watchdog fuer "async_tcp"
+// aus und rebootete das Geraet mitten im Update (live beobachtet: ~70s
+// Laufzeit fuer ein ~1.8MB-Image). Fortschritt/Ergebnis ueber
+// github_ota_state()/github_ota_bytes_done()/github_ota_bytes_total()/
+// github_ota_error() abfragen (Polling, siehe handleFotaProgress() in
+// web_portal.cpp). Setzt bei Erfolg selbst ESP.restart(), bei Misserfolg
+// GITHUB_OTA_ERROR. Setzt einen vorherigen erfolgreichen github_ota_check()
 // mit github_ota_update_available()==true voraus.
-bool github_ota_perform_update(void);
+bool github_ota_start_update(void);
+
+// Ein einzelner Abbruch/Stall wird bis zu 20x per HTTP-Range-Request ab der
+// zuletzt geschriebenen Byte-Position fortgesetzt (siehe github_ota.cpp) -
+// GitHub-Release-Assets liefern dafuer zuverlaessig ein Content-Length, ein
+// Server, der Range ignoriert, bricht sofort ab statt weiter zu versuchen.
+GithubOtaState github_ota_state(void);
+size_t         github_ota_bytes_done(void);
+size_t         github_ota_bytes_total(void);

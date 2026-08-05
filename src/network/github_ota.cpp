@@ -73,11 +73,21 @@ bool github_ota_check(void) {
     return false;
   }
 
-  JsonDocument doc;
-  DeserializationError err = deserializeJson(doc, https.getStream());
+  // getString() statt direkt von https.getStream() zu parsen: die GitHub-
+  // API liefert ohne Content-Length per Chunked Transfer-Encoding (bei
+  // dieser Release-Groesse, 14 Assets, mehrere KB JSON) - deserializeJson()
+  // direkt vom Stream brach dabei mit "IncompleteInput" ab, bevor die
+  // komplette (entchunkte) Antwort gelesen war. getString() sammelt die
+  // vollstaendige Antwort zuverlaessig ein, bevor geparst wird - kostet
+  // kurzzeitig etwas mehr Heap (Antwort liegt einmal als String, einmal als
+  // JsonDocument vor), aber bei ein paar KB unproblematisch.
+  String body = https.getString();
   https.end();
+
+  JsonDocument doc;
+  DeserializationError err = deserializeJson(doc, body);
   if (err != DeserializationError::Ok) {
-    snprintf(s_error, sizeof(s_error), "JSON-Parse-Fehler: %s", err.c_str());
+    snprintf(s_error, sizeof(s_error), "JSON-Parse-Fehler: %s (Antwortlaenge %u Bytes)", err.c_str(), (unsigned)body.length());
     return false;
   }
 

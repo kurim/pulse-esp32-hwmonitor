@@ -524,9 +524,9 @@ void handleOtaDone(AsyncWebServerRequest *request)
 }
 
 // Blockiert den AsyncTCP-Task fuer die Dauer eines HTTPS-Requests (siehe
-// github_ota.h) - genau wie handleOtaUpload() oben das bereits fuer den
-// gesamten Upload/Flash-Vorgang tut. CONFIG_ESP_TASK_WDT_TIMEOUT_S=60
-// (siehe platformio.ini) deckt beides bereits ab, kein neuer Sonderfall.
+// github_ota.h) - der GitHub-API-Aufruf selbst ist klein (ein paar KB JSON)
+// und dauert wenige hundert ms bis wenige Sekunden, anders als der
+// eigentliche Firmware-Download in handleFotaUpdate() unten (siehe dort).
 void handleFotaCheck(AsyncWebServerRequest *request)
 {
     bool ok = github_ota_check();
@@ -545,27 +545,49 @@ void handleFotaCheck(AsyncWebServerRequest *request)
     request->send(response);
 }
 
+// Startet Download+Flash nur noch (github_ota_start_update() spawnt einen
+// eigenen Task und kehrt sofort zurueck) statt sie hier im AsyncTCP-
+// Request-Handler abzuwarten - eine vorherige, synchrone Variante blockierte
+// den AsyncTCP-Task fuer die gesamte Download+Flash-Dauer und loeste dessen
+// Task-Watchdog aus, sobald das laenger als CONFIG_ESP_TASK_WDT_TIMEOUT_S
+// dauerte (live beobachtet bei einem ~1.8MB-Image, siehe github_ota.h).
+// Fortschritt/Ergebnis holt sich dashboard.html per Polling ueber
+// handleFotaProgress() unten.
 void handleFotaUpdate(AsyncWebServerRequest *request)
 {
     // Kein impliziter Re-Check hier - der Nutzer hat den Update-Banner nach
     // einem vorherigen handleFotaCheck() gesehen (dashboard.html), das
     // gefundene Asset (github_ota.cpp, Datei-scope-statisch) ist noch
     // gueltig. Ein zweiter API-Call waere nur unnoetige Latenz.
-    bool ok = github_ota_perform_update();
-    if (!ok) {
-        JsonDocument doc;
-        doc["ok"] = false;
+    // Immer HTTP 200, Erfolg/Fehler nur ueber "ok" im Body (wie bei
+    // handleFotaCheck oben) - erspart dashboard.html das Auseinanderklauben
+    // von api()s Error-Message bei einem Fehlschlag.
+    bool started = github_ota_start_update();
+    JsonDocument doc;
+    doc["ok"] = started;
+    if (!started) {
         doc["error"] = github_ota_error();
-        String out;
-        serializeJson(doc, out);
-        request->send(500, "application/json", out);
-        return;
     }
-    AsyncWebServerResponse *response = request->beginResponse(200, "application/json", "{\"ok\":true}");
-    response->addHeader("Connection", "close");
+    String out;
+    serializeJson(doc, out);
+    request->send(200, "application/json", out);
+}
+
+void handleFotaProgress(AsyncWebServerRequest *request)
+{
+    GithubOtaState state = github_ota_state();
+    JsonDocument doc;
+    doc["state"] = (int)state;
+    doc["done"] = (uint32_t)github_ota_bytes_done();
+    doc["total"] = (uint32_t)github_ota_bytes_total();
+    if (state == GITHUB_OTA_ERROR) {
+        doc["error"] = github_ota_error();
+    }
+    String out;
+    serializeJson(doc, out);
+    AsyncWebServerResponse *response = request->beginResponse(200, "application/json", out);
+    response->addHeader("Cache-Control", "no-store");
     request->send(response);
-    delay(200);
-    ESP.restart();
 }
 
 } // namespace
@@ -625,6 +647,7 @@ void web_portal_begin(void)
     s_server.on("/api/ota", HTTP_POST, handleOtaDone, handleOtaUpload);
     s_server.on("/api/fota/check", HTTP_GET, handleFotaCheck);
     s_server.on("/api/fota/update", HTTP_POST, handleFotaUpdate);
+    s_server.on("/api/fota/progress", HTTP_GET, handleFotaProgress);
 
     s_server.begin();
 }

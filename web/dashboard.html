@@ -606,6 +606,7 @@
         <div class="editor-presets" id="editorPresets" style="display:none;margin-bottom:10px">
           <button class="btn" id="btnPresetClockDateDay">Vorlage: Uhr + Datum + Tag</button>
           <button class="btn" id="btnPresetClockDateWeather">Vorlage: Uhr + Datum + Wetter</button>
+          <button class="btn" id="btnPresetWeatherFull">Vorlage: Wetter (Vollbild)</button>
         </div>
         <div class="editor-palette" id="editorPalette"></div>
       </div>
@@ -1270,6 +1271,7 @@
       ['mono_weekday', '+ Wochentag'],
       ['mono_weather_temp', '+ Wetter (Temp)'],
       ['mono_forecast', '+ Vorhersage'],
+      ['mono_standby_weather', '+ Wetter (Vollbild)'],
       ['mono_cpu_stat', '+ CPU'],
       ['mono_gpu_stat', '+ GPU'],
       ['mono_cpu_card', '+ CPU (Karte)'],
@@ -1421,7 +1423,7 @@
       const isChart = w.type === 'chart_card';
       const isLabelValue = w.type === 'mono_label_value';
       const isMonoCard = w.type === 'mono_cpu_card' || w.type === 'mono_gpu_card';
-      const isForecast = w.type === 'mono_forecast';
+      const isForecast = w.type === 'mono_forecast' || w.type === 'mono_standby_weather';
       let html = `
         <div class="field"><label>Typ</label><input value="${w.type}" disabled></div>
         <div class="row">
@@ -1512,6 +1514,7 @@
       mono_weekday: { w: 100, h: 10, props: {} },
       mono_weather_temp: { w: 60, h: 10, props: {} },
       mono_forecast: { w: 100, h: 32, props: { days: 3 } },
+      mono_standby_weather: { w: 128, h: 64, props: { days: 4 } },
       mono_cpu_stat: { w: 128, h: 24, props: {} },
       mono_gpu_stat: { w: 128, h: 24, props: {} },
       mono_cpu_card: { w: 64, h: 64, props: { border: true, big: true } },
@@ -1547,6 +1550,9 @@
       { type: 'mono_clock', x: 0, y: 4, w: 128, h: 18, props: { big: true } },
       { type: 'mono_date', x: 0, y: 26, w: 128, h: 10, props: {} },
       { type: 'mono_weather_temp', x: 0, y: 40, w: 128, h: 10, props: {} },
+    ]));
+    $('btnPresetWeatherFull').addEventListener('click', () => applyPreset([
+      { type: 'mono_standby_weather', x: 0, y: 0, w: 128, h: 64, props: { days: 4 } },
     ]));
 
     async function editorLoadDynKeys() {

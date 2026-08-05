@@ -13,13 +13,9 @@ static const char *kBootLogo =
     " / _,'/ U // /_ _\\ `. / _/ \n"
     "/_/   \\_,'/___//___,'/___/ ";
 
-// Reduzierte Wortmarke fuer Mono (SSD1309/SH1106, 128x64): das grosse
-// ASCII-Logo oben ist ~28 Zeichen breit und passt selbst mit unscii_8
-// (8px/Zeichen -> 224px) nicht auf 128px. unscii_16 ist aber, anders als der
-// Name suggeriert, dieselbe Glyphenbreite wie unscii_8 (nur 2x hoch skaliert,
-// 16px Vorschubbreite statt 8px, siehe lv_font_unscii_16.c) - "PULSE" kommt
-// damit auf 5*16=80px und passt bequem in die 128px Breite.
+// Reduzierte Wortmarke fuer Mono (SSD1309/SH1106, 128x64)
 static const char *kBootLogoMono = "PULSE";
+
 
 static lv_obj_t *s_bootLogo   = nullptr;
 static lv_obj_t *s_bootStatus = nullptr;
@@ -31,6 +27,16 @@ static volatile bool s_bootLogoAnimFinished = false;
 // Public-Funktion, damit loop() prüfen kann, ob die Animation durch ist
 bool displayIsBootAnimFinished() {
     return s_bootLogoAnimFinished;
+}
+
+// Mono hat keine Zeichen-fuer-Zeichen-Animation (Text steht sofort komplett),
+// deshalb hier ein fixes Mindest-Anzeigefenster statt der Anim-Laufzeit als
+// natuerlicher Untergrenze.
+static constexpr uint32_t kBootLogoMonoMinMs = 2000;
+
+static void mono_boot_logo_timer_cb(lv_timer_t * timer) {
+    s_bootLogoAnimFinished = true;
+    lv_timer_del(timer);
 }
 
 static void boot_logo_timer_cb(lv_timer_t * timer) {
@@ -54,23 +60,29 @@ void displayDrawBootScreen()
     lv_obj_t *scr = lv_scr_act();
     lv_obj_set_style_bg_color(scr, lv_color_black(), 0);
 
-    // Mono (SSD1309, 128x64): das ASCII-Logo ist ~28 Zeichen breit, passt
-    // selbst bei unscii_8 (8px/Zeichen -> 224px) nicht annaehernd auf 128px -
-    // kein Logo, nur eine kurze Statuszeile. s_bootLogoAnimFinished sofort
-    // true, sonst wartet main.cpp (displayIsBootAnimFinished()) auf eine
-    // Animation, die hier nie startet.
     if (displayIsMono()) {
-        s_bootLogo = nullptr;
-        s_bootLogoAnimFinished = true;
+        s_bootLogoAnimFinished = false;
+        lv_timer_create(mono_boot_logo_timer_cb, kBootLogoMonoMinMs, NULL);
 
+        // 1. Logo-Label erzeugen und Text zuweisen
+        s_bootLogo = lv_label_create(scr);
+        lv_label_set_text(s_bootLogo, kBootLogoMono);
+        lv_obj_set_style_text_color(s_bootLogo, lv_color_white(), 0);
+        lv_obj_set_style_text_font(s_bootLogo, &lv_font_unscii_8, 0); 
+        lv_obj_align(s_bootLogo, LV_ALIGN_CENTER, 0, -10);
+
+        // 2. Status-Label erzeugen
         s_bootStatus = lv_label_create(scr);
-        lv_label_set_text(s_bootStatus, "");
+        lv_label_set_text(s_bootStatus, "Booting..."); // Oder initial leer lassen
         lv_obj_set_style_text_color(s_bootStatus, lv_color_white(), 0);
         lv_obj_set_style_text_font(s_bootStatus, &lv_font_unscii_8, 0);
         lv_obj_set_style_text_align(s_bootStatus, LV_TEXT_ALIGN_CENTER, 0);
         lv_obj_set_width(s_bootStatus, lv_pct(100));
         lv_label_set_long_mode(s_bootStatus, LV_LABEL_LONG_WRAP);
-        lv_obj_align(s_bootStatus, LV_ALIGN_CENTER, 0, 0);
+
+        // Status unter dem Logo ausrichten (Y Offset +12)
+        lv_obj_align(s_bootStatus, LV_ALIGN_CENTER, 0, 12);
+        
         return;
     }
 

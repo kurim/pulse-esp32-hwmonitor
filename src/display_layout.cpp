@@ -648,6 +648,150 @@ lv_obj_t *create_mono_forecast(lv_obj_t *parent, JsonObjectConst props) {
   return box;
 }
 
+// Vollbild-Standby-Vorlage (128x64, User-Vorgabe): aktuelle Temperatur+Icon
+// gross oben, darunter eine Tagesvorhersage (Temp + 12x12-Icon je Tag).
+// Bewusst ein EIGENER Widget-Typ statt eines Umbaus von mono_forecast oben
+// (User-Entscheidung) - mono_forecast bleibt die kompakte Inline-Tabelle
+// ohne Icons fuer beliebige Platzierung neben anderen Widgets, dies hier ist
+// ein eigenstaendiges Vollbild-Widget nur fuers Standby-Set. Keine
+// Wochentags-Kopfzeile und keine Wortbeschreibung je Tag (User-Entscheidung:
+// das Icon traegt die Information allein - "Teils bewoelkt"/"Gewitter"
+// passen bei 4-5 Spalten auf 128px ohnehin nicht in unscii_8, 8px/Zeichen).
+// Icon-Holder sind leere 12x12-Boxen, die refresh_mono_standby_weather_
+// widgets() bei jedem Refresh per lv_obj_clean()+draw_mono_pixel_icon12()
+// neu befuellt - anders als die statischen 7x7-Icons oben (Chip/Flash/
+// Therm, immer dasselbe Icon) haengt das Wetter-Icon von Live-Daten ab.
+struct MonoStandbyWeatherWidget {
+  lv_obj_t *curTempLbl;
+  lv_obj_t *curIconHolder;
+  lv_obj_t *dayTempLbls[FORECAST_DAYS];
+  lv_obj_t *dayIconHolders[FORECAST_DAYS];
+  int colCount;
+};
+std::vector<MonoStandbyWeatherWidget> s_monoStandbyWeatherWidgets;
+
+lv_obj_t *create_mono_standby_weather(lv_obj_t *parent, JsonObjectConst props) {
+  int cols = props["days"] | 4;
+  if (cols < 1) cols = 1;
+  if (cols > FORECAST_DAYS) cols = FORECAST_DAYS;
+
+  lv_obj_t *box = lv_obj_create(parent);
+  lv_obj_remove_flag(box, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_style_bg_opa(box, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(box, 0, 0);
+  lv_obj_set_style_pad_all(box, 0, 0);
+  lv_obj_set_style_pad_row(box, 3, 0);
+  lv_obj_set_layout(box, LV_LAYOUT_FLEX);
+  lv_obj_set_flex_flow(box, LV_FLEX_FLOW_COLUMN);
+
+  MonoStandbyWeatherWidget w{};
+  w.colCount = cols;
+
+  // Kopfzeile: grosse aktuelle Temperatur + Icon als Gruppe zentriert (Flex-
+  // Row statt fixem Pixel-Offset fuers Icon - die Temp-Textbreite variiert
+  // ("--", "5C", "-12C"), ein fester Offset wuerde bei kurzen/negativen
+  // Werten nicht neben dem Text "kleben").
+  lv_obj_t *curRow = lv_obj_create(box);
+  lv_obj_remove_flag(curRow, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_style_bg_opa(curRow, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(curRow, 0, 0);
+  lv_obj_set_style_pad_all(curRow, 0, 0);
+  lv_obj_set_style_pad_column(curRow, 4, 0);
+  lv_obj_set_width(curRow, lv_pct(100));
+  lv_obj_set_height(curRow, 18);
+  lv_obj_set_layout(curRow, LV_LAYOUT_FLEX);
+  lv_obj_set_flex_flow(curRow, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(curRow, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+  w.curTempLbl = lv_label_create(curRow);
+  lv_label_set_text(w.curTempLbl, "--");
+  lv_obj_set_style_text_color(w.curTempLbl, lv_color_white(), 0);
+  lv_obj_set_style_text_font(w.curTempLbl, &lv_font_unscii_16, 0);
+
+  w.curIconHolder = lv_obj_create(curRow);
+  lv_obj_remove_flag(w.curIconHolder, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_style_bg_opa(w.curIconHolder, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(w.curIconHolder, 0, 0);
+  lv_obj_set_style_pad_all(w.curIconHolder, 0, 0);
+  lv_obj_set_size(w.curIconHolder, 12, 12);
+
+  // Trennlinie, gleiche Bauart wie create_mono_line() weiter unten.
+  lv_obj_t *divider = lv_obj_create(box);
+  lv_obj_remove_flag(divider, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_style_radius(divider, 0, 0);
+  lv_obj_set_style_border_width(divider, 0, 0);
+  lv_obj_set_style_bg_color(divider, lv_color_white(), 0);
+  lv_obj_set_style_bg_opa(divider, LV_OPA_COVER, 0);
+  lv_obj_set_width(divider, lv_pct(100));
+  lv_obj_set_height(divider, 1);
+
+  // Zwei Zeilen (Temp + Icon je Tag), dieselbe "1 feste Label-Spalte + N
+  // wachsende Tages-Zellen"-Technik wie mono_forecast oben, damit sich die
+  // Spalten beider Zeilen exakt ausrichten, ganz ohne Grid-API.
+  auto makeRow = [&]() {
+    lv_obj_t *row = lv_obj_create(box);
+    lv_obj_remove_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(row, 0, 0);
+    lv_obj_set_style_pad_all(row, 0, 0);
+    lv_obj_set_style_pad_column(row, 2, 0);
+    lv_obj_set_width(row, lv_pct(100));
+    lv_obj_set_height(row, LV_SIZE_CONTENT);
+    lv_obj_set_layout(row, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+    return row;
+  };
+  auto makeLabelCell = [&](lv_obj_t *row, const char *text) {
+    lv_obj_t *lbl = lv_label_create(row);
+    lv_label_set_text(lbl, text);
+    lv_obj_set_style_text_color(lbl, lv_color_white(), 0);
+    lv_obj_set_style_text_font(lbl, &lv_font_unscii_8, 0);
+    lv_obj_set_width(lbl, 9);
+    return lbl;
+  };
+  auto makeTempCell = [&](lv_obj_t *row) {
+    lv_obj_t *lbl = lv_label_create(row);
+    lv_label_set_text(lbl, "--");
+    lv_obj_set_style_text_color(lbl, lv_color_white(), 0);
+    lv_obj_set_style_text_font(lbl, &lv_font_unscii_8, 0);
+    lv_obj_set_style_text_align(lbl, LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_long_mode(lbl, LV_LABEL_LONG_CLIP);
+    lv_obj_set_flex_grow(lbl, 1);
+    return lbl;
+  };
+  auto makeIconCell = [&](lv_obj_t *row) {
+    lv_obj_t *cell = lv_obj_create(row);
+    lv_obj_remove_flag(cell, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_bg_opa(cell, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(cell, 0, 0);
+    lv_obj_set_style_pad_all(cell, 0, 0);
+    lv_obj_set_height(cell, 12);
+    lv_obj_set_flex_grow(cell, 1);
+    lv_obj_set_layout(cell, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(cell, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(cell, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+    lv_obj_t *holder = lv_obj_create(cell);
+    lv_obj_remove_flag(holder, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_bg_opa(holder, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(holder, 0, 0);
+    lv_obj_set_style_pad_all(holder, 0, 0);
+    lv_obj_set_size(holder, 12, 12);
+    return holder;
+  };
+
+  lv_obj_t *tempRow = makeRow();
+  makeLabelCell(tempRow, "T");
+  for (int i = 0; i < cols; i++) w.dayTempLbls[i] = makeTempCell(tempRow);
+
+  lv_obj_t *iconRow = makeRow();
+  makeLabelCell(iconRow, "");
+  for (int i = 0; i < cols; i++) w.dayIconHolders[i] = makeIconCell(iconRow);
+
+  s_monoStandbyWeatherWidgets.push_back(w);
+  return box;
+}
+
 // CPU-/GPU-Statuszeile: Label ("CPU 62%") + Balken + Temp/Watt-Zeile,
 // deckungsgleich mit dem alten hartcodierten display_mono.cpp-Dashboard,
 // nur als generische Widget-Fabrik statt fest verdrahteter Positionen.
@@ -741,6 +885,101 @@ void draw_mono_pixel_icon(lv_obj_t *parent, const uint8_t rows[7], int16_t x, in
       lv_obj_set_pos(px, x + c, y + r);
     }
   }
+}
+
+// 12x12-Pixel-Wetter-Icons (aus MDI-Glyphen abgeleitet, User-Vorgabe) fuer
+// mono_standby_weather weiter unten - gleiche Technik wie die 7x7-Icons
+// oben, nur 2 Byte statt 1 Byte pro Zeile (12 relevante Spalten passen
+// nicht mehr in ein Byte). Nur 4 Icons statt der 9 in weather_icon_mdi()
+// (mdi_icons.h) - Bewoelkt/Nebel/Schnee bekommen ueber
+// mono_weather_icon12_for_owm() unten das naechstliegende der 4 zugeteilt,
+// dieselbe "kein sechstes Icon erzeugen"-Haltung wie dort.
+static const uint8_t kIconSunny12[24] = {
+  0b00000110, 0b00000000,
+  0b01000110, 0b00100000,
+  0b00100000, 0b01000000,
+  0b00001111, 0b00000000,
+  0b00011111, 0b10000000,
+  0b11011111, 0b10110000,
+  0b11011111, 0b10110000,
+  0b00011111, 0b10000000,
+  0b00001111, 0b00000000,
+  0b00100000, 0b01000000,
+  0b01000110, 0b00100000,
+  0b00000110, 0b00000000,
+};
+static const uint8_t kIconPartlyCloudy12[24] = {
+  0b00001100, 0b00000000,
+  0b01001100, 0b10000000,
+  0b00100000, 0b01000000,
+  0b00001111, 0b00000000,
+  0b00011111, 0b11000000,
+  0b00111111, 0b11100000,
+  0b01111111, 0b11110000,
+  0b11111111, 0b11111000,
+  0b11111111, 0b11111000,
+  0b01111111, 0b11110000,
+  0b00000000, 0b00000000,
+  0b00000000, 0b00000000,
+};
+static const uint8_t kIconRainy12[24] = {
+  0b00000111, 0b00000000,
+  0b00011111, 0b11000000,
+  0b00111111, 0b11100000,
+  0b01111111, 0b11110000,
+  0b11111111, 0b11111000,
+  0b00000000, 0b00000000,
+  0b01001001, 0b00100000,
+  0b00100100, 0b10000000,
+  0b00000000, 0b00000000,
+  0b01001001, 0b00100000,
+  0b00100100, 0b10000000,
+  0b00000000, 0b00000000,
+};
+static const uint8_t kIconLightning12[24] = {
+  0b00000111, 0b00000000,
+  0b00011111, 0b11000000,
+  0b00111111, 0b11100000,
+  0b01111111, 0b11110000,
+  0b11111111, 0b11111000,
+  0b00000110, 0b00000000,
+  0b00001100, 0b00000000,
+  0b00011111, 0b00000000,
+  0b00000110, 0b00000000,
+  0b00001100, 0b00000000,
+  0b00001000, 0b00000000,
+  0b00010000, 0b00000000,
+};
+
+void draw_mono_pixel_icon12(lv_obj_t *parent, const uint8_t rows[24], int16_t x, int16_t y) {
+  for (int8_t r = 0; r < 12; r++) {
+    for (int8_t c = 0; c < 12; c++) {
+      uint8_t byteVal = rows[r * 2 + c / 8];
+      if (!(byteVal & (1 << (7 - (c % 8))))) continue;
+      lv_obj_t *px = lv_obj_create(parent);
+      lv_obj_remove_flag(px, LV_OBJ_FLAG_SCROLLABLE);
+      lv_obj_set_style_radius(px, 0, 0);
+      lv_obj_set_style_border_width(px, 0, 0);
+      lv_obj_set_style_bg_color(px, lv_color_white(), 0);
+      lv_obj_set_style_bg_opa(px, LV_OPA_COVER, 0);
+      lv_obj_set_size(px, 1, 1);
+      lv_obj_set_pos(px, x + c, y + r);
+    }
+  }
+}
+
+// Ordnet einen OWM-Icon-Code (weather_info.icon/forecast_day_t.icon, siehe
+// shared_state.h) einem der 4 kIcon*12-Bitmaps zu - dieselbe 2-stellige-ID-
+// Logik wie weather_icon_mdi() (weather_service.cpp), nur auf 4 statt 9
+// Ziele verdichtet: 3/4 (bewoelkt) und 50 (Nebel) fallen auf "teils
+// bewoelkt", 13 (Schnee) auf "Regen" (naeher als Sonne/Gewitter).
+const uint8_t *mono_weather_icon12_for_owm(const char *owmCode) {
+  if (!owmCode || !owmCode[0] || !owmCode[1]) return kIconSunny12;
+  int id = (owmCode[0] - '0') * 10 + (owmCode[1] - '0');
+  if (id == 1) return kIconSunny12;
+  if (id == 9 || id == 10 || id == 13) return kIconRainy12;
+  if (id == 11) return kIconLightning12;
+  return kIconPartlyCloudy12; // 2,3,4,50
 }
 
 // Mono-Variante der "flachen" Karte (cpu_card_flat/gpu_card_flat oben,
@@ -1275,6 +1514,7 @@ const WidgetTypeEntry kWidgetTypes[] = {
     {"mono_weekday", create_mono_weekday},
     {"mono_weather_temp", create_mono_weather_temp},
     {"mono_forecast", create_mono_forecast},
+    {"mono_standby_weather", create_mono_standby_weather},
     {"mono_cpu_stat", create_mono_cpu_stat},
     {"mono_gpu_stat", create_mono_gpu_stat},
     {"mono_cpu_card", create_mono_cpu_card},
@@ -1311,6 +1551,7 @@ void layout_apply(JsonArrayConst widgets, JsonArrayConst standbyWidgets) {
   s_monoWeekdayWidgets.clear();
   s_monoWeatherWidgets.clear();
   s_monoForecastWidgets.clear();
+  s_monoStandbyWeatherWidgets.clear();
   s_monoStatWidgets.clear();
   s_monoHwCardWidgets.clear();
   s_monoLabelValueWidgets.clear();
@@ -1643,6 +1884,43 @@ static void refresh_mono_forecast_widgets(void) {
   }
 }
 
+// Icon-Holder werden bei jedem Aufruf per lv_obj_clean() geleert und neu
+// befuellt statt das alte Icon stehen zu lassen und ein zweites drueber-
+// zuzeichnen - sonst wuerden bei einem Bedingungswechsel (z.B. Sonne ->
+// Regen) die Pixel des alten Icons, die im neuen Icon nicht gesetzt sind,
+// weiss stehen bleiben.
+static void refresh_mono_standby_weather_widgets(void) {
+  if (s_monoStandbyWeatherWidgets.empty()) return;
+  char buf[8];
+  bool curValid = app_config.weather_enabled && weather_info.valid;
+  for (auto &w : s_monoStandbyWeatherWidgets) {
+    if (curValid) {
+      int tempR = (int)(weather_info.temp_c + (weather_info.temp_c >= 0 ? 0.5f : -0.5f));
+      snprintf(buf, sizeof(buf), "%dC", tempR);
+      lv_label_set_text(w.curTempLbl, buf);
+      lv_obj_clean(w.curIconHolder);
+      draw_mono_pixel_icon12(w.curIconHolder, mono_weather_icon12_for_owm(weather_info.icon), 0, 0);
+    } else {
+      lv_label_set_text(w.curTempLbl, "--");
+      lv_obj_clean(w.curIconHolder);
+    }
+
+    for (int i = 0; i < w.colCount; i++) {
+      if (forecast_info.valid && i < forecast_info.day_count) {
+        const forecast_day_t &d = forecast_info.days[i];
+        int hi = (int)(d.temp_max + (d.temp_max >= 0 ? 0.5f : -0.5f));
+        snprintf(buf, sizeof(buf), "%dC", hi);
+        lv_label_set_text(w.dayTempLbls[i], buf);
+        lv_obj_clean(w.dayIconHolders[i]);
+        draw_mono_pixel_icon12(w.dayIconHolders[i], mono_weather_icon12_for_owm(d.icon), 0, 0);
+      } else {
+        lv_label_set_text(w.dayTempLbls[i], "--");
+        lv_obj_clean(w.dayIconHolders[i]);
+      }
+    }
+  }
+}
+
 static void refresh_mono_stat_widgets(void) {
   if (s_monoStatWidgets.empty()) return;
   hw_data_lock();
@@ -1826,6 +2104,7 @@ void layout_refresh_bindings(void) {
   refresh_chart_card_widgets();
   refresh_mono_clock_widgets();
   refresh_mono_forecast_widgets();
+  refresh_mono_standby_weather_widgets();
   refresh_mono_stat_widgets();
   refresh_mono_hw_card_widgets();
   refresh_mono_label_value_widgets();

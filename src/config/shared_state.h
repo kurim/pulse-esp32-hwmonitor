@@ -4,7 +4,7 @@
 #include "board_config.h"
 #include "pin_override.h"
 
-#define FW_VERSION "0.3.11"
+#define FW_VERSION "0.4.0"
 
 // Ringpuffer-Laenge fuer Verlaufsdiagramme (60 Samples = ~1 Min bei 1 Wert/Sek)
 #define HIST_LEN 60

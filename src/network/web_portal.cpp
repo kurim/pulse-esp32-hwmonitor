@@ -4,6 +4,7 @@
 #include "display_layout.h"
 #include "layout_store.h"
 #include "wifi_provision.h"
+#include "github_ota.h"
 #include <ArduinoJson.h>
 #include <WiFi.h>
 #include <Update.h>
@@ -466,6 +467,19 @@ void handleOtaUpload(AsyncWebServerRequest * /*request*/, String filename, size_
                       uint8_t *data, size_t len, bool final)
 {
     if (index == 0) {
+        // Falls ein vorheriger Upload nie den "final"-Chunk erreicht hat
+        // (Client gibt auf/Verbindung reisst ab, z.B. weil der bisherige
+        // 15s-Timeout in dashboard.html bei einem ~1.8MB-Image mit
+        // gleichzeitigem Flash-Schreiben zu knapp war) bleibt Update.begin()
+        // fuer diese eine, GLOBALE Update-Instanz auf "laeuft noch" stehen -
+        // jeder weitere Versuch scheitert dann dauerhaft mit "already
+        // running" (Updater.cpp), bis zum naechsten Reboot. Explizit
+        // abbrechen statt das stillschweigend zu blockieren, bevor neu
+        // begonnen wird.
+        if (Update.isRunning()) {
+            log_w("Vorheriger OTA-Upload war noch offen (nie 'final' erreicht) - breche ab und starte neu.");
+            Update.abort();
+        }
         // Pausiert den Wetter-Task fuer die Dauer des Uploads (siehe
         // shared_state.h) - unabhaengig vom Ausgang unten wieder freigegeben,
         // sonst bliebe er nach einem fehlgeschlagenen Update dauerhaft aus.
@@ -507,6 +521,51 @@ void handleOtaDone(AsyncWebServerRequest *request)
         delay(200);
         ESP.restart();
     }
+}
+
+// Blockiert den AsyncTCP-Task fuer die Dauer eines HTTPS-Requests (siehe
+// github_ota.h) - genau wie handleOtaUpload() oben das bereits fuer den
+// gesamten Upload/Flash-Vorgang tut. CONFIG_ESP_TASK_WDT_TIMEOUT_S=60
+// (siehe platformio.ini) deckt beides bereits ab, kein neuer Sonderfall.
+void handleFotaCheck(AsyncWebServerRequest *request)
+{
+    bool ok = github_ota_check();
+    JsonDocument doc;
+    doc["ok"] = ok;
+    doc["current_version"] = FW_VERSION;
+    doc["latest_version"] = github_ota_latest_version();
+    doc["update_available"] = github_ota_update_available();
+    if (!ok) {
+        doc["error"] = github_ota_error();
+    }
+    String out;
+    serializeJson(doc, out);
+    AsyncWebServerResponse *response = request->beginResponse(200, "application/json", out);
+    response->addHeader("Cache-Control", "no-store");
+    request->send(response);
+}
+
+void handleFotaUpdate(AsyncWebServerRequest *request)
+{
+    // Kein impliziter Re-Check hier - der Nutzer hat den Update-Banner nach
+    // einem vorherigen handleFotaCheck() gesehen (dashboard.html), das
+    // gefundene Asset (github_ota.cpp, Datei-scope-statisch) ist noch
+    // gueltig. Ein zweiter API-Call waere nur unnoetige Latenz.
+    bool ok = github_ota_perform_update();
+    if (!ok) {
+        JsonDocument doc;
+        doc["ok"] = false;
+        doc["error"] = github_ota_error();
+        String out;
+        serializeJson(doc, out);
+        request->send(500, "application/json", out);
+        return;
+    }
+    AsyncWebServerResponse *response = request->beginResponse(200, "application/json", "{\"ok\":true}");
+    response->addHeader("Connection", "close");
+    request->send(response);
+    delay(200);
+    ESP.restart();
 }
 
 } // namespace
@@ -564,6 +623,8 @@ void web_portal_begin(void)
     s_server.on("/api/reboot", HTTP_POST, handleReboot);
     s_server.on("/api/factory_reset", HTTP_POST, handleFactoryReset);
     s_server.on("/api/ota", HTTP_POST, handleOtaDone, handleOtaUpload);
+    s_server.on("/api/fota/check", HTTP_GET, handleFotaCheck);
+    s_server.on("/api/fota/update", HTTP_POST, handleFotaUpdate);
 
     s_server.begin();
 }

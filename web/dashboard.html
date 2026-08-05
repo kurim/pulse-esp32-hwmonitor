@@ -569,6 +569,17 @@
           Aktuell: <span id="fwVersion">-</span> (<span id="fwBoard">-</span>)<br>
           Freier Speicher: <span id="fwHeap">-</span> &middot; Laufzeit: <span id="fwUptime">-</span>
         </div>
+
+        <div class="actions" style="margin:12px 0">
+          <button class="btn" id="btnFotaCheck">Auf Updates prüfen</button>
+        </div>
+        <div id="fotaCheckStatus" class="status-line" style="display:none;margin-bottom:12px"></div>
+        <div id="fotaUpdateBanner" style="display:none;margin-bottom:16px;padding:12px;border:1px solid var(--green);border-radius:8px;background:rgba(46,204,113,.1)">
+          <div style="font-weight:600;color:var(--green)">⬆ Update verfügbar: v<span id="fotaLatestVersion">-</span></div>
+          <div class="status-line" style="margin:4px 0 10px">Aktuell: <span id="fotaCurrentVersion">-</span></div>
+          <button class="btn primary" id="btnFotaUpdate" style="width:100%">Jetzt aktualisieren</button>
+        </div>
+
         <div class="field">
           <label>Manuell flashen (.bin dieses Boards)</label>
           <input type="file" id="otaFile" accept=".bin">
@@ -1061,6 +1072,70 @@
       }
     });
 
+    // --- FOTA: GitHub-Release-Check ---
+    // Rein manuell (Button-Klick) - kein automatischer/periodischer Check,
+    // um das Geraet nicht unnoetig gegen GitHub telefonieren zu lassen
+    // (siehe github_ota.h fuer die Begruendung, u.a. auch TLS-Handling).
+    $('btnFotaCheck').addEventListener('click', async () => {
+      $('btnFotaCheck').disabled = true;
+      $('fotaCheckStatus').style.display = '';
+      $('fotaCheckStatus').textContent = 'Prüfe...';
+      $('fotaUpdateBanner').style.display = 'none';
+      try {
+        const data = await api('/api/fota/check');
+        if (!data.ok) {
+          $('fotaCheckStatus').textContent = 'Fehler: ' + (data.error || 'unbekannt');
+        } else if (data.update_available) {
+          $('fotaCheckStatus').style.display = 'none';
+          $('fotaCurrentVersion').textContent = data.current_version;
+          $('fotaLatestVersion').textContent = data.latest_version;
+          $('fotaUpdateBanner').style.display = '';
+        } else {
+          $('fotaCheckStatus').textContent = 'Aktuell (v' + data.current_version + ') - kein Update verfügbar (neueste Version: v' + data.latest_version + ')';
+        }
+      } catch (e) {
+        $('fotaCheckStatus').textContent = 'Fehler bei der Prüfung: ' + e.message;
+      } finally {
+        $('btnFotaCheck').disabled = false;
+      }
+    });
+
+    // Download+Flash direkt von GitHub - laeuft serverseitig blockierend
+    // (siehe handleFotaUpdate() in web_portal.cpp), kann je nach Bildgroesse
+    // und WLAN eine ganze Weile dauern, deshalb ein grosszuegiger Timeout
+    // wie beim manuellen Upload oben.
+    $('btnFotaUpdate').addEventListener('click', async () => {
+      if (!confirm('Neueste Firmware von GitHub laden, flashen und neustarten?')) return;
+      $('btnFotaUpdate').disabled = true;
+      $('btnFotaUpdate').textContent = 'Lädt & flasht...';
+      try {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '/api/fota/update');
+        xhr.timeout = 120000;
+        xhr.onload = () => {
+          if (xhr.status === 200) {
+            toast('Firmware geflasht, Neustart...');
+          } else {
+            let msg = xhr.responseText;
+            try { msg = JSON.parse(xhr.responseText).error || msg; } catch (e) {}
+            toast('Fehler: ' + msg);
+            $('btnFotaUpdate').disabled = false;
+            $('btnFotaUpdate').textContent = 'Jetzt aktualisieren';
+          }
+        };
+        // Wie beim manuellen Upload: die Verbindung reisst beim Neustart
+        // oft ab, bevor die Antwort ankommt - das ist der erwartete Ablauf,
+        // kein Fehler (siehe btnOta-Handler unten fuer denselben Fall).
+        xhr.onerror = () => toast('Firmware geflasht, Neustart...');
+        xhr.ontimeout = () => toast('Firmware geflasht, Neustart...');
+        xhr.send();
+      } catch (e) {
+        toast('Fehler: ' + e.message);
+        $('btnFotaUpdate').disabled = false;
+        $('btnFotaUpdate').textContent = 'Jetzt aktualisieren';
+      }
+    });
+
     // --- FOTA ---
     $('btnOta').addEventListener('click', async () => {
       const file = $('otaFile').files[0];
@@ -1075,8 +1150,17 @@
         const xhr = new XMLHttpRequest();
         let uploadDone = false;
         xhr.open('POST', '/api/ota');
-        xhr.timeout = 15000; // Verbindung reisst beim Neustart oft ab, bevor
-                              // die Antwort ankommt - nicht unbegrenzt haengen
+        // xhr.timeout laeuft ueber die GESAMTE Anfrage (Upload + Warten auf
+        // Antwort), nicht nur die Wartezeit danach - 15s war deutlich zu
+        // knapp fuer ein ~1.8MB-Firmwareimage, das der ESP32 gleichzeitig
+        // mit laufendem LVGL/WiFi in den Flash schreiben muss (siehe
+        // Update.write() in web_portal.cpp). Ein zu knapper Timeout brach
+        // den Upload hier client-seitig ab, WAEHREND der Server noch mitten
+        // im Transfer war - Update.begin() blieb dadurch serverseitig offen
+        // und blockierte jeden weiteren Versuch ("already running", siehe
+        // dortiger Kommentar). 120s reicht fuer Upload+Flash-Schreiben
+        // grosszuegig, verhindert aber immer noch ein echtes Haengenbleiben.
+        xhr.timeout = 120000;
         xhr.upload.onprogress = (e) => {
           if (e.lengthComputable) {
             const pct = Math.round(e.loaded / e.total * 100);

@@ -544,6 +544,121 @@ lv_obj_t *create_mono_weather_temp(lv_obj_t *parent, JsonObjectConst) {
   return lbl;
 }
 
+// 12x12-Pixel-Wetter-Icons (aus MDI-Glyphen abgeleitet, User-Vorgabe) fuer
+// mono_standby_weather weiter unten - gleiche Grundtechnik wie die 7x7-Icons
+// weiter unten (kMonoIconChip/Flash/Therm), nur 2 Byte statt 1 Byte pro
+// Zeile (12 relevante Spalten passen nicht mehr in ein Byte). Nur 4 Icons
+// statt der 9 in weather_icon_mdi() (mdi_icons.h) - Bewoelkt/Nebel/Schnee
+// bekommen ueber mono_weather_icon12_for_owm() unten das naechstliegende
+// der 4 zugeteilt, dieselbe "kein sechstes Icon erzeugen"-Haltung wie dort.
+static const uint8_t kIconSunny12[24] = {
+  0b00000110, 0b00000000,
+  0b01000110, 0b00100000,
+  0b00100000, 0b01000000,
+  0b00001111, 0b00000000,
+  0b00011111, 0b10000000,
+  0b11011111, 0b10110000,
+  0b11011111, 0b10110000,
+  0b00011111, 0b10000000,
+  0b00001111, 0b00000000,
+  0b00100000, 0b01000000,
+  0b01000110, 0b00100000,
+  0b00000110, 0b00000000,
+};
+static const uint8_t kIconPartlyCloudy12[24] = {
+  0b00001100, 0b00000000,
+  0b01001100, 0b10000000,
+  0b00100000, 0b01000000,
+  0b00001111, 0b00000000,
+  0b00011111, 0b11000000,
+  0b00111111, 0b11100000,
+  0b01111111, 0b11110000,
+  0b11111111, 0b11111000,
+  0b11111111, 0b11111000,
+  0b01111111, 0b11110000,
+  0b00000000, 0b00000000,
+  0b00000000, 0b00000000,
+};
+static const uint8_t kIconRainy12[24] = {
+  0b00000111, 0b00000000,
+  0b00011111, 0b11000000,
+  0b00111111, 0b11100000,
+  0b01111111, 0b11110000,
+  0b11111111, 0b11111000,
+  0b00000000, 0b00000000,
+  0b01001001, 0b00100000,
+  0b00100100, 0b10000000,
+  0b00000000, 0b00000000,
+  0b01001001, 0b00100000,
+  0b00100100, 0b10000000,
+  0b00000000, 0b00000000,
+};
+static const uint8_t kIconLightning12[24] = {
+  0b00000111, 0b00000000,
+  0b00011111, 0b11000000,
+  0b00111111, 0b11100000,
+  0b01111111, 0b11110000,
+  0b11111111, 0b11111000,
+  0b00000110, 0b00000000,
+  0b00001100, 0b00000000,
+  0b00011111, 0b00000000,
+  0b00000110, 0b00000000,
+  0b00001100, 0b00000000,
+  0b00001000, 0b00000000,
+  0b00010000, 0b00000000,
+};
+
+// Zeichnet ein 12x12-Wetter-Icon per LV_EVENT_DRAW_MAIN direkt in den LVGL-
+// Draw-Layer, statt (wie die statischen 7x7-Icons weiter unten,
+// kMonoIconChip/Flash/Therm) ein eigenes lv_obj_t pro gesetztem Pixel zu
+// erzeugen. Grund: bis zu 6 Icons x 144 Pixel = bis zu 864 zusaetzliche
+// Objekte sprengen den festen, nur 48 KB grossen LVGL-Speicherpool
+// (LV_MEM_SIZE, lv_conf.h) - beobachtet als Absturz auf echter Hardware
+// (ESP32-C3: StoreProhibited kurz nach dem ersten Forecast-Fetch;
+// ESP32-S3-4MB: komplettes Haengen, kein Reboot). Das war selbst NACH einem
+// Fix reproduzierbar, der das wiederholte Neuzeichnen bei unveraendertem
+// Icon vermied - das reine STEHEN dieser vielen Objekte (nicht nur ihr
+// wiederholtes Neu-Erzeugen) sprengt den Pool bereits beim ersten Zeichnen.
+// Der Icon-Pointer haengt direkt am Holder-Objekt (lv_obj_set_user_data(),
+// siehe refresh_mono_standby_weather_widgets() weiter unten) - kein
+// einziges zusaetzliches lv_obj_t noetig, nur die paar Bytes CPU-Zeit fuer
+// die Draw-Calls selbst.
+static void mono_weather_icon_draw_event_cb(lv_event_t *e) {
+  lv_obj_t *obj = (lv_obj_t *)lv_event_get_current_target(e);
+  const uint8_t *icon = (const uint8_t *)lv_obj_get_user_data(obj);
+  if (!icon) return;
+
+  lv_layer_t *layer = lv_event_get_layer(e);
+  lv_area_t objCoords;
+  lv_obj_get_coords(obj, &objCoords);
+
+  lv_draw_rect_dsc_t dsc;
+  lv_draw_rect_dsc_init(&dsc); // Default bereits weiss/voll deckend/radius 0 - genau das gewuenschte harte 1px-Rechteck.
+
+  for (int8_t r = 0; r < 12; r++) {
+    for (int8_t c = 0; c < 12; c++) {
+      uint8_t byteVal = icon[r * 2 + c / 8];
+      if (!(byteVal & (1 << (7 - (c % 8))))) continue;
+      lv_area_t px = { objCoords.x1 + c, objCoords.y1 + r, objCoords.x1 + c, objCoords.y1 + r };
+      lv_draw_rect(layer, &dsc, &px);
+    }
+  }
+}
+
+// Ordnet einen OWM-Icon-Code (weather_info.icon/forecast_day_t.icon, siehe
+// shared_state.h) einem der 4 kIcon*12-Bitmaps zu - dieselbe 2-stellige-ID-
+// Logik wie weather_icon_mdi() (weather_service.cpp), nur auf 4 statt 9
+// Ziele verdichtet: 3/4 (bewoelkt) und 50 (Nebel) fallen auf "teils
+// bewoelkt", 13 (Schnee) auf "Regen" (naeher als Sonne/Gewitter).
+const uint8_t *mono_weather_icon12_for_owm(const char *owmCode) {
+  if (!owmCode || !owmCode[0] || !owmCode[1]) return kIconSunny12;
+  int id = (owmCode[0] - '0') * 10 + (owmCode[1] - '0');
+  if (id == 1) return kIconSunny12;
+  if (id == 9 || id == 10 || id == 13) return kIconRainy12;
+  if (id == 11) return kIconLightning12;
+  return kIconPartlyCloudy12; // 2,3,4,50
+}
+
 // Verdichteter Tages-Forecast (forecast_info, siehe shared_state.h/
 // weather_service.cpp fetch_forecast()) als echte Tabelle (User-Vorgabe):
 // Kopfzeile mit Wochentagen, darunter "T" (Tageshoechst-)/"N" (Nacht-
@@ -661,11 +776,25 @@ lv_obj_t *create_mono_forecast(lv_obj_t *parent, JsonObjectConst props) {
 // widgets() bei jedem Refresh per lv_obj_clean()+draw_mono_pixel_icon12()
 // neu befuellt - anders als die statischen 7x7-Icons oben (Chip/Flash/
 // Therm, immer dasselbe Icon) haengt das Wetter-Icon von Live-Daten ab.
+// curIconDrawn/dayIconDrawn merken das zuletzt gezeichnete Icon (Pointer auf
+// eines der statischen kIcon*12-Arrays, nullptr = noch keins/"--") - layout_
+// refresh_bindings() ruft die Refresh-Funktion alle 500ms auf, DAUERHAFT
+// (main.cpp), nicht nur bei tatsaechlich neuen Wetterdaten. Ohne diesen
+// Cache wuerden bei jedem Aufruf alle Icon-Holder per lv_obj_clean() geleert
+// und mit bis zu 144 einzelnen 1x1-Objekten neu bestueckt (12x12, bis zu 6
+// Icons gleichzeitig) - dieser Objekt-Erzeugungs-/Loeschzyklus 2x/Sekunde
+// fragmentierte auf echter Hardware (ESP32-C3, 400 KB SRAM, kein PSRAM) den
+// Heap innerhalb kurzer Zeit bis lv_obj_create() Muell/NULL zurueckgab,
+// beobachtet als "StoreProhibited"-Crash kurz nachdem forecast_info gueltig
+// wurde (siehe Absturz-Log). Mit dem Cache wird ein Icon nur bei
+// tatsaechlichem Kategoriewechsel neu gezeichnet.
 struct MonoStandbyWeatherWidget {
   lv_obj_t *curTempLbl;
   lv_obj_t *curIconHolder;
+  const uint8_t *curIconDrawn;
   lv_obj_t *dayTempLbls[FORECAST_DAYS];
   lv_obj_t *dayIconHolders[FORECAST_DAYS];
+  const uint8_t *dayIconDrawn[FORECAST_DAYS];
   int colCount;
 };
 std::vector<MonoStandbyWeatherWidget> s_monoStandbyWeatherWidgets;
@@ -714,6 +843,7 @@ lv_obj_t *create_mono_standby_weather(lv_obj_t *parent, JsonObjectConst props) {
   lv_obj_set_style_border_width(w.curIconHolder, 0, 0);
   lv_obj_set_style_pad_all(w.curIconHolder, 0, 0);
   lv_obj_set_size(w.curIconHolder, 12, 12);
+  lv_obj_add_event_cb(w.curIconHolder, mono_weather_icon_draw_event_cb, LV_EVENT_DRAW_MAIN, nullptr);
 
   // Trennlinie, gleiche Bauart wie create_mono_line() weiter unten.
   lv_obj_t *divider = lv_obj_create(box);
@@ -777,6 +907,7 @@ lv_obj_t *create_mono_standby_weather(lv_obj_t *parent, JsonObjectConst props) {
     lv_obj_set_style_border_width(holder, 0, 0);
     lv_obj_set_style_pad_all(holder, 0, 0);
     lv_obj_set_size(holder, 12, 12);
+    lv_obj_add_event_cb(holder, mono_weather_icon_draw_event_cb, LV_EVENT_DRAW_MAIN, nullptr);
     return holder;
   };
 
@@ -885,101 +1016,6 @@ void draw_mono_pixel_icon(lv_obj_t *parent, const uint8_t rows[7], int16_t x, in
       lv_obj_set_pos(px, x + c, y + r);
     }
   }
-}
-
-// 12x12-Pixel-Wetter-Icons (aus MDI-Glyphen abgeleitet, User-Vorgabe) fuer
-// mono_standby_weather weiter unten - gleiche Technik wie die 7x7-Icons
-// oben, nur 2 Byte statt 1 Byte pro Zeile (12 relevante Spalten passen
-// nicht mehr in ein Byte). Nur 4 Icons statt der 9 in weather_icon_mdi()
-// (mdi_icons.h) - Bewoelkt/Nebel/Schnee bekommen ueber
-// mono_weather_icon12_for_owm() unten das naechstliegende der 4 zugeteilt,
-// dieselbe "kein sechstes Icon erzeugen"-Haltung wie dort.
-static const uint8_t kIconSunny12[24] = {
-  0b00000110, 0b00000000,
-  0b01000110, 0b00100000,
-  0b00100000, 0b01000000,
-  0b00001111, 0b00000000,
-  0b00011111, 0b10000000,
-  0b11011111, 0b10110000,
-  0b11011111, 0b10110000,
-  0b00011111, 0b10000000,
-  0b00001111, 0b00000000,
-  0b00100000, 0b01000000,
-  0b01000110, 0b00100000,
-  0b00000110, 0b00000000,
-};
-static const uint8_t kIconPartlyCloudy12[24] = {
-  0b00001100, 0b00000000,
-  0b01001100, 0b10000000,
-  0b00100000, 0b01000000,
-  0b00001111, 0b00000000,
-  0b00011111, 0b11000000,
-  0b00111111, 0b11100000,
-  0b01111111, 0b11110000,
-  0b11111111, 0b11111000,
-  0b11111111, 0b11111000,
-  0b01111111, 0b11110000,
-  0b00000000, 0b00000000,
-  0b00000000, 0b00000000,
-};
-static const uint8_t kIconRainy12[24] = {
-  0b00000111, 0b00000000,
-  0b00011111, 0b11000000,
-  0b00111111, 0b11100000,
-  0b01111111, 0b11110000,
-  0b11111111, 0b11111000,
-  0b00000000, 0b00000000,
-  0b01001001, 0b00100000,
-  0b00100100, 0b10000000,
-  0b00000000, 0b00000000,
-  0b01001001, 0b00100000,
-  0b00100100, 0b10000000,
-  0b00000000, 0b00000000,
-};
-static const uint8_t kIconLightning12[24] = {
-  0b00000111, 0b00000000,
-  0b00011111, 0b11000000,
-  0b00111111, 0b11100000,
-  0b01111111, 0b11110000,
-  0b11111111, 0b11111000,
-  0b00000110, 0b00000000,
-  0b00001100, 0b00000000,
-  0b00011111, 0b00000000,
-  0b00000110, 0b00000000,
-  0b00001100, 0b00000000,
-  0b00001000, 0b00000000,
-  0b00010000, 0b00000000,
-};
-
-void draw_mono_pixel_icon12(lv_obj_t *parent, const uint8_t rows[24], int16_t x, int16_t y) {
-  for (int8_t r = 0; r < 12; r++) {
-    for (int8_t c = 0; c < 12; c++) {
-      uint8_t byteVal = rows[r * 2 + c / 8];
-      if (!(byteVal & (1 << (7 - (c % 8))))) continue;
-      lv_obj_t *px = lv_obj_create(parent);
-      lv_obj_remove_flag(px, LV_OBJ_FLAG_SCROLLABLE);
-      lv_obj_set_style_radius(px, 0, 0);
-      lv_obj_set_style_border_width(px, 0, 0);
-      lv_obj_set_style_bg_color(px, lv_color_white(), 0);
-      lv_obj_set_style_bg_opa(px, LV_OPA_COVER, 0);
-      lv_obj_set_size(px, 1, 1);
-      lv_obj_set_pos(px, x + c, y + r);
-    }
-  }
-}
-
-// Ordnet einen OWM-Icon-Code (weather_info.icon/forecast_day_t.icon, siehe
-// shared_state.h) einem der 4 kIcon*12-Bitmaps zu - dieselbe 2-stellige-ID-
-// Logik wie weather_icon_mdi() (weather_service.cpp), nur auf 4 statt 9
-// Ziele verdichtet: 3/4 (bewoelkt) und 50 (Nebel) fallen auf "teils
-// bewoelkt", 13 (Schnee) auf "Regen" (naeher als Sonne/Gewitter).
-const uint8_t *mono_weather_icon12_for_owm(const char *owmCode) {
-  if (!owmCode || !owmCode[0] || !owmCode[1]) return kIconSunny12;
-  int id = (owmCode[0] - '0') * 10 + (owmCode[1] - '0');
-  if (id == 1) return kIconSunny12;
-  if (id == 9 || id == 10 || id == 13) return kIconRainy12;
-  if (id == 11) return kIconLightning12;
-  return kIconPartlyCloudy12; // 2,3,4,50
 }
 
 // Mono-Variante der "flachen" Karte (cpu_card_flat/gpu_card_flat oben,
@@ -1884,38 +1920,46 @@ static void refresh_mono_forecast_widgets(void) {
   }
 }
 
-// Icon-Holder werden bei jedem Aufruf per lv_obj_clean() geleert und neu
-// befuellt statt das alte Icon stehen zu lassen und ein zweites drueber-
-// zuzeichnen - sonst wuerden bei einem Bedingungswechsel (z.B. Sonne ->
-// Regen) die Pixel des alten Icons, die im neuen Icon nicht gesetzt sind,
-// weiss stehen bleiben.
+// Icon-Holder bekommen nur bei tatsaechlichem Kategoriewechsel einen neuen
+// Icon-Pointer + lv_obj_invalidate() (Vergleich gegen w.curIconDrawn/
+// dayIconDrawn[i]) - das eigentliche Zeichnen passiert dann beim naechsten
+// Render-Durchlauf in mono_weather_icon_draw_event_cb() oben. Spart bei
+// unveraendertem Wetter unnoetige Redraws (und damit unnoetige I2C/SPI-
+// Flushes zum Display) - diese Funktion laeuft alle 500ms auf unbestimmte
+// Zeit (main.cpp).
 static void refresh_mono_standby_weather_widgets(void) {
   if (s_monoStandbyWeatherWidgets.empty()) return;
   char buf[8];
   bool curValid = app_config.weather_enabled && weather_info.valid;
   for (auto &w : s_monoStandbyWeatherWidgets) {
+    const uint8_t *curIcon = curValid ? mono_weather_icon12_for_owm(weather_info.icon) : nullptr;
     if (curValid) {
       int tempR = (int)(weather_info.temp_c + (weather_info.temp_c >= 0 ? 0.5f : -0.5f));
       snprintf(buf, sizeof(buf), "%dC", tempR);
       lv_label_set_text(w.curTempLbl, buf);
-      lv_obj_clean(w.curIconHolder);
-      draw_mono_pixel_icon12(w.curIconHolder, mono_weather_icon12_for_owm(weather_info.icon), 0, 0);
     } else {
       lv_label_set_text(w.curTempLbl, "--");
-      lv_obj_clean(w.curIconHolder);
+    }
+    if (curIcon != w.curIconDrawn) {
+      lv_obj_set_user_data(w.curIconHolder, (void *)curIcon);
+      lv_obj_invalidate(w.curIconHolder);
+      w.curIconDrawn = curIcon;
     }
 
     for (int i = 0; i < w.colCount; i++) {
-      if (forecast_info.valid && i < forecast_info.day_count) {
-        const forecast_day_t &d = forecast_info.days[i];
-        int hi = (int)(d.temp_max + (d.temp_max >= 0 ? 0.5f : -0.5f));
+      bool dayValid = forecast_info.valid && i < forecast_info.day_count;
+      const uint8_t *dayIcon = dayValid ? mono_weather_icon12_for_owm(forecast_info.days[i].icon) : nullptr;
+      if (dayValid) {
+        int hi = (int)(forecast_info.days[i].temp_max + (forecast_info.days[i].temp_max >= 0 ? 0.5f : -0.5f));
         snprintf(buf, sizeof(buf), "%dC", hi);
         lv_label_set_text(w.dayTempLbls[i], buf);
-        lv_obj_clean(w.dayIconHolders[i]);
-        draw_mono_pixel_icon12(w.dayIconHolders[i], mono_weather_icon12_for_owm(d.icon), 0, 0);
       } else {
         lv_label_set_text(w.dayTempLbls[i], "--");
-        lv_obj_clean(w.dayIconHolders[i]);
+      }
+      if (dayIcon != w.dayIconDrawn[i]) {
+        lv_obj_set_user_data(w.dayIconHolders[i], (void *)dayIcon);
+        lv_obj_invalidate(w.dayIconHolders[i]);
+        w.dayIconDrawn[i] = dayIcon;
       }
     }
   }

@@ -73,6 +73,21 @@ bool github_ota_check(void) {
   https.addHeader("Accept", "application/vnd.github+json");
 
   int status = https.GET();
+  if (status <= 0) {
+    // status<=0 kommt aus dem TCP/TLS-Layer (HTTPClient-eigener Fehlercode,
+    // z.B. HTTPC_ERROR_CONNECTION_REFUSED=-1), nicht vom HTTP-Protokoll -
+    // https.errorToString() liefert dafuer nur einen generischen Text.
+    // client.lastError() gibt den mbedTLS/Socket-Fehler dahinter aus (siehe
+    // ssl_client.cpp), und der freie Heap zum Zeitpunkt des Fehlschlags ist
+    // auf Boards ohne PSRAM (CYD, C3) der naheliegendste Verdaechtige, da der
+    // TLS-Handshake einen einzelnen grossen zusammenhaengenden Block braucht.
+    char tlsErr[128];
+    client.lastError(tlsErr, sizeof(tlsErr));
+    snprintf(s_error, sizeof(s_error), "GitHub-API antwortete mit HTTP %d (%s, freier Heap: %u B, groesster Block: %u B)",
+             status, tlsErr[0] ? tlsErr : "kein TLS-Fehlerdetail", (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
+    https.end();
+    return false;
+  }
   if (status != 200) {
     snprintf(s_error, sizeof(s_error), "GitHub-API antwortete mit HTTP %d", status);
     https.end();
@@ -93,7 +108,13 @@ bool github_ota_check(void) {
   JsonDocument doc;
   DeserializationError err = deserializeJson(doc, body);
   if (err != DeserializationError::Ok) {
-    snprintf(s_error, sizeof(s_error), "JSON-Parse-Fehler: %s (Antwortlaenge %u Bytes)", err.c_str(), (unsigned)body.length());
+    // Antwortlaenge 0 bei HTTP 200 ist kein Protokollfehler, sondern typisch
+    // fuer eine fehlgeschlagene Heap-Allokation waehrend https.getString()
+    // beim Einsammeln der gechunkten Antwort (String() faengt OOM ab und
+    // wird dann leer statt zu crashen) - freier Heap gehoert daher mit in
+    // die Fehlermeldung, nicht nur die Bytezahl.
+    snprintf(s_error, sizeof(s_error), "JSON-Parse-Fehler: %s (Antwortlaenge %u Bytes, freier Heap: %u B, groesster Block: %u B)",
+             err.c_str(), (unsigned)body.length(), (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
     return false;
   }
 

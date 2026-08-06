@@ -821,10 +821,19 @@ struct MonoStandbyWeatherWidget {
   lv_obj_t *dayIconHolders[FORECAST_DAYS];
   const uint8_t *dayIconDrawn[FORECAST_DAYS];
   int colCount;
+  bool showWeekday; // false: dayLoLbls = Tiefsttemperatur, true: dayLoLbls = Wochentag (mono_standby_weather_wday)
 };
 std::vector<MonoStandbyWeatherWidget> s_monoStandbyWeatherWidgets;
 
-lv_obj_t *create_mono_standby_weather(lv_obj_t *parent, JsonObjectConst props) {
+// showWeekday=false: dayLoLbls zeigen die Tiefsttemperatur (mono_standby_
+// weather, wie oben beschrieben). showWeekday=true: dieselbe dritte Zeile
+// zeigt stattdessen den Wochentag (weather_weekday_abbr(), 2-stellig wie in
+// mono_forecast oben) - User-Vorgabe fuer eine Variante "ohne Nachttemperatur,
+// dafuer mit Tag". Eine Bool statt zweier fast identischer Funktionen, damit
+// Aufbau/Refresh nicht auseinanderlaufen; ueber die Widget-Factory-Tabelle
+// unten trotzdem als eigener, separat waehlbarer Typ registriert (User-
+// Vorgabe: "eine Kopie").
+lv_obj_t *create_mono_standby_weather_impl(lv_obj_t *parent, JsonObjectConst props, bool showWeekday) {
   int cols = props["days"] | 4;
   if (cols < 1) cols = 1;
   if (cols > FORECAST_DAYS) cols = FORECAST_DAYS;
@@ -845,6 +854,7 @@ lv_obj_t *create_mono_standby_weather(lv_obj_t *parent, JsonObjectConst props) {
 
   MonoStandbyWeatherWidget w{};
   w.colCount = cols;
+  w.showWeekday = showWeekday;
 
   // Kopfzeile: grosse aktuelle Temperatur + Icon als Gruppe zentriert (Flex-
   // Row statt fixem Pixel-Offset fuers Icon - die Temp-Textbreite variiert
@@ -954,6 +964,12 @@ lv_obj_t *create_mono_standby_weather(lv_obj_t *parent, JsonObjectConst props) {
 
   s_monoStandbyWeatherWidgets.push_back(w);
   return box;
+}
+lv_obj_t *create_mono_standby_weather(lv_obj_t *parent, JsonObjectConst props) {
+  return create_mono_standby_weather_impl(parent, props, false);
+}
+lv_obj_t *create_mono_standby_weather_wday(lv_obj_t *parent, JsonObjectConst props) {
+  return create_mono_standby_weather_impl(parent, props, true);
 }
 
 // CPU-/GPU-Statuszeile: Label ("CPU 62%") + Balken + Temp/Watt-Zeile,
@@ -1584,6 +1600,7 @@ const WidgetTypeEntry kWidgetTypes[] = {
     {"mono_weather_temp", create_mono_weather_temp},
     {"mono_forecast", create_mono_forecast},
     {"mono_standby_weather", create_mono_standby_weather},
+    {"mono_standby_weather_wday", create_mono_standby_weather_wday},
     {"mono_cpu_stat", create_mono_cpu_stat},
     {"mono_gpu_stat", create_mono_gpu_stat},
     {"mono_cpu_card", create_mono_cpu_card},
@@ -1983,12 +2000,24 @@ static void refresh_mono_standby_weather_widgets(void) {
       bool dayValid = forecast_info.valid && i < forecast_info.day_count;
       const uint8_t *dayIcon = dayValid ? mono_weather_icon12_for_owm(forecast_info.days[i].icon) : nullptr;
       if (dayValid) {
-        int hi = (int)(forecast_info.days[i].temp_max + (forecast_info.days[i].temp_max >= 0 ? 0.5f : -0.5f));
+        const forecast_day_t &d = forecast_info.days[i];
+        int hi = (int)(d.temp_max + (d.temp_max >= 0 ? 0.5f : -0.5f));
         snprintf(buf, sizeof(buf), "%dC", hi);
         lv_label_set_text(w.dayTempLbls[i], buf);
-        int lo = (int)(forecast_info.days[i].temp_min + (forecast_info.days[i].temp_min >= 0 ? 0.5f : -0.5f));
-        snprintf(buf, sizeof(buf), "%dC", lo);
-        lv_label_set_text(w.dayLoLbls[i], buf);
+        if (w.showWeekday) {
+          // date_epoch bereits lokal verschoben (siehe fetch_forecast() in
+          // weather_service.cpp) - gmtime_r statt localtime_r, sonst wuerde
+          // der Geraete-TZ-Offset ein zweites Mal angewendet (wie in
+          // refresh_mono_forecast_widgets() oben).
+          time_t t = (time_t)d.date_epoch;
+          struct tm tmv;
+          gmtime_r(&t, &tmv);
+          lv_label_set_text(w.dayLoLbls[i], weather_weekday_abbr(tmv.tm_wday));
+        } else {
+          int lo = (int)(d.temp_min + (d.temp_min >= 0 ? 0.5f : -0.5f));
+          snprintf(buf, sizeof(buf), "%dC", lo);
+          lv_label_set_text(w.dayLoLbls[i], buf);
+        }
       } else {
         lv_label_set_text(w.dayTempLbls[i], "--");
         lv_label_set_text(w.dayLoLbls[i], "--");

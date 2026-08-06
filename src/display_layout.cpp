@@ -633,13 +633,21 @@ static void mono_weather_icon_draw_event_cb(lv_event_t *e) {
   lv_obj_get_coords(obj, &objCoords);
 
   lv_draw_rect_dsc_t dsc;
-  lv_draw_rect_dsc_init(&dsc); // Default bereits weiss/voll deckend/radius 0 - genau das gewuenschte harte 1px-Rechteck.
+  lv_draw_rect_dsc_init(&dsc); // Default bereits weiss/voll deckend/radius 0 - genau das gewuenschte harte Rechteck.
 
+  // 2x hochskaliert (12x12-Rohdaten -> 24x24 Holder): es gibt keine groesseren
+  // Icon-Bitmaps (User-Vorgabe "Icon ggf groesser" bei mono_standby_weather,
+  // wo durch Wegfall von Trennlinie/"T"-Spalte Platz frei wurde) - statt neuer
+  // Pixelkunst wird jedes Quell-Pixel als 2x2-Block gezeichnet.
+  const int kScale = 2;
   for (int8_t r = 0; r < 12; r++) {
     for (int8_t c = 0; c < 12; c++) {
       uint8_t byteVal = icon[r * 2 + c / 8];
       if (!(byteVal & (1 << (7 - (c % 8))))) continue;
-      lv_area_t px = { objCoords.x1 + c, objCoords.y1 + r, objCoords.x1 + c, objCoords.y1 + r };
+      lv_area_t px = {
+        objCoords.x1 + c * kScale, objCoords.y1 + r * kScale,
+        objCoords.x1 + c * kScale + kScale - 1, objCoords.y1 + r * kScale + kScale - 1
+      };
       lv_draw_rect(layer, &dsc, &px);
     }
   }
@@ -764,30 +772,38 @@ lv_obj_t *create_mono_forecast(lv_obj_t *parent, JsonObjectConst props) {
 }
 
 // Vollbild-Standby-Vorlage (128x64, User-Vorgabe): aktuelle Temperatur+Icon
-// gross oben, darunter eine Tagesvorhersage (Temp + 12x12-Icon je Tag).
-// Bewusst ein EIGENER Widget-Typ statt eines Umbaus von mono_forecast oben
-// (User-Entscheidung) - mono_forecast bleibt die kompakte Inline-Tabelle
-// ohne Icons fuer beliebige Platzierung neben anderen Widgets, dies hier ist
-// ein eigenstaendiges Vollbild-Widget nur fuers Standby-Set. Keine
-// Wochentags-Kopfzeile und keine Wortbeschreibung je Tag (User-Entscheidung:
-// das Icon traegt die Information allein - "Teils bewoelkt"/"Gewitter"
-// passen bei 4-5 Spalten auf 128px ohnehin nicht in unscii_8, 8px/Zeichen).
-// Icon-Holder sind leere 12x12-Boxen, die refresh_mono_standby_weather_
-// widgets() bei jedem Refresh per lv_obj_clean()+draw_mono_pixel_icon12()
-// neu befuellt - anders als die statischen 7x7-Icons oben (Chip/Flash/
-// Therm, immer dasselbe Icon) haengt das Wetter-Icon von Live-Daten ab.
-// curIconDrawn/dayIconDrawn merken das zuletzt gezeichnete Icon (Pointer auf
-// eines der statischen kIcon*12-Arrays, nullptr = noch keins/"--") - layout_
-// refresh_bindings() ruft die Refresh-Funktion alle 500ms auf, DAUERHAFT
-// (main.cpp), nicht nur bei tatsaechlich neuen Wetterdaten. Ohne diesen
-// Cache wuerden bei jedem Aufruf alle Icon-Holder per lv_obj_clean() geleert
-// und mit bis zu 144 einzelnen 1x1-Objekten neu bestueckt (12x12, bis zu 6
-// Icons gleichzeitig) - dieser Objekt-Erzeugungs-/Loeschzyklus 2x/Sekunde
-// fragmentierte auf echter Hardware (ESP32-C3, 400 KB SRAM, kein PSRAM) den
-// Heap innerhalb kurzer Zeit bis lv_obj_create() Muell/NULL zurueckgab,
-// beobachtet als "StoreProhibited"-Crash kurz nachdem forecast_info gueltig
-// wurde (siehe Absturz-Log). Mit dem Cache wird ein Icon nur bei
-// tatsaechlichem Kategoriewechsel neu gezeichnet.
+// gross oben, darunter eine Tagesvorhersage (Temp + 24x24-Icon je Tag, 2x
+// hochskaliert - siehe mono_weather_icon_draw_event_cb oben). Bewusst ein
+// EIGENER Widget-Typ statt eines Umbaus von mono_forecast oben (User-
+// Entscheidung) - mono_forecast bleibt die kompakte Inline-Tabelle ohne
+// Icons fuer beliebige Platzierung neben anderen Widgets, dies hier ist ein
+// eigenstaendiges Vollbild-Widget nur fuers Standby-Set. Keine Wochentags-
+// Kopfzeile, keine "T"-Label-Spalte und keine Trennlinie zwischen aktueller
+// Temperatur und Vorhersage (User-Vorgabe: der dadurch freie Platz geht an
+// groessere Icons oben+unten, die Vorhersagezeile selbst ruckt via
+// LV_FLEX_ALIGN_SPACE_BETWEEN auf dem Root-Flex so weit wie moeglich nach
+// unten). Keine Wortbeschreibung je Tag (User-Entscheidung: das Icon traegt
+// die Information allein - "Teils bewoelkt"/"Gewitter" passen bei 4-5
+// Spalten auf 128px ohnehin nicht in unscii_8, 8px/Zeichen). Die Tages-Temp
+// bleibt bewusst unscii_8 statt unscii_16 - bei 16px/Zeichen wuerde "-12C"
+// (4 Zeichen) in einer 128px/4-Spalten-Zeile abgeschnitten und eine falsche
+// Temperatur vortaeuschen.
+// Icon-Holder sind leere 24x24-Boxen, die refresh_mono_standby_weather_
+// widgets() bei jedem Refresh nur per lv_obj_set_user_data()+lv_obj_
+// invalidate() neu bestueckt - anders als die statischen 7x7-Icons oben
+// (Chip/Flash/Therm, immer dasselbe Icon) haengt das Wetter-Icon von Live-
+// Daten ab. curIconDrawn/dayIconDrawn merken das zuletzt gezeichnete Icon
+// (Pointer auf eines der statischen kIcon*12-Arrays, nullptr = noch keins/
+// "--") - layout_refresh_bindings() ruft die Refresh-Funktion alle 500ms
+// auf, DAUERHAFT (main.cpp), nicht nur bei tatsaechlich neuen Wetterdaten.
+// Ohne diesen Cache wuerden bei jedem Aufruf alle Icon-Holder per lv_obj_
+// clean() geleert und mit bis zu 144 einzelnen 1x1-Objekten neu bestueckt
+// (12x12, bis zu 6 Icons gleichzeitig) - dieser Objekt-Erzeugungs-/
+// Loeschzyklus 2x/Sekunde fragmentierte auf echter Hardware (ESP32-C3,
+// 400 KB SRAM, kein PSRAM) den Heap innerhalb kurzer Zeit bis lv_obj_
+// create() Muell/NULL zurueckgab, beobachtet als "StoreProhibited"-Crash
+// kurz nachdem forecast_info gueltig wurde (siehe Absturz-Log). Mit dem
+// Cache wird ein Icon nur bei tatsaechlichem Kategoriewechsel neu gezeichnet.
 struct MonoStandbyWeatherWidget {
   lv_obj_t *curTempLbl;
   lv_obj_t *curIconHolder;
@@ -809,9 +825,14 @@ lv_obj_t *create_mono_standby_weather(lv_obj_t *parent, JsonObjectConst props) {
   lv_obj_set_style_bg_opa(box, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(box, 0, 0);
   lv_obj_set_style_pad_all(box, 0, 0);
-  lv_obj_set_style_pad_row(box, 3, 0);
   lv_obj_set_layout(box, LV_LAYOUT_FLEX);
   lv_obj_set_flex_flow(box, LV_FLEX_FLOW_COLUMN);
+  // Nur noch 2 direkte Kinder (curRow, forecastGroup weiter unten) seit
+  // Trennlinie und "T"-Spalte weg sind - SPACE_BETWEEN schiebt curRow an den
+  // oberen und forecastGroup an den unteren Rand der Box, den kompletten
+  // freigewordenen Platz dazwischen (User-Vorgabe: Vorhersage "so weit wie
+  // moeglich nach unten").
+  lv_obj_set_flex_align(box, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
   MonoStandbyWeatherWidget w{};
   w.colCount = cols;
@@ -819,7 +840,9 @@ lv_obj_t *create_mono_standby_weather(lv_obj_t *parent, JsonObjectConst props) {
   // Kopfzeile: grosse aktuelle Temperatur + Icon als Gruppe zentriert (Flex-
   // Row statt fixem Pixel-Offset fuers Icon - die Temp-Textbreite variiert
   // ("--", "5C", "-12C"), ein fester Offset wuerde bei kurzen/negativen
-  // Werten nicht neben dem Text "kleben").
+  // Werten nicht neben dem Text "kleben"). Hoehe LV_SIZE_CONTENT statt fix
+  // 18, damit die Zeile mit dem jetzt 24x24 statt 12x12 grossen Icon
+  // mitwaechst.
   lv_obj_t *curRow = lv_obj_create(box);
   lv_obj_remove_flag(curRow, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_set_style_bg_opa(curRow, LV_OPA_TRANSP, 0);
@@ -827,7 +850,7 @@ lv_obj_t *create_mono_standby_weather(lv_obj_t *parent, JsonObjectConst props) {
   lv_obj_set_style_pad_all(curRow, 0, 0);
   lv_obj_set_style_pad_column(curRow, 4, 0);
   lv_obj_set_width(curRow, lv_pct(100));
-  lv_obj_set_height(curRow, 18);
+  lv_obj_set_height(curRow, LV_SIZE_CONTENT);
   lv_obj_set_layout(curRow, LV_LAYOUT_FLEX);
   lv_obj_set_flex_flow(curRow, LV_FLEX_FLOW_ROW);
   lv_obj_set_flex_align(curRow, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
@@ -842,24 +865,29 @@ lv_obj_t *create_mono_standby_weather(lv_obj_t *parent, JsonObjectConst props) {
   lv_obj_set_style_bg_opa(w.curIconHolder, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(w.curIconHolder, 0, 0);
   lv_obj_set_style_pad_all(w.curIconHolder, 0, 0);
-  lv_obj_set_size(w.curIconHolder, 12, 12);
+  lv_obj_set_size(w.curIconHolder, 24, 24);
   lv_obj_add_event_cb(w.curIconHolder, mono_weather_icon_draw_event_cb, LV_EVENT_DRAW_MAIN, nullptr);
 
-  // Trennlinie, gleiche Bauart wie create_mono_line() weiter unten.
-  lv_obj_t *divider = lv_obj_create(box);
-  lv_obj_remove_flag(divider, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_style_radius(divider, 0, 0);
-  lv_obj_set_style_border_width(divider, 0, 0);
-  lv_obj_set_style_bg_color(divider, lv_color_white(), 0);
-  lv_obj_set_style_bg_opa(divider, LV_OPA_COVER, 0);
-  lv_obj_set_width(divider, lv_pct(100));
-  lv_obj_set_height(divider, 1);
+  // Vorhersage-Gruppe (Temp-Zeile + Icon-Zeile je Tag) als eigener
+  // Flex-Container, damit die Box oben SPACE_BETWEEN nur zwischen curRow und
+  // dieser Gruppe verteilt statt die beiden Zeilen darin auseinanderzuziehen.
+  lv_obj_t *forecastGroup = lv_obj_create(box);
+  lv_obj_remove_flag(forecastGroup, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_style_bg_opa(forecastGroup, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(forecastGroup, 0, 0);
+  lv_obj_set_style_pad_all(forecastGroup, 0, 0);
+  lv_obj_set_style_pad_row(forecastGroup, 3, 0);
+  lv_obj_set_width(forecastGroup, lv_pct(100));
+  lv_obj_set_height(forecastGroup, LV_SIZE_CONTENT);
+  lv_obj_set_layout(forecastGroup, LV_LAYOUT_FLEX);
+  lv_obj_set_flex_flow(forecastGroup, LV_FLEX_FLOW_COLUMN);
 
-  // Zwei Zeilen (Temp + Icon je Tag), dieselbe "1 feste Label-Spalte + N
-  // wachsende Tages-Zellen"-Technik wie mono_forecast oben, damit sich die
-  // Spalten beider Zeilen exakt ausrichten, ganz ohne Grid-API.
-  auto makeRow = [&]() {
-    lv_obj_t *row = lv_obj_create(box);
+  // Zwei Zeilen (Temp + Icon je Tag). Keine feste Label-Spalte mehr (User-
+  // Vorgabe: "T" weg) - die Tages-Zellen wachsen jetzt per flex_grow(1) ueber
+  // die volle Breite, beide Zeilen bleiben trotzdem exakt ausgerichtet, weil
+  // beide dieselbe Spaltenzahl/-breite verwenden.
+  auto makeRow = [&](lv_obj_t *parentRow) {
+    lv_obj_t *row = lv_obj_create(parentRow);
     lv_obj_remove_flag(row, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(row, 0, 0);
@@ -870,14 +898,6 @@ lv_obj_t *create_mono_standby_weather(lv_obj_t *parent, JsonObjectConst props) {
     lv_obj_set_layout(row, LV_LAYOUT_FLEX);
     lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
     return row;
-  };
-  auto makeLabelCell = [&](lv_obj_t *row, const char *text) {
-    lv_obj_t *lbl = lv_label_create(row);
-    lv_label_set_text(lbl, text);
-    lv_obj_set_style_text_color(lbl, lv_color_white(), 0);
-    lv_obj_set_style_text_font(lbl, &lv_font_unscii_8, 0);
-    lv_obj_set_width(lbl, 9);
-    return lbl;
   };
   auto makeTempCell = [&](lv_obj_t *row) {
     lv_obj_t *lbl = lv_label_create(row);
@@ -895,7 +915,7 @@ lv_obj_t *create_mono_standby_weather(lv_obj_t *parent, JsonObjectConst props) {
     lv_obj_set_style_bg_opa(cell, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(cell, 0, 0);
     lv_obj_set_style_pad_all(cell, 0, 0);
-    lv_obj_set_height(cell, 12);
+    lv_obj_set_height(cell, 24);
     lv_obj_set_flex_grow(cell, 1);
     lv_obj_set_layout(cell, LV_LAYOUT_FLEX);
     lv_obj_set_flex_flow(cell, LV_FLEX_FLOW_ROW);
@@ -906,17 +926,15 @@ lv_obj_t *create_mono_standby_weather(lv_obj_t *parent, JsonObjectConst props) {
     lv_obj_set_style_bg_opa(holder, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(holder, 0, 0);
     lv_obj_set_style_pad_all(holder, 0, 0);
-    lv_obj_set_size(holder, 12, 12);
+    lv_obj_set_size(holder, 24, 24);
     lv_obj_add_event_cb(holder, mono_weather_icon_draw_event_cb, LV_EVENT_DRAW_MAIN, nullptr);
     return holder;
   };
 
-  lv_obj_t *tempRow = makeRow();
-  makeLabelCell(tempRow, "T");
+  lv_obj_t *tempRow = makeRow(forecastGroup);
   for (int i = 0; i < cols; i++) w.dayTempLbls[i] = makeTempCell(tempRow);
 
-  lv_obj_t *iconRow = makeRow();
-  makeLabelCell(iconRow, "");
+  lv_obj_t *iconRow = makeRow(forecastGroup);
   for (int i = 0; i < cols; i++) w.dayIconHolders[i] = makeIconCell(iconRow);
 
   s_monoStandbyWeatherWidgets.push_back(w);

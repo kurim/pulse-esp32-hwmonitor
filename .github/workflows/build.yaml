@@ -9,7 +9,57 @@ permissions:
   contents: write
 
 jobs:
+  # Laedt einmalig die Pakete (Toolchains, Framework) fuer ALLE sieben Envs
+  # herunter und speichert sie unter einem einzigen Cache-Key. Alle Envs
+  # teilen sich dieselbe platform-URL und dieselben lib_deps aus [env] in
+  # platformio.ini - nur board/build_flags unterscheiden sich, und die
+  # beeinflussen ~/.platformio nicht. Vorher hatte jeder Matrix-Job seinen
+  # eigenen Cache-Key (pio-<env>-...), wodurch z.B. die identische xtensa-
+  # esp32-Toolchain dreifach (esp32/cyd/cyd-v3) und die identische xtensa-
+  # esp32s3-Toolchain ebenfalls dreifach (esp32s3-4mb/-8mb/jc8048w550) im
+  # Cache lag - das hat unnoetig viel vom 10-GB-Cache-Kontingent des Repos
+  # belegt und aeltere Eintraege verdraengt. Cache-Keys sind unveraenderlich,
+  # sobald geschrieben (siehe GitHub-Doku zu Dependency Caching) - liesse man
+  # alle sieben Matrix-Jobs parallel unter demselben Key speichern, wuerde
+  # der zuerst fertige Job den Key mit nur SEINEM (unvollstaendigen)
+  # Paketset einfrieren. Deshalb: ein eigener Job baut den vollstaendigen
+  # Cache VOR der Matrix auf, die Matrix-Jobs restaurieren ihn danach nur
+  # noch (kein eigener Save mehr, kein Race um den Key).
+  prime-cache:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Repo auschecken
+        uses: actions/checkout@v6
+
+      - name: Python einrichten
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: PlatformIO installieren
+        run: pip install --upgrade platformio
+
+      - name: PlatformIO-Cache
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: pio-${{ hashFiles('platformio.ini') }}
+          restore-keys: |
+            pio-
+
+      # -e explizit fuer jeden Env, statt "pio pkg install" ohne Argument:
+      # ohne -e greift PlatformIO auf [platformio] default_envs zurueck (hier
+      # "cyd") und wuerde nur dessen Pakete laden, nicht die aller sieben.
+      - name: Pakete fuer alle Envs vorladen
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: >
+          pio pkg install
+          -e esp32 -e esp32s3-4mb -e esp32s3-8mb -e esp32c3
+          -e cyd -e cyd-v3 -e jc8048w550
+
   build:
+    needs: prime-cache
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -43,18 +93,18 @@ jobs:
       - name: PlatformIO installieren
         run: pip install --upgrade platformio
 
-      # Toolchains (xtensa/riscv) und lib_deps (LVGL, ArduinoJson, ESPAsync-
-      # WebServer, ...) sind pro Env mehrere hundert MB und sonst bei jedem
-      # Lauf neu heruntergeladen - Cache-Key pro Env, damit die parallelen
-      # Matrix-Jobs sich beim Schreiben nicht gegenseitig eine gemeinsame
-      # Cache-Datei kaputt machen.
-      - name: PlatformIO-Cache
-        uses: actions/cache@v4
+      # Nur restore, kein save: der prime-cache-Job hat den vollstaendigen
+      # Cache bereits geschrieben, bevor diese Matrix-Jobs starten (siehe
+      # "needs" oben). Ein Save hier wuerde nur den bereits vorhandenen Key
+      # erneut zu schreiben versuchen (No-Op) und unnoetig Cache-Traffic
+      # erzeugen.
+      - name: PlatformIO-Cache wiederherstellen
+        uses: actions/cache/restore@v4
         with:
           path: ~/.platformio
-          key: pio-${{ matrix.env }}-${{ hashFiles('platformio.ini') }}
+          key: pio-${{ hashFiles('platformio.ini') }}
           restore-keys: |
-            pio-${{ matrix.env }}-
+            pio-
 
       # Bei Tag-Push (v1.0.0, ...) FW_VERSION im Quellcode auf den Tag setzen
       # (ohne fuehrendes "v"), statt den in src/config/shared_state.h fest

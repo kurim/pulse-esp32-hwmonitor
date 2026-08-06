@@ -1,9 +1,11 @@
 #include "github_ota.h"
 #include "shared_state.h"
+#include "mqtt_handler.h"
+#include "wifi_provision.h"
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
-#include <ArduinoJson.h>
 #include <Update.h>
+#include <Preferences.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
@@ -17,7 +19,20 @@
 
 namespace {
 
-const char *kReleaseApiUrl = "https://api.github.com/repos/kurim/pulse-esp32-hwmonitor/releases/latest";
+// Web-UI-Redirect statt REST-API: github.com/{owner}/{repo}/releases/latest
+// antwortet mit HTTP 302 auf .../releases/tag/{tag} - das ist alles, was wir
+// brauchen (der Tag), ohne die ~14-20 KB grosse JSON-Antwort der API
+// (api.github.com/.../releases/latest, 14 Assets samt Metadaten) jemals in
+// EINEM zusammenhaengenden Heap-Block halten zu muessen. Auf Boards ohne
+// PSRAM (CYD) reichte selbst ein auf ~35 KB reduzierter groesster freier
+// Block dafuer nicht zuverlaessig aus (live beobachtet: "JSON-Parse-Fehler:
+// IncompleteInput" bei ueber 13 KB empfangenen, aber nicht vollstaendigen
+// Bytes - vermutlich ein Realloc-Fehlschlag mitten in String::getString()).
+// Den Asset-Namen muessen wir dafuer selbst zusammenbauen (siehe unten),
+// statt ihn aus der assets[]-Liste der API-Antwort zu lesen - das Format
+// ist durch .github/workflows/build.yaml deterministisch vorgegeben.
+const char *kReleaseRedirectUrl = "https://github.com/kurim/pulse-esp32-hwmonitor/releases/latest";
+const char *kRepoUrl = "https://github.com/kurim/pulse-esp32-hwmonitor";
 
 char s_latestVersion[16] = "";
 char s_assetUrl[256] = "";
@@ -59,18 +74,29 @@ bool github_ota_check(void) {
     return false;
   }
 
+  // Gibt den vom MQTT-Client gehaltenen Speicher fuer die Dauer des TLS-
+  // Handshakes frei (siehe mqtt_handler.h) - RAII-Guard statt manuellem
+  // resume() vor jedem der mehreren return-Pfade unten. Auf Boards ohne
+  // PSRAM reicht der freie Heap fuer github.com sonst nicht zuverlaessig
+  // (live beobachtet: mbedtls X509/BIGNUM-Allokationsfehler auf dem CYD).
+  struct MqttPauseGuard {
+    MqttPauseGuard() { mqtt_handler_pause(); }
+    ~MqttPauseGuard() { mqtt_handler_resume(); }
+  } mqttPauseGuard;
+
   WiFiClientSecure client;
   client.setInsecure();
   HTTPClient https;
-  https.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
+  // Explizit NICHT folgen - wir wollen die Location-Kopfzeile selbst lesen
+  // (https.getLocation(), siehe unten), nicht die Zielseite (eine HTML-Seite,
+  // die wir nicht brauchen und die den Heap nur unnoetig belasten wuerde).
+  https.setFollowRedirects(HTTPC_DISABLE_FOLLOW_REDIRECTS);
   https.setTimeout(10000);
-  if (!https.begin(client, kReleaseApiUrl)) {
-    strlcpy(s_error, "Verbindungsaufbau zur GitHub-API fehlgeschlagen", sizeof(s_error));
+  if (!https.begin(client, kReleaseRedirectUrl)) {
+    strlcpy(s_error, "Verbindungsaufbau zu github.com fehlgeschlagen", sizeof(s_error));
     return false;
   }
-  // GitHub verlangt zwingend einen User-Agent-Header, sonst HTTP 403.
   https.addHeader("User-Agent", "pulse-esp32-hwmonitor");
-  https.addHeader("Accept", "application/vnd.github+json");
 
   int status = https.GET();
   if (status <= 0) {
@@ -83,70 +109,41 @@ bool github_ota_check(void) {
     // TLS-Handshake einen einzelnen grossen zusammenhaengenden Block braucht.
     char tlsErr[128];
     client.lastError(tlsErr, sizeof(tlsErr));
-    snprintf(s_error, sizeof(s_error), "GitHub-API antwortete mit HTTP %d (%s, freier Heap: %u B, groesster Block: %u B)",
+    snprintf(s_error, sizeof(s_error), "github.com antwortete mit HTTP %d (%s, freier Heap: %u B, groesster Block: %u B)",
              status, tlsErr[0] ? tlsErr : "kein TLS-Fehlerdetail", (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
     https.end();
     return false;
   }
-  if (status != 200) {
-    snprintf(s_error, sizeof(s_error), "GitHub-API antwortete mit HTTP %d", status);
-    https.end();
-    return false;
-  }
-
-  // getString() statt direkt von https.getStream() zu parsen: die GitHub-
-  // API liefert ohne Content-Length per Chunked Transfer-Encoding (bei
-  // dieser Release-Groesse, 14 Assets, mehrere KB JSON) - deserializeJson()
-  // direkt vom Stream brach dabei mit "IncompleteInput" ab, bevor die
-  // komplette (entchunkte) Antwort gelesen war. getString() sammelt die
-  // vollstaendige Antwort zuverlaessig ein, bevor geparst wird - kostet
-  // kurzzeitig etwas mehr Heap (Antwort liegt einmal als String, einmal als
-  // JsonDocument vor), aber bei ein paar KB unproblematisch.
-  String body = https.getString();
+  // 302 (o.ae.) mit Location-Kopfzeile erwartet - alles andere ist
+  // unerwartet (z.B. 404, falls Repo/Pfad sich je aendern sollten).
+  String location = https.getLocation();
   https.end();
-
-  JsonDocument doc;
-  DeserializationError err = deserializeJson(doc, body);
-  if (err != DeserializationError::Ok) {
-    // Antwortlaenge 0 bei HTTP 200 ist kein Protokollfehler, sondern typisch
-    // fuer eine fehlgeschlagene Heap-Allokation waehrend https.getString()
-    // beim Einsammeln der gechunkten Antwort (String() faengt OOM ab und
-    // wird dann leer statt zu crashen) - freier Heap gehoert daher mit in
-    // die Fehlermeldung, nicht nur die Bytezahl.
-    snprintf(s_error, sizeof(s_error), "JSON-Parse-Fehler: %s (Antwortlaenge %u Bytes, freier Heap: %u B, groesster Block: %u B)",
-             err.c_str(), (unsigned)body.length(), (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
+  if (status < 300 || status >= 400 || location.length() == 0) {
+    snprintf(s_error, sizeof(s_error), "github.com/.../releases/latest antwortete mit HTTP %d statt einer Weiterleitung", status);
     return false;
   }
 
-  const char *tag = doc["tag_name"] | "";
-  if (!tag[0]) {
-    strlcpy(s_error, "Antwort ohne tag_name - unerwartete API-Struktur", sizeof(s_error));
+  // location sieht aus wie ".../releases/tag/v0.4.8" - der Tag ist das
+  // letzte Pfadsegment.
+  int slashIdx = location.lastIndexOf('/');
+  if (slashIdx < 0 || slashIdx + 1 >= (int)location.length()) {
+    strlcpy(s_error, "Unerwartetes Location-Format in der Weiterleitung", sizeof(s_error));
     return false;
   }
-  const char *tagVersion = (tag[0] == 'v' || tag[0] == 'V') ? tag + 1 : tag; // "v1.2.3" -> "1.2.3"
+  String tag = location.substring(slashIdx + 1);
+  const char *tagVersion = (tag[0] == 'v' || tag[0] == 'V') ? tag.c_str() + 1 : tag.c_str(); // "v1.2.3" -> "1.2.3"
   strlcpy(s_latestVersion, tagVersion, sizeof(s_latestVersion));
 
-  // Passendes Asset suchen: Name endet auf "-pio-<FW_OTA_ENV_SLUG>-ota.bin"
-  // (siehe .github/workflows/build.yaml) - Suffix-Suche statt den vollen
-  // Dateinamen samt Versionsnummer nachzubauen, robuster gegen minimal
-  // abweichende Formatierung.
-  char suffix[48];
-  snprintf(suffix, sizeof(suffix), "-pio-%s-ota.bin", FW_OTA_ENV_SLUG);
-  size_t suffixLen = strlen(suffix);
-
-  for (JsonObjectConst asset : doc["assets"].as<JsonArrayConst>()) {
-    const char *name = asset["name"] | "";
-    size_t nameLen = strlen(name);
-    if (nameLen >= suffixLen && strcmp(name + nameLen - suffixLen, suffix) == 0) {
-      const char *url = asset["browser_download_url"] | "";
-      strlcpy(s_assetUrl, url, sizeof(s_assetUrl));
-      break;
-    }
-  }
-  if (!s_assetUrl[0]) {
-    snprintf(s_error, sizeof(s_error), "Kein Asset fuer '%s' im Release %s gefunden", FW_OTA_ENV_SLUG, tag);
-    return false;
-  }
+  // Asset-URL deterministisch nachbauen statt aus der assets[]-Liste der
+  // API-Antwort zu lesen (siehe Kommentar bei kReleaseRedirectUrl oben) -
+  // Name+Pfad exakt wie in .github/workflows/build.yaml erzeugt:
+  // "esp32-hwmonitor-v<VERSION>-pio-<ENV>-ota.bin" unter
+  // ".../releases/download/<tag>/<name>". Dieselbe github.com/.../download/
+  // -URL, die auch "browser_download_url" in der API-Antwort enthalten
+  // haette (nicht der direkte CDN-Link) - github_ota_start_update() folgt
+  // ihrer eigenen Weiterleitung dorthin bereits mit HTTPC_FORCE_FOLLOW_REDIRECTS.
+  snprintf(s_assetUrl, sizeof(s_assetUrl), "%s/releases/download/%s/esp32-hwmonitor-v%s-pio-%s-ota.bin",
+           kRepoUrl, tag.c_str(), s_latestVersion, FW_OTA_ENV_SLUG);
 
   s_updateAvailable = isNewer(s_latestVersion, FW_VERSION);
   return true;
@@ -173,6 +170,10 @@ void ota_update_task(void *) {
   s_bytesTotal = 0;
   s_error[0] = '\0';
   ota_in_progress = true;
+  // Siehe github_ota_check() oben - derselbe TLS-Heap-Engpass gilt fuer den
+  // Download-Handshake. mqtt_handler_resume() unten deckt nur den Fehlerfall
+  // ab; bei Erfolg startet ESP.restart() ohnehin neu.
+  mqtt_handler_pause();
 
   WiFiClientSecure client;
   client.setInsecure();
@@ -316,6 +317,7 @@ void ota_update_task(void *) {
     delay(200);
     ESP.restart();
   }
+  mqtt_handler_resume();
   vTaskDelete(nullptr);
 }
 
@@ -350,3 +352,70 @@ bool github_ota_start_update(void) {
 GithubOtaState github_ota_state(void) { return s_state; }
 size_t         github_ota_bytes_done(void) { return s_bytesDone; }
 size_t         github_ota_bytes_total(void) { return s_bytesTotal; }
+
+namespace {
+// Eigener NVS-Namespace statt "cydcfg" (config_store.cpp) - dies ist
+// fluechtiger Boot-Zustand, keine Nutzerkonfiguration, und soll vom
+// Werksreset dort unberuehrt bleiben.
+const char *kOtaBootNs  = "otaboot";
+const char *kOtaBootKey = "action";
+} // namespace
+
+void github_ota_set_pending_boot_action(OtaBootAction action) {
+  Preferences p;
+  if (p.begin(kOtaBootNs, false)) {
+    p.putUChar(kOtaBootKey, (uint8_t)action);
+    p.end();
+  }
+}
+
+void ota_boot_run_pending_action(void) {
+  OtaBootAction action = OTA_BOOT_ACTION_NONE;
+  {
+    Preferences p;
+    if (p.begin(kOtaBootNs, false)) {
+      action = (OtaBootAction)p.getUChar(kOtaBootKey, OTA_BOOT_ACTION_NONE);
+      if (action != OTA_BOOT_ACTION_NONE) {
+        // Sofort loeschen, nicht erst am Ende - ein Haenger/Crash waehrend
+        // des Checks/Updates soll nicht dazu fuehren, dass JEDER folgende
+        // Boot wieder in diesem Zweig landet.
+        p.putUChar(kOtaBootKey, (uint8_t)OTA_BOOT_ACTION_NONE);
+      }
+      p.end();
+    }
+  }
+  if (action == OTA_BOOT_ACTION_NONE) return;
+
+  log_w("ota_boot_run_pending_action: Aktion %d - warte auf WLAN...", (int)action);
+
+  uint32_t start = millis();
+  while (wifi_provision_get_phase() != WIFI_PROVISION_CONNECTED) {
+    wifi_provision_loop();
+    if (millis() - start > 20000) {
+      strlcpy(s_error, "WLAN-Verbindung fuer den Update-Check nicht rechtzeitig hergestellt", sizeof(s_error));
+      log_e("ota_boot_run_pending_action: %s", s_error);
+      return;
+    }
+    delay(50);
+  }
+
+  if (!github_ota_check() || action == OTA_BOOT_ACTION_CHECK) {
+    return;
+  }
+
+  if (!github_ota_update_available()) {
+    // Zwischen Klick und diesem Boot hat sich nichts (mehr) geaendert -
+    // github_ota_error() bleibt leer, github_ota_update_available() liefert
+    // korrekt false, das Dashboard zeigt "kein Update verfuegbar" an.
+    return;
+  }
+
+  if (!github_ota_start_update()) {
+    return; // s_error bereits gesetzt (github_ota_start_update())
+  }
+  while (github_ota_state() == GITHUB_OTA_RUNNING) {
+    delay(100);
+  }
+  // Bei Erfolg hat der Update-Task bereits ESP.restart() ausgeloest - hier
+  // nur noch im Fehlerfall erreichbar, s_error/s_state sind bereits gesetzt.
+}

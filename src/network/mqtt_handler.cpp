@@ -11,6 +11,7 @@ static espMqttClient s_client;
 static uint32_t      s_last_reconnect_attempt_ms;
 static char          s_client_id[32];
 static bool          s_enabled;
+static bool          s_paused;
 
 static void onMqttConnect(bool /*sessionPresent*/)
 {
@@ -62,7 +63,7 @@ void mqtt_handler_begin(void)
 
 void mqtt_handler_loop(void)
 {
-    if (!s_enabled || !wifi_connected || s_client.connected()) return;
+    if (!s_enabled || s_paused || !wifi_connected || s_client.connected()) return;
 
     // Alle 5s ein Reconnect-Versuch - connect() blockt hier nicht (siehe oben).
     uint32_t now = millis();
@@ -70,4 +71,17 @@ void mqtt_handler_loop(void)
         s_last_reconnect_attempt_ms = now;
         s_client.connect();
     }
+}
+
+void mqtt_handler_pause(void)
+{
+    s_paused = true;
+    if (s_enabled && s_client.connected()) {
+        s_client.disconnect();
+    }
+}
+
+void mqtt_handler_resume(void)
+{
+    s_paused = false;
 }

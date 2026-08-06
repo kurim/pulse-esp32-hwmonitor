@@ -53,3 +53,47 @@ bool github_ota_start_update(void);
 GithubOtaState github_ota_state(void);
 size_t         github_ota_bytes_done(void);
 size_t         github_ota_bytes_total(void);
+
+// Aktion, die ota_boot_run_pending_action() beim naechsten Boot ausfuehren
+// soll (in NVS persistiert, siehe github_ota.cpp) - siehe dortiger Kommentar
+// fuer die Begruendung (TLS-Heap-Engpass auf Boards ohne PSRAM, CYD/C3).
+enum OtaBootAction {
+    OTA_BOOT_ACTION_NONE   = 0,
+    OTA_BOOT_ACTION_CHECK  = 1,
+    OTA_BOOT_ACTION_UPDATE = 2,
+};
+
+// Persistiert 'action' in NVS, OHNE selbst neuzustarten - der Aufrufer (ein
+// Web-Handler, siehe web_portal.cpp) muss vorher noch seine HTTP-Antwort
+// verschicken, der eigentliche ESP.restart() passiert dort danach, exakt wie
+// bei handleOtaDone() fuer den lokalen Upload.
+void github_ota_set_pending_boot_action(OtaBootAction action);
+
+// Muss als ALLERERSTES in setup() aufgerufen werden, noch vor jeglicher
+// Display-/LVGL-/WiFiManager-AP-/MQTT-Initialisierung, direkt nach
+// wifi_provision_begin() (siehe main.cpp). Liest die oben per
+// github_ota_set_pending_boot_action() persistierte Aktion; ist keine
+// gesetzt, kehrt die Funktion sofort zurueck (No-Op, der normale Bootpfad
+// aendert sich fuer den ueblichen Fall in keiner Weise).
+//
+// Ist eine Aktion gesetzt: wartet synchron (max. 20s) auf eine WLAN-
+// Verbindung, fuehrt dann github_ota_check() aus und - bei
+// OTA_BOOT_ACTION_UPDATE und verfuegbarem Update - den Download+Flash
+// (github_ota_start_update(), synchron abgewartet). Der Grund, warum das
+// hier oben in setup() passieren muss statt wie frueher aus einem laufenden
+// Web-Handler heraus: der GitHub-TLS-Handshake braucht mehr zusammen-
+// haengenden Heap, als auf Boards ohne PSRAM (CYD, ESP32-C3, siehe
+// CLAUDE.md) im laufenden Betrieb frei ist, sobald LVGLs 48-KB-Speicherpool
+// (lv_conf.h), WiFiManager/AsyncWebServer und ggf. der MQTT-Client bereits
+// reserviert sind (live gemessen: nur ~35 KB zusammenhaengend frei, mbedtls
+// X509/BIGNUM-Allokationsfehler beim Handshake mit api.github.com) - an
+// diesem Punkt in setup(), vor all dem, ist der Speicher dagegen noch
+// (fast) komplett frei.
+//
+// Kehrt bei erfolgreichem Update NIE zurueck (ESP.restart() passiert bereits
+// innerhalb von github_ota_start_update()'s Task). Bei einer reinen Pruefung
+// oder einem fehlgeschlagenen Update kehrt sie zurueck, und setup() faehrt
+// mit der Display-/LVGL-/MQTT-Initialisierung wie gewohnt fort - Ergebnis/
+// Fehler stehen dann bereits ueber github_ota_error()/github_ota_state()
+// fuer das Dashboard bereit, ohne dass ein erneuter Check noetig waere.
+void ota_boot_run_pending_action(void);

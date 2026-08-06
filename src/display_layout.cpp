@@ -953,14 +953,31 @@ lv_obj_t *create_mono_standby_weather_impl(lv_obj_t *parent, JsonObjectConst pro
     return holder;
   };
 
-  lv_obj_t *tempRow = makeRow(forecastGroup);
-  for (int i = 0; i < cols; i++) w.dayTempLbls[i] = makeTempCell(tempRow);
-
-  lv_obj_t *iconRow = makeRow(forecastGroup);
-  for (int i = 0; i < cols; i++) w.dayIconHolders[i] = makeIconCell(iconRow);
-
-  lv_obj_t *loRow = makeRow(forecastGroup);
-  for (int i = 0; i < cols; i++) w.dayLoLbls[i] = makeTempCell(loRow);
+  auto addTempRow = [&]() {
+    lv_obj_t *row = makeRow(forecastGroup);
+    for (int i = 0; i < cols; i++) w.dayTempLbls[i] = makeTempCell(row);
+  };
+  auto addIconRow = [&]() {
+    lv_obj_t *row = makeRow(forecastGroup);
+    for (int i = 0; i < cols; i++) w.dayIconHolders[i] = makeIconCell(row);
+  };
+  auto addLoRow = [&]() {
+    lv_obj_t *row = makeRow(forecastGroup);
+    for (int i = 0; i < cols; i++) w.dayLoLbls[i] = makeTempCell(row);
+  };
+  // Reihenfolge der Zeilen unterscheidet sich je Variante: im Wochentag-Modus
+  // steht der Tag oben (User-Vorgabe "Tag ueber die Temperatur"), im
+  // Tiefsttemperatur-Modus bleibt die urspruengliche Reihenfolge (Hoechst-
+  // Temp/Icon/Tiefst-Temp) erhalten.
+  if (showWeekday) {
+    addLoRow();
+    addTempRow();
+    addIconRow();
+  } else {
+    addTempRow();
+    addIconRow();
+    addLoRow();
+  }
 
   s_monoStandbyWeatherWidgets.push_back(w);
   return box;

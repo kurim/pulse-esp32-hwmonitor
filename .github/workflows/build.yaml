@@ -171,3 +171,45 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: dist/**/*.bin
+
+      # docs/ ist die GitHub-Pages-Seite mit dem Browser-Flasher
+      # (docs/flasher.js). GitHub-Release-Assets liegen auf
+      # release-assets.githubusercontent.com ohne
+      # Access-Control-Allow-Origin - ein cross-origin fetch() von der
+      # Pages-Seite aus schlaegt deshalb fuer esp-web-tools immer fehl,
+      # egal ob per REST-API oder Redirect aufgeloest. Einzig
+      # funktionierender Weg fuer einen reinen Browser-Flasher: die
+      # Factory-Images liegen same-origin im Repo unter
+      # docs/firmware/latest/, hier bei jedem Tag-Release aktuell gehalten.
+      - name: Docs auschecken (platformio-Branch)
+        uses: actions/checkout@v6
+        with:
+          ref: platformio
+          path: docs-checkout
+
+      - name: docs/firmware/latest/ aktualisieren und committen
+        working-directory: docs-checkout
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+
+          mkdir -p docs/firmware/latest
+          rm -f docs/firmware/latest/*.bin
+          for f in ../dist/*/esp32-hwmonitor-v${VERSION}-pio-*.bin; do
+            base=$(basename "$f")
+            case "$base" in *-ota.bin) continue ;; esac
+            env_slug=${base#esp32-hwmonitor-v${VERSION}-pio-}
+            env_slug=${env_slug%.bin}
+            cp "$f" "docs/firmware/latest/esp32-hwmonitor-pio-${env_slug}.bin"
+          done
+          echo -n "$VERSION" > docs/firmware/latest/VERSION
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/firmware/latest
+          if git diff --cached --quiet; then
+            echo "Keine Aenderungen an docs/firmware/latest - nichts zu committen."
+            exit 0
+          fi
+          git commit -m "docs: web flasher firmware auf v${VERSION} aktualisieren"
+          git push origin HEAD:platformio

@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>PulseMQTT Web Flasher</title>
+  <meta name="description" content="Flash PulseMQTT firmware to your ESP32 board directly from the browser, then connect WiFi and your PC hardware data. No tools, no installs.">
+  <meta name="theme-color" content="#0A0E14">
+  <link rel="icon" href="favicon.svg">
+
+  <link rel="stylesheet" href="styles.css">
+  <script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
+</head>
+<body>
+  <div class="shell">
+    <div class="layout">
+
+      <!-- ────────── left rail ────────── -->
+      <aside class="rail">
+        <div class="rail-inner">
+          <div class="brand">
+            <div class="brand-mark"><img src="favicon.svg" alt="" aria-hidden="true"></div>
+            <div class="brand-text">
+              <div class="brand-name">PulseMQTT</div>
+              <div class="brand-sub">web&nbsp;flasher</div>
+            </div>
+          </div>
+
+          <nav class="toc" aria-label="On this page">
+            <div class="rail-label">On this page</div>
+            <a href="#prereq-head" class="toc-item" data-target="prereq-head">
+              <span class="toc-num">00</span><span>Before you start</span>
+            </a>
+            <a href="#flash-head" class="toc-item" data-target="flash-head">
+              <span class="toc-num">01</span><span>Flash your board</span>
+            </a>
+            <a href="#wifi-head" class="toc-item" data-target="wifi-head">
+              <span class="toc-num">02</span><span>Connect to WiFi</span>
+            </a>
+            <a href="#data-head" class="toc-item" data-target="data-head">
+              <span class="toc-num">03</span><span>Feed it hardware data</span>
+            </a>
+            <a href="#display-head" class="toc-item" data-target="display-head">
+              <span class="toc-num">04</span><span>Pick a display</span>
+            </a>
+            <a href="#monitor-head" class="toc-item" data-target="monitor-head">
+              <span class="toc-num">05</span><span>View serial logs</span>
+            </a>
+          </nav>
+
+          <nav class="rail-links" aria-label="Project links">
+            <div class="rail-label">Project</div>
+            <a href="https://github.com/kurim/pulse-esp32-hwmonitor" target="_blank" rel="noopener">github</a>
+            <a href="https://github.com/kurim/pulse-esp32-hwmonitor#readme" target="_blank" rel="noopener">readme</a>
+            <a href="https://github.com/kurim/pulse-esp32-hwmonitor/releases" target="_blank" rel="noopener">releases</a>
+            <a href="https://github.com/kurim/pulse-esp32-hwmonitor/issues" target="_blank" rel="noopener">report a bug</a>
+          </nav>
+
+          <div class="rail-foot">
+            <span class="rail-version">firmware <span id="rail-version">…</span></span>
+          </div>
+        </div>
+      </aside>
+
+      <!-- ────────── main column ────────── -->
+      <main class="main">
+
+        <section class="hero">
+          <h1>Flash PulseMQTT <span class="accent">straight from your browser.</span></h1>
+          <p>Pick your board, plug it in over USB, hit install. Then hand it your WiFi and point a PC monitoring script at it — time, weather and live CPU/GPU load, temperature and power land on the display over MQTT or USB/serial.</p>
+        </section>
+
+        <aside id="browser-callout" class="browser-callout" role="status">
+          <span class="pulse" aria-hidden="true"></span>
+          <div>
+            <strong>Open this page on desktop Chrome or Edge.</strong>
+            Flashing uses Web Serial, which only runs on a desktop Chromium browser. The rest of this page is just a preview.
+          </div>
+        </aside>
+
+        <!-- ────────── 00 Before you start ────────── -->
+        <section class="panel" id="panel-prereq" aria-labelledby="prereq-head">
+          <header class="panel-head">
+            <span class="num">00</span>
+            <h2 id="prereq-head">Before you start</h2>
+          </header>
+          <ul class="checklist">
+            <li><strong>Desktop Chrome or Edge.</strong> Web Serial doesn't run on Firefox, Safari, or mobile.</li>
+            <li><strong>A real data USB cable.</strong> Power-only cables are silent killers - the port simply won't show up.</li>
+            <li><strong>Know your board.</strong> CYD (v1/v2), CYD v3, and the JC8048W550 ship with a fixed display; the generic ESP32/S3/C3 images let you wire up your own panel and pick its driver afterwards in the web portal.</li>
+            <li><strong>Installer stuck or can't find the port?</strong> Most of these boards auto-reset into the bootloader over USB. If not: hold <code>BOOT</code>, plug in USB while holding, then release - or hold <code>BOOT</code>, tap <code>RESET</code>, then let go of both.</li>
+            <li><strong>Nothing else on the serial port.</strong> Close PlatformIO Monitor, Arduino IDE, and the serial monitor below before flashing.</li>
+          </ul>
+        </section>
+
+        <!-- ────────── 01 Flash ────────── -->
+        <section class="panel" id="panel-flash" aria-labelledby="flash-head">
+          <header class="panel-head">
+            <span class="num">01</span>
+            <h2 id="flash-head">Flash your board</h2>
+          </header>
+
+          <label for="board-select" class="field-label">Board</label>
+          <div class="select-wrap">
+            <select id="board-select" aria-label="Board"></select>
+          </div>
+
+          <p class="board-note" id="board-note">
+            <span class="bn-dot" aria-hidden="true"></span>
+            <span id="board-note-text"></span>
+          </p>
+
+          <dl class="specs" aria-label="Selected board specs">
+            <div class="spec-row"><dt>chip</dt><dd id="spec-chip">ESP32</dd></div>
+            <div class="spec-row"><dt>display</dt><dd id="spec-display">…</dd></div>
+            <div class="spec-row"><dt>firmware</dt><dd id="spec-version">…</dd></div>
+            <div class="spec-row"><dt>flash</dt><dd>0x0 · full image (bootloader + partitions + app)</dd></div>
+          </dl>
+
+          <p class="status-line" id="status-line" role="status"></p>
+
+          <div class="install-row">
+            <div id="install-slot"></div>
+            <p class="hint">A dialog will ask which serial port to use - pick the one that appears when you plug the board in. The installer erases and writes the full image at offset <code>0x0</code>; it takes ~30 seconds. Every later update can go through FOTA or a plain <code>.bin</code> upload in the web portal - no repeat USB access needed.</p>
+          </div>
+        </section>
+
+        <!-- ────────── 02 Connect to WiFi ────────── -->
+        <section class="panel" id="panel-wifi" aria-labelledby="wifi-head">
+          <header class="panel-head">
+            <span class="num">02</span>
+            <h2 id="wifi-head">Connect to WiFi</h2>
+          </header>
+
+          <p class="lede">Right after flashing, the installer can hand your WiFi straight to the device in this tab - no phone needed. If you miss that window, the device also broadcasts its own setup hotspot you can join from anything. Either way it reboots onto your WiFi.</p>
+
+          <article class="path" aria-labelledby="wifi-improv">
+            <header class="path-head">
+              <span class="path-tag">
+                <span class="path-pulse" aria-hidden="true"></span>
+                recommended
+              </span>
+              <h3 id="wifi-improv">Configure WiFi in this tab</h3>
+            </header>
+
+            <p class="path-body">When the flash finishes, the install dialog opens a <strong>Configure WiFi</strong> step. Pick your network, type the password, hit <strong>Connect</strong>. The credentials travel to the device over USB using <a href="https://www.improv-wifi.com/" target="_blank" rel="noopener">Improv&nbsp;Serial</a> - no captive portal, no app switching. This only works on a freshly flashed device (no stored WiFi credentials yet) and stays available as long as the device isn't connected.</p>
+
+            <ol class="step-list">
+              <li>Wait for <strong>"Installation complete"</strong>, then keep the dialog open.</li>
+              <li>Pick your WiFi network and enter the password.</li>
+              <li>The device joins your WiFi and reboots. Boards with a display show the new <strong>IP address</strong> on the Settings screen; headless boards need the serial monitor below or your router's client list to find it.</li>
+            </ol>
+          </article>
+
+          <article class="path" aria-labelledby="wifi-ap">
+            <header class="path-head">
+              <span class="path-tag path-tag-muted">fallback</span>
+              <h3 id="wifi-ap">Or join the setup hotspot</h3>
+            </header>
+
+            <p class="path-body">Missed the Configure&nbsp;WiFi dialog, flashed from a phone, or the board has no stored credentials and no USB connection to a browser anymore? Every board falls back to an open setup hotspot named <code>&lt;board&gt;-Setup</code> (e.g. <code>ESP32-2432S028 (CYD)-Setup</code> or <code>Generic ESP32/S3/C3-Setup</code>) that you can join from any device.</p>
+
+            <div class="creds" aria-label="Setup-mode credentials">
+              <div class="creds-head">
+                <span class="creds-dot"></span>
+                <span class="creds-title">setup-mode access point</span>
+              </div>
+              <div class="creds-row">
+                <span class="creds-key">network</span>
+                <span class="creds-val">&lt;board name&gt;-Setup <span class="dim">(open, no password)</span></span>
+              </div>
+              <div class="creds-row">
+                <span class="creds-key">portal</span>
+                <span class="creds-val"><a href="http://192.168.4.1" target="_blank" rel="noopener">http://192.168.4.1</a></span>
+              </div>
+              <p class="creds-note">Disappears once the device joins your WiFi. On the two boards with Bluetooth WiFi setup (ESP32-S3 8&nbsp;MB, JC8048W550) Improv-over-BLE is also tried before this fallback kicks in.</p>
+            </div>
+
+            <ol class="step-list">
+              <li>Join the <strong>&lt;board&gt;-Setup</strong> WiFi network from your phone or laptop.</li>
+              <li>Open <a href="http://192.168.4.1" target="_blank" rel="noopener">192.168.4.1</a> and pick your home network, enter the password, save.</li>
+              <li>The device reboots and joins your WiFi.</li>
+            </ol>
+
+            <p class="hint">After this, the full web portal is reachable any time at the device's IP: MQTT, timezone, weather, display type/rotation/brightness/pin overrides, FOTA - all live there.</p>
+          </article>
+        </section>
+
+        <!-- ────────── 03 Feed it hardware data ────────── -->
+        <section class="panel" id="panel-data" aria-labelledby="data-head">
+          <header class="panel-head">
+            <span class="num">03</span>
+            <h2 id="data-head">Feed it hardware data</h2>
+          </header>
+
+          <p class="lede">The device itself doesn't measure anything - it just displays whatever a PC-side script sends it, over <strong>MQTT</strong> (default) or directly over <strong>USB/serial</strong>, switchable in the web portal's "Hardware data source" setting. Both paths accept the same JSON, so no separate firmware build is needed either way.</p>
+
+          <div class="cmd" data-cmd>
+            <div class="cmd-head"><span class="cmd-dot"></span><span class="cmd-dot"></span><span class="cmd-dot"></span><span class="cmd-title">json payload</span></div>
+            <button class="cmd-copy" type="button">copy</button>
+            <pre>{
+  <span class="key">"cpu_load"</span>: 42.5,
+  <span class="key">"cpu_temp"</span>: 58.0,
+  <span class="key">"cpu_power"</span>: 65.0,
+  <span class="key">"gpu_load"</span>: 12.0,
+  <span class="key">"gpu_temp"</span>: 40.0,
+  <span class="key">"gpu_power"</span>: 25.0
+}</pre>
+          </div>
+
+          <p class="hint">All fields are optional - only the ones present get updated. This repo doesn't bundle a PC agent; send this shape from whatever you already use (LibreHardwareMonitor, HWiNFO, a small Python script, ...) at roughly 1-2&nbsp;Hz.</p>
+
+          <div class="note">
+            <span class="note-k">mqtt</span>
+            <div>Published as the retained payload on one topic (default <code>pulsemqtt/hwinfo</code>, QoS&nbsp;0, MQTT&nbsp;3.1.1) - set broker host/port/topic in the web portal.</div>
+          </div>
+          <div class="note">
+            <span class="note-k">usb</span>
+            <div>One JSON object per line (<code>\n</code>-terminated) at <strong>115200 baud</strong>, over the same USB port used for flashing/logs. No broker or WiFi required for this path.</div>
+          </div>
+        </section>
+
+        <!-- ────────── 04 Pick a display ────────── -->
+        <section class="panel" id="panel-display" aria-labelledby="display-head">
+          <header class="panel-head">
+            <span class="num">04</span>
+            <h2 id="display-head">Pick a display</h2>
+          </header>
+
+          <p class="lede">CYD, CYD&nbsp;v3, and the JC8048W550 ship with a fixed panel - nothing to configure here, it just works after WiFi setup. The four generic images (ESP32, ESP32-S3 4&nbsp;MB/8&nbsp;MB, ESP32-C3) boot <strong>headless</strong> by default so a wrong pin never bricks the setup: pick the panel in the web portal instead.</p>
+
+          <ol class="step-list">
+            <li>Open the device's IP in a browser, go to the <strong>Display</strong> card.</li>
+            <li>Choose GC9A01 (round), ILI9488, ST7796S, SSD1309, or SH1106 from the dropdown.</li>
+            <li>Default pin wiring is filled in automatically; override any field under "Pin assignment" if you wired it differently - no rebuild or reflash needed.</li>
+            <li>Save. The device reboots and initializes the selected panel.</li>
+          </ol>
+
+          <p class="hint">A bad pin choice only skips display init and logs a warning - the web portal stays reachable either way to pick again. ESP32-C3 has no PSRAM, so keep an eye on framebuffer size with the larger ILI9488/ST7796S panels.</p>
+        </section>
+
+        <!-- ────────── 05 Serial monitor ────────── -->
+        <section class="panel" id="panel-monitor" aria-labelledby="monitor-head">
+          <header class="panel-head">
+            <span class="num">05</span>
+            <h2 id="monitor-head">View serial logs</h2>
+          </header>
+
+          <p class="lede">Reading the board's serial output is the fastest way to capture a boot loop, a WiFi error, or a crash for a bug report - and the easiest way to read the IP address on a headless board. Plug the board in over USB, click Connect, and pick the same serial port you'd use for flashing.</p>
+
+          <p class="status-line" id="monitor-status" role="status"></p>
+
+          <div class="monitor-row">
+            <button id="monitor-connect" class="btn-monitor" type="button">Connect</button>
+            <button id="monitor-disconnect" class="btn-monitor btn-ghost" type="button" disabled>Disconnect</button>
+            <button id="monitor-export" class="btn-monitor btn-ghost" type="button" disabled>Export</button>
+            <button id="monitor-clear" class="btn-monitor btn-ghost" type="button" disabled>Clear</button>
+          </div>
+
+          <pre id="monitor-output" class="monitor-output" aria-live="polite" aria-label="Serial output"></pre>
+
+          <p class="hint">Only one program can hold the serial port at a time - close PlatformIO / Arduino monitors first, and don't click Install during a monitor session. Baud rate is 115200 to match the firmware.</p>
+        </section>
+
+        <footer class="footer">
+          <span>PulseMQTT - ESP32 hardware monitor display, MQTT or USB/serial.</span>
+          <span>
+            <a href="https://github.com/kurim/pulse-esp32-hwmonitor" target="_blank" rel="noopener">source</a>
+            &nbsp;·&nbsp;
+            <a href="https://github.com/kurim/pulse-esp32-hwmonitor/issues" target="_blank" rel="noopener">report a bug</a>
+          </span>
+        </footer>
+      </main>
+    </div>
+  </div>
+
+  <script src="flasher.js"></script>
+  <script>
+    // Highlight the TOC item matching the panel currently in view.
+    (function() {
+      const items = document.querySelectorAll('.toc-item');
+      if (!items.length) return;
+      const headings = [...document.querySelectorAll('.panel-head h2')];
+      if (!('IntersectionObserver' in window) || !headings.length) return;
+      let lastId = null;
+      const set = (id) => {
+        if (id === lastId) return;
+        lastId = id;
+        items.forEach(a => a.classList.toggle('is-active', a.dataset.target === id));
+      };
+      const io = new IntersectionObserver((entries) => {
+        const visible = entries.filter(e => e.isIntersecting)
+          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+        if (visible.length) set(visible[0].target.id);
+      }, { rootMargin: '-80px 0px -70% 0px', threshold: 0 });
+      headings.forEach(h => io.observe(h));
+      set(headings[0].id);
+    })();
+  </script>
+</body>
+</html>

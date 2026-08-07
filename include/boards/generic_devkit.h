@@ -1,6 +1,5 @@
 #pragma once
 
-// -----------------------------------------------------------------------------
 // Generisches ESP32/ESP32-S3/ESP32-C3-Devkit: kein fest verdrahtetes Display.
 // Welches Panel (falls ueberhaupt eins angeschlossen ist) genutzt wird, steht
 // erst zur Laufzeit in app_config.display_type (siehe shared_state.h,
@@ -13,7 +12,6 @@
 // das an dieser Stelle des Include-Baums (board_config.h wird von
 // shared_state.h VOR der app_config_t-Deklaration eingebunden) noch nicht
 // sichtbar ist.
-// -----------------------------------------------------------------------------
 #define BOARD_NAME "Generic ESP32/S3/C3"
 
 #include <stdint.h>

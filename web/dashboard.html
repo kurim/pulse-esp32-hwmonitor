@@ -790,7 +790,8 @@
     // true, wenn das aktuell aktive Display monochrom ist (SSD1309 ODER
     // SH1106, siehe display_layout.h displayIsMono()) - wie s_displayRound,
     // aber ohne Arc-Farben (das Mono-Dashboard ist rein schwarz/weiss, siehe
-    // display_mono.cpp) und mit eigener I2C-Pin-Karte statt der SPI-Karte.
+    // die mono_*-Widgets in display_layout.cpp) und mit eigener I2C-Pin-Karte
+    // statt der SPI-Karte.
     let s_displayMono = false;
     // "full"/"flip"/"none" (siehe web_portal.cpp) - steuert, welche
     // Rotation-Optionen das Feld anbietet bzw. ob es ueberhaupt sichtbar ist.
@@ -908,17 +909,18 @@
       // CPU-/GPU-Farben faerben sowohl die Ringe des runden Displays
       // (display_round.cpp) als auch Balken+Icons der CPU-/GPU-Karten im
       // rechteckigen Dashboard-Editor (display_layout.cpp) - beim Mono-
-      // Dashboard (display_mono.cpp) gibt es dagegen keine Farbe, nur
-      // Schwarz/Weiss (siehe dortigen Kommentar zum 1bpp-Threshold), und bei
-      // komplett headless (BOARD_GENERIC + DISPLAY_NONE) auch nichts zu
-      // faerben.
+      // Dashboard gibt es dagegen keine Farbe, nur Schwarz/Weiss
+      // (1bpp-Threshold, siehe Mono-Widget-Kommentar in display_layout.cpp),
+      // und bei komplett headless (BOARD_GENERIC + DISPLAY_NONE) auch nichts
+      // zu faerben.
       const showAccentColors = !s_dynamicDisplay || (c.display_type !== 0 && !s_displayMono);
       $('arcColorField').style.display = showAccentColors ? 'flex' : 'none';
       // Standby/Screensaver ist inzwischen ueberall implementiert, wo
-      // ueberhaupt ein Display haengt: rund/Mono weiterhin fest in
-      // display_round.cpp/display_mono.cpp, die eckigen Farbdisplays (CYD/
-      // JC8048W550/generische ILI9488 etc.) seit wide_standby_weather
-      // (siehe display_layout.cpp) ueber den Layout-Editor. Nur "kein
+      // ueberhaupt ein Display haengt: rund weiterhin fest in
+      // display_round.cpp, Mono ueber die standby_widgets des Grundlayouts,
+      // die eckigen Farbdisplays (CYD/JC8048W550/generische ILI9488 etc.)
+      // seit wide_standby_weather (siehe display_layout.cpp) ueber den
+      // Layout-Editor. Nur "kein
       // Display gewaehlt" (BOARD_GENERIC + DISPLAY_NONE) hat nichts, das
       // sich in Standby versetzen liesse.
       const hasDisplay = !s_dynamicDisplay || c.display_type !== 0;

@@ -133,13 +133,38 @@ inline void applyTouchCalibration(int16_t xMin, int16_t xMax, int16_t yMin, int1
   s_touchYMax = yMax;
 }
 
+// true = Panel laeuft 180 Grad gedreht (Geraet kopfueber montiert). Nur
+// dieser eine Flip wird unterstuetzt, keine echte 90/270-Drehung - das
+// CYD-Gehaeuse ist fest fuer Querformat gebaut, LCD_WIDTH/LCD_HEIGHT oben
+// sind Compile-Zeit-Konstanten (siehe initLvglDisplay()), ein Breite/Hoehe-
+// Tausch wuerde dort ebenso wie in der Touch-Kalibrierung (fest auf
+// Rotation 1 vermessen) mehr Umbau brauchen, als der gemeldete Bug
+// ("Rotation-Einstellung ohne Wirkung") rechtfertigt.
+inline bool s_displayFlipped = false;
+
+// app_config kann hier nicht selbst gelesen werden (Header-Reihenfolge,
+// siehe applyTouchCalibration()-Kommentar oben/CLAUDE.md) - main.cpp reicht
+// app_config.rotation deshalb explizit durch, direkt nach initBoardDisplay().
+// rotation 0/1 -> normale Ausrichtung, 2/3 -> 180 Grad gespiegelt (siehe
+// dashboard.html, dort ist die Auswahl fuers CYD auf genau diese zwei
+// Optionen reduziert).
+inline void applyDisplayRotation(uint8_t rotation) {
+  s_displayFlipped = (rotation == 2 || rotation == 3);
+  gfx->setRotation(s_displayFlipped ? 3 : 1);
+}
+
 // LVGL-Input-Device-Callback (Polling, kein IRQ-getriebenes Event - reicht
 // fuer Touch-Interaktion bei den ueblichen LVGL-Refreshraten).
 inline void cyd_touch_read_cb(lv_indev_t *, lv_indev_data_t *data) {
   if (touchCtrl.touched()) {
     TS_Point p = touchCtrl.getPoint();
-    data->point.x = constrain(map(p.x, s_touchXMin, s_touchXMax, 0, LCD_WIDTH), 0, LCD_WIDTH - 1);
-    data->point.y = constrain(map(p.y, s_touchYMin, s_touchYMax, 0, LCD_HEIGHT), 0, LCD_HEIGHT - 1);
+    int16_t x = constrain(map(p.x, s_touchXMin, s_touchXMax, 0, LCD_WIDTH), 0, LCD_WIDTH - 1);
+    int16_t y = constrain(map(p.y, s_touchYMin, s_touchYMax, 0, LCD_HEIGHT), 0, LCD_HEIGHT - 1);
+    // Bei 180 Grad-Flip (s_displayFlipped) beide Achsen spiegeln - die
+    // Kalibrierwerte oben bleiben unveraendert gueltig, da sie nur die rohe
+    // ADC->Bildschirm-Spanne beschreiben, nicht die Ausrichtung.
+    data->point.x = s_displayFlipped ? (LCD_WIDTH  - 1 - x) : x;
+    data->point.y = s_displayFlipped ? (LCD_HEIGHT - 1 - y) : y;
     data->state = LV_INDEV_STATE_PRESSED;
   } else {
     data->state = LV_INDEV_STATE_RELEASED;

@@ -141,6 +141,26 @@ void handleGetConfig(AsyncWebServerRequest *request)
     doc["weather_units"] = app_config.weather_units;
     doc["brightness"] = app_config.brightness;
     doc["rotation"] = app_config.rotation;
+    // Steuert im Dashboard, welche Rotation-Optionen angeboten werden -
+    // nicht jedes Board vertraegt einen Breite/Hoehe-Tausch bei 90/270 Grad
+    // (siehe cyd_2432s028r.h/display_factory.h):
+    // "full" - alle 4 Werte (BOARD_GENERIC-Farbdisplays: GC9A01/ILI9488/
+    //          ST7796S, keines davon hat Touch)
+    // "flip" - nur 0/180 Grad (CYD: hat Touch, Gehaeuse fest fuer
+    //          Querformat gebaut)
+    // "none" - Feld wird ausgeblendet (JC8048W550: RGB-Panel, kein
+    //          Arduino_GFX-setRotation() dafuer verdrahtet; Mono-I2C-OLEDs:
+    //          GDDRAM-Adressierung unterstuetzt kein Portrait; kein Display
+    //          gewaehlt)
+#if defined(BOARD_CYD_2432S028R)
+    doc["rotation_mode"] = "flip";
+#elif defined(BOARD_JC8048W550)
+    doc["rotation_mode"] = "none";
+#elif defined(BOARD_GENERIC)
+    doc["rotation_mode"] = (app_config.display_type == DISPLAY_NONE || displayIsMono()) ? "none" : "full";
+#else
+    doc["rotation_mode"] = "none";
+#endif
     doc["language"] = app_config.language;
     doc["board_name"] = BOARD_NAME;
 #ifdef BOARD_HAS_BACKLIGHT_PWM

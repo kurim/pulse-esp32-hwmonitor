@@ -63,6 +63,13 @@ void setup() {
   lv_init();
   lv_tick_set_cb(millis);
   if (s_hasDisplay) {
+#if defined(BOARD_CYD_2432S028R)
+    // Rotation VOR initLvglDisplay(), damit LVGL/Touch-Callbacks von Anfang
+    // an mit der endgueltigen Ausrichtung laufen - app_config kann
+    // initBoardDisplay() selbst nicht lesen (Header-Reihenfolge, siehe
+    // cyd_2432s028r.h), deshalb hier separat.
+    applyDisplayRotation(app_config.rotation);
+#endif
     initLvglDisplay();
 #if defined(BOARD_CYD_2432S028R)
     // Touch-Kalibrierwerte kommen aus app_config (siehe shared_state.h) -

@@ -32,23 +32,24 @@ inline bool initBoardDisplay(DisplayType type, const pin_override_t *override = 
       ok = disp_gc9a01::initDisplay(override);
       gfx = disp_gc9a01::gfx;
       g_boardName = disp_gc9a01::NAME;
-      g_lcdWidth  = disp_gc9a01::WIDTH;
-      g_lcdHeight = disp_gc9a01::HEIGHT;
       break;
     case DisplayType::ILI9488:
       ok = disp_ili9488::initDisplay(override);
       gfx = disp_ili9488::gfx;
       g_boardName = disp_ili9488::NAME;
-      g_lcdWidth  = disp_ili9488::WIDTH;
-      g_lcdHeight = disp_ili9488::HEIGHT;
       break;
     case DisplayType::ST7796S:
       ok = disp_st7796s::initDisplay(override);
       gfx = disp_st7796s::gfx;
       g_boardName = disp_st7796s::NAME;
-      g_lcdWidth  = disp_st7796s::WIDTH;
-      g_lcdHeight = disp_st7796s::HEIGHT;
       break;
+  }
+  // gfx->width()/height() statt der statischen *::WIDTH/HEIGHT-Konstanten:
+  // app_config.rotation (siehe die drei initDisplay()-Implementierungen)
+  // kann bei 90/270 Grad Breite und Hoehe vertauschen.
+  if (ok) {
+    g_lcdWidth  = gfx->width();
+    g_lcdHeight = gfx->height();
   }
   return ok;
 }

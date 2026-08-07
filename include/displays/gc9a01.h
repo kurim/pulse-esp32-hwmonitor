@@ -46,7 +46,10 @@ inline bool initDisplay(const pin_override_t *override = nullptr) {
   applyPinOverrides(override, pins);
 
   bus = new Arduino_ESP32SPI(pins.dc, pins.cs, pins.sclk, pins.mosi, pins.miso, kGenericSpiHost);
-  gfx = new Arduino_GC9A01(bus, pins.rst, 0 /* Rotation */, false /* IPS */);
+  // Rotation kommt aus app_config.rotation statt fest 0 - siehe CLAUDE.md/
+  // Bugfix "Rotation-Einstellung ohne Wirkung". WIDTH==HEIGHT bei diesem
+  // Panel, ein Dimension-Swap bei 90/270 Grad ist hier also ohnehin ein No-Op.
+  gfx = new Arduino_GC9A01(bus, pins.rst, app_config.rotation % 4, false /* IPS */);
 
   if (pins.bl >= 0) {
     pinMode(pins.bl, OUTPUT);
@@ -59,7 +62,10 @@ inline bool initDisplay(const pin_override_t *override = nullptr) {
 }
 
 inline lv_display_t *initLvglDisplay() {
-  return initLvglDisplaySPI(gfx, WIDTH, HEIGHT);
+  // gfx->width()/height() statt der statischen WIDTH/HEIGHT-Konstanten:
+  // Arduino_TFT::begin() wendet die im Konstruktor uebergebene Rotation
+  // bereits an und vertauscht dabei _width/_height bei 90/270 Grad.
+  return initLvglDisplaySPI(gfx, gfx->width(), gfx->height());
 }
 
 } // namespace disp_gc9a01

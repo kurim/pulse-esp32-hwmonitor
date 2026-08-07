@@ -375,7 +375,7 @@
         <div class="info-pill">
           <span class="label">Zeit</span><span class="value" id="timeVal">-</span>
         </div>
-        <div class="info-pill">
+        <div class="info-pill" id="espTempPill">
           <span class="label">ESP Temp</span><span class="value" id="espTempVal">-</span>
         </div>
         <div class="info-pill">
@@ -504,7 +504,7 @@
               <option value="8">SH1106 (128x64, mono, I2C)</option>
             </select>
           </div>
-          <div class="field">
+          <div class="field" id="rotationField" style="display:none">
             <label>Rotation</label>
             <select id="rotation">
               <option value="0">0&deg;</option>
@@ -730,7 +730,10 @@
       $('timeVal').textContent = s.time.iso ? s.time.iso.replace('T', ' ') : '-';
       const deviceTimeEl = $('deviceTime');
       if (deviceTimeEl) deviceTimeEl.textContent = s.time.iso ? s.time.iso.replace('T', ' ') : '-';
-      $('espTempVal').textContent = (s.esp.temp_c === null) ? 'n/a' : s.esp.temp_c.toFixed(1) + ' °C';
+      // Klassischer ESP32 (CYD) hat keinen internen Temp-Sensor - Pill dann
+      // komplett ausblenden statt "n/a" anzuzeigen (siehe web_portal.cpp).
+      $('espTempPill').style.display = (s.esp.temp_c === null) ? 'none' : '';
+      if (s.esp.temp_c !== null) $('espTempVal').textContent = s.esp.temp_c.toFixed(1) + ' °C';
       $('heapVal').textContent = (s.esp.free_heap / 1024).toFixed(0) + ' KB';
 
       $('fwVersion').textContent = s.esp.fw_version;
@@ -789,6 +792,9 @@
     // aber ohne Arc-Farben (das Mono-Dashboard ist rein schwarz/weiss, siehe
     // display_mono.cpp) und mit eigener I2C-Pin-Karte statt der SPI-Karte.
     let s_displayMono = false;
+    // "full"/"flip"/"none" (siehe web_portal.cpp) - steuert, welche
+    // Rotation-Optionen das Feld anbietet bzw. ob es ueberhaupt sichtbar ist.
+    let s_rotationMode = 'none';
     // display_type-Werte der I2C-Mono-Optionen oben (<option value="7"/"8">) -
     // als Konstanten statt Magic Numbers an jeder Vergleichsstelle unten.
     const SSD1309_TYPE = 7;
@@ -875,7 +881,23 @@
       // immer aufrufen statt wie die Pin-Werte oben auf s_dynamicDisplay zu
       // gaten.
       updatePinPlaceholders();
-      $('rotation').value = c.rotation;
+      // rotation_mode (siehe web_portal.cpp): manche Boards vertragen nur
+      // einen 180-Grad-Flip (Touch/RGB-Panel/Mono-GDDRAM lassen keinen
+      // Breite-Hoehe-Tausch bei 90/270 zu, siehe cyd_2432s028r.h) oder gar
+      // keine Rotation.
+      s_rotationMode = c.rotation_mode || 'none';
+      $('rotationField').style.display = (s_rotationMode === 'none') ? 'none' : '';
+      const rotSel = $('rotation');
+      rotSel.querySelectorAll('option[value="1"], option[value="3"]').forEach(o => {
+        o.style.display = (s_rotationMode === 'full') ? '' : 'none';
+      });
+      rotSel.querySelector('option[value="0"]').textContent = (s_rotationMode === 'flip') ? '0° (normal)' : '0°';
+      rotSel.querySelector('option[value="2"]').textContent = (s_rotationMode === 'flip') ? '180° (gespiegelt)' : '180°';
+      if (s_rotationMode === 'flip') {
+        rotSel.value = (c.rotation === 2 || c.rotation === 3) ? '2' : '0';
+      } else {
+        rotSel.value = c.rotation;
+      }
       $('brightness').value = c.brightness;
       $('brightVal').textContent = c.brightness;
       $('brightness').disabled = !c.has_backlight_pwm;
@@ -892,15 +914,20 @@
       // faerben.
       const showAccentColors = !s_dynamicDisplay || (c.display_type !== 0 && !s_displayMono);
       $('arcColorField').style.display = showAccentColors ? 'flex' : 'none';
-      // Standby/Screensaver ist im runden UND im Mono-Layout implementiert
-      // (display_round.cpp bzw. display_mono.cpp) - kein Editor auf Boards
-      // ohne diese Logik (rechteckiges Dashboard hat keinen Standby).
-      $('standbyTimeoutField').style.display = (s_displayRound || s_displayMono) ? '' : 'none';
+      // Standby/Screensaver ist inzwischen ueberall implementiert, wo
+      // ueberhaupt ein Display haengt: rund/Mono weiterhin fest in
+      // display_round.cpp/display_mono.cpp, die eckigen Farbdisplays (CYD/
+      // JC8048W550/generische ILI9488 etc.) seit wide_standby_weather
+      // (siehe display_layout.cpp) ueber den Layout-Editor. Nur "kein
+      // Display gewaehlt" (BOARD_GENERIC + DISPLAY_NONE) hat nichts, das
+      // sich in Standby versetzen liesse.
+      const hasDisplay = !s_dynamicDisplay || c.display_type !== 0;
+      $('standbyTimeoutField').style.display = hasDisplay ? '' : 'none';
       if (showAccentColors) {
         $('cpuArcColor').value = c.cpu_arc_color;
         $('gpuArcColor').value = c.gpu_arc_color;
       }
-      if (s_displayRound || s_displayMono) {
+      if (hasDisplay) {
         $('standbyTimeout').value = c.standby_timeout_s;
       }
     }
@@ -973,7 +1000,7 @@
         patch.cpu_arc_color = $('cpuArcColor').value;
         patch.gpu_arc_color = $('gpuArcColor').value;
       }
-      if (s_displayRound || s_displayMono) {
+      if ($('standbyTimeoutField').style.display !== 'none') {
         patch.standby_timeout_s = parseInt($('standbyTimeout').value, 10);
       }
       saveConfig(patch);
@@ -1418,21 +1445,23 @@
       ['gpu_card_flat', '+ GPU (flach)'],
       ['chart_card', '+ Verlauf'],
       ['footer', '+ Footer'],
+      ['wide_standby_weather', '+ Uhr/Wetter (Vollbild, Standby)'],
     ];
 
-    // Palette UND Modus-Umschalter/Vorlagen sind kontextuell: Mono hat
-    // eigene kleine Widget-Typen UND ein zweites (Standby-)Set, die eckigen
-    // Farbdisplays haben nur die Karten-Typen und kein Standby-Layout
-    // (Standby ist dort nicht implementiert, siehe app_config.standby_timeout_s
-    // in shared_state.h).
+    // Palette ist kontextuell (Mono hat eigene kleine Widget-Typen), der
+    // Dashboard/Standby-Modus-Umschalter dagegen nicht mehr: seit
+    // wide_standby_weather (siehe display_layout.cpp) haben auch die
+    // eckigen Farbdisplays (CYD/JC8048W550/generische ILI9488 etc.) ein
+    // zweites, editierbares Standby-Set - nur rund (GC9A01) erreicht diesen
+    // Tab ueberhaupt nicht (siehe s.display.layout_editor), fuer alles
+    // andere hier ist der Umschalter also immer relevant.
     function editorRenderPalette() {
       const list = s_displayMono ? MONO_PALETTE : CARD_PALETTE;
       $('editorPalette').innerHTML = list.map(([type, label]) =>
         `<button class="btn" data-type="${type}">${label}</button>`).join('');
-      $('editorModeSwitch').style.display = s_displayMono ? '' : 'none';
-      $('editorIntro').textContent = s_displayMono
-        ? 'Widget aus der Palette hinzufügen, auf der Fläche verschieben, rechts Eigenschaften anpassen. Dashboard- und Standby-Layout sind getrennt editierbar (oben umschaltbar).'
-        : 'Widget aus der Palette hinzufügen, auf der Fläche verschieben, rechts Eigenschaften anpassen, dann speichern.';
+      $('editorIntro').textContent =
+        'Widget aus der Palette hinzufügen, auf der Fläche verschieben, rechts Eigenschaften anpassen. Dashboard- und Standby-Layout sind getrennt editierbar (oben umschaltbar).';
+      $('editorModeSwitch').style.display = '';
       document.querySelectorAll('#editorModeSwitch button[data-mode]')
         .forEach(b => b.classList.toggle('primary', b.dataset.mode === s_editorMode));
       editorUpdatePresetVisibility();

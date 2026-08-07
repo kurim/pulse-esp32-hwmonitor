@@ -54,6 +54,7 @@
             <a href="https://github.com/kurim/pulse-esp32-hwmonitor#readme" target="_blank" rel="noopener">readme</a>
             <a href="https://github.com/kurim/pulse-esp32-hwmonitor/releases" target="_blank" rel="noopener">releases</a>
             <a href="https://github.com/kurim/pulse-esp32-hwmonitor/issues" target="_blank" rel="noopener">report a bug</a>
+            <a href="https://github.com/kurim/pulse-mqtt" target="_blank" rel="noopener">pc service ↗</a>
           </nav>
 
           <div class="rail-foot">
@@ -193,7 +194,12 @@
             <h2 id="data-head">Feed it hardware data</h2>
           </header>
 
-          <p class="lede">The device itself doesn't measure anything - it just displays whatever a PC-side script sends it, over <strong>MQTT</strong> (default) or directly over <strong>USB/serial</strong>, switchable in the web portal's "Hardware data source" setting. Both paths accept the same JSON, so no separate firmware build is needed either way.</p>
+          <p class="lede">The device itself doesn't measure anything - it just displays whatever a PC-side service sends it, over <strong>MQTT</strong> (default) or directly over <strong>USB/serial</strong>, switchable in the web portal's "Hardware data source" setting. Both paths accept the same JSON, so no separate firmware build is needed either way.</p>
+
+          <div class="note">
+            <span class="note-k">pc side</span>
+            <div><a href="https://github.com/kurim/pulse-mqtt" target="_blank" rel="noopener">kurim/pulse-mqtt</a> is the companion Windows service (LibreHardwareMonitor + PawnIO) that reads your CPU/GPU sensors and publishes this exact JSON - install it and point it at your broker (or the device's serial port) and you're done.</div>
+          </div>
 
           <div class="cmd" data-cmd>
             <div class="cmd-head"><span class="cmd-dot"></span><span class="cmd-dot"></span><span class="cmd-dot"></span><span class="cmd-title">json payload</span></div>
@@ -208,7 +214,7 @@
 }</pre>
           </div>
 
-          <p class="hint">All fields are optional - only the ones present get updated. This repo doesn't bundle a PC agent; send this shape from whatever you already use (LibreHardwareMonitor, HWiNFO, a small Python script, ...) at roughly 1-2&nbsp;Hz.</p>
+          <p class="hint">All fields are optional - only the ones present get updated, at roughly 1-2&nbsp;Hz. Using something other than pulse-mqtt (HWiNFO, a small Python script, ...) works fine too, as long as it sends this shape.</p>
 
           <div class="note">
             <span class="note-k">mqtt</span>

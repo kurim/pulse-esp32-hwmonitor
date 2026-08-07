@@ -1,9 +1,11 @@
 Populated by the `release` job in `.github/workflows/build.yaml` on every
 `v*` tag push, with the *factory* image per env — same file
 `dist/esp32-hwmonitor-v<ver>-pio-<env>.bin` that job already attaches to the
-GitHub release, just renamed and copied here (and committed straight back to
-the `platformio` branch, since that's what this Pages site is expected to
-serve from):
+GitHub release, just renamed and copied here. `platformio` requires PRs with
+verified signatures, so the job can't push here directly — it opens a
+`docs/firmware-v<ver>` PR against `platformio` instead; merge it (via the
+GitHub UI, which signs the merge commit automatically) to actually publish
+the update.
 
 ```
 esp32-hwmonitor-pio-cyd.bin

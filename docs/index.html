@@ -133,7 +133,7 @@
             <h2 id="wifi-head">Connect to WiFi</h2>
           </header>
 
-          <p class="lede">Right after flashing, the installer can hand your WiFi straight to the device in this tab - no phone needed. If you miss that window, the device also broadcasts its own setup hotspot you can join from anything. Either way it reboots onto your WiFi.</p>
+          <p class="lede">Right after flashing, the installer can hand your WiFi straight to the device in this tab - no phone needed. That path isn't a one-time thing either: an already-configured board answers the same way whenever you plug it back in. Miss the window entirely and the device falls back to its own setup hotspot you can join from anything.</p>
 
           <article class="path" aria-labelledby="wifi-improv">
             <header class="path-head">
@@ -144,13 +144,30 @@
               <h3 id="wifi-improv">Configure WiFi in this tab</h3>
             </header>
 
-            <p class="path-body">When the flash finishes, the install dialog opens a <strong>Configure WiFi</strong> step. Pick your network, type the password, hit <strong>Connect</strong>. The credentials travel to the device over USB using <a href="https://www.improv-wifi.com/" target="_blank" rel="noopener">Improv&nbsp;Serial</a> - no captive portal, no app switching. This only works on a freshly flashed device (no stored WiFi credentials yet) and stays available as long as the device isn't connected.</p>
+            <p class="path-body">When the flash finishes, the install dialog opens a <strong>Configure WiFi</strong> step. Pick your network, type the password, hit <strong>Connect</strong>. The credentials travel to the device over USB using <a href="https://www.improv-wifi.com/" target="_blank" rel="noopener">Improv&nbsp;Serial</a> - no captive portal, no app switching.</p>
 
             <ol class="step-list">
               <li>Wait for <strong>"Installation complete"</strong>, then keep the dialog open.</li>
               <li>Pick your WiFi network and enter the password.</li>
               <li>The device joins your WiFi and reboots. Boards with a display show the new <strong>IP address</strong> on the Settings screen; headless boards need the serial monitor below or your router's client list to find it.</li>
             </ol>
+          </article>
+
+          <article class="path" aria-labelledby="wifi-manage">
+            <header class="path-head">
+              <span class="path-tag path-tag-muted">anytime</span>
+              <h3 id="wifi-manage">Reconfigure a device that's already running</h3>
+            </header>
+
+            <p class="path-body">The firmware keeps listening for Improv on the USB port for as long as <strong>Hardware data source</strong> is set to MQTT (the default) - not just in the few seconds after a fresh flash. Plug an already-configured board back in and click <strong>Install</strong> again anyway: ESP Web Tools recognizes the running firmware over Improv and opens a small management dashboard instead of reflashing anything. This is the same trick ESPHome Web / Home Assistant's "ESP-Gerät" card uses under the hood - same <code>improv-wifi-serial-sdk</code>, same button here.</p>
+
+            <ol class="step-list">
+              <li>Plug the board in, click <strong>Install</strong>, pick the port - same button as section&nbsp;01.</li>
+              <li>Instead of a flash prompt you get a dashboard: <strong>Change Wi-Fi</strong>, <strong>Logs&nbsp;&amp;&nbsp;Console</strong>, and <strong>Visit Device</strong> (jumps straight to the device's own IP).</li>
+              <li>Reflashing/updating is still one click away from there - it's just no longer the only option.</li>
+            </ol>
+
+            <p class="hint">Switched <strong>Hardware data source</strong> to USB/serial in the web portal? That port is then busy with sensor JSON and Improv goes quiet - switch back to MQTT, or use the fallback hotspot below, to reconfigure WiFi.</p>
           </article>
 
           <article class="path" aria-labelledby="wifi-ap">

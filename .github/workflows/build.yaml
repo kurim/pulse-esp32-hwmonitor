@@ -182,21 +182,24 @@ jobs:
       # funktionierender Weg fuer einen reinen Browser-Flasher: die
       # Factory-Images liegen same-origin im Repo unter
       # docs/firmware/latest/, hier bei jedem Tag-Release aktuell gehalten.
+      #
+      # platformio ist geschuetzt (PR-Pflicht + verifizierte Commit-
+      # Signaturen). Weder ein normaler "git push" noch ein Commit ueber die
+      # Git-Data-API oder ein Squash-Merge umgehen die Signaturpflicht -
+      # alles ausprobiert (siehe PR #47/#48): "required_signatures" prueft
+      # jeden neu auf den Branch gelangenden Commit auf eine echte,
+      # verifizierbare Signatur, unabhaengig von Merge-Strategie. Ohne einen
+      # bei GitHub hinterlegten Signaturschluessel FUER DIESEN WORKFLOW kann
+      # der Job also keinen mergefaehigen Commit erzeugen - der PR hier
+      # bleibt bewusst mit einem unsignierten Commit stehen, jemand mit
+      # Schreibzugriff und eigenem GPG-Key muss ihn lokal nachsignieren
+      # (siehe docs/firmware/latest/README.md) bevor er sich mergen laesst.
       - name: Docs auschecken (platformio-Branch)
         uses: actions/checkout@v6
         with:
           ref: platformio
           path: docs-checkout
 
-      # platformio ist geschuetzt (PR-Pflicht + verifizierte Commit-
-      # Signaturen) - ein direkter "git push" scheitert an beidem (siehe
-      # GH013-Fehler beim ersten Versuch hier). Stattdessen auf einen eigenen
-      # Branch pushen und per PR gegen platformio stellen; ein normaler
-      # "git push" kann nicht signieren, ein ueber die GitHub-UI/-API
-      # gemergter Commit dagegen automatisch schon. Bewusst kein Auto-Merge
-      # hier - der PR-Zwang auf platformio ist vermutlich genau fuer einen
-      # menschlichen Review-Schritt gedacht, den ein selbst-mergender Workflow
-      # wieder aushebeln wuerde.
       - name: docs/firmware/latest/ aktualisieren und PR erstellen
         working-directory: docs-checkout
         env:
@@ -236,5 +239,5 @@ jobs:
               --base platformio \
               --head "$BRANCH" \
               --title "docs: web flasher firmware auf v${VERSION} aktualisieren" \
-              --body "Automatisch von .github/workflows/build.yaml erzeugt (Release v${VERSION}). Aktualisiert docs/firmware/latest/ fuer den Browser-Flasher - zum Uebernehmen mergen."
+              --body "Automatisch von .github/workflows/build.yaml erzeugt (Release v${VERSION}). Aktualisiert docs/firmware/latest/ fuer den Browser-Flasher. Der Commit ist unsigniert (Actions hat keinen GPG-Schluessel) - vor dem Mergen lokal nachsignieren, siehe docs/firmware/latest/README.md."
           fi

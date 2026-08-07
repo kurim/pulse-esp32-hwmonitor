@@ -1,0 +1,103 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- Background Gradient -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#3c4353" />
+      <stop offset="100%" stop-color="#1f232b" />
+    </linearGradient>
+
+    <!-- Metallic Pins Gradient -->
+    <linearGradient id="metalGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#a0a7b5" />
+      <stop offset="50%" stop-color="#5a6170" />
+      <stop offset="100%" stop-color="#303540" />
+    </linearGradient>
+
+    <!-- Green Chip Body Gradient -->
+    <linearGradient id="chipGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#69a376" />
+      <stop offset="50%" stop-color="#3e7850" />
+      <stop offset="100%" stop-color="#1b4127" />
+    </linearGradient>
+
+    <!-- Inner Square Gradient -->
+    <linearGradient id="innerChipGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4e885d" />
+      <stop offset="100%" stop-color="#234a2e" />
+    </linearGradient>
+
+    <!-- Drop Shadow for Main Chip Body -->
+    <filter id="shadow" x="-10%" y="-10%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#000" flood-opacity="0.6"/>
+    </filter>
+
+    <!-- Glow for Signal Waves -->
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="3" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Background App Canvas -->
+  <rect width="512" height="512" rx="100" fill="url(#bgGrad)"/>
+
+  <!-- Metallic Pins -->
+  <g fill="url(#metalGrad)" stroke="#1a1d24" stroke-width="2">
+    <!-- Left Pins -->
+    <rect x="60" y="125" width="60" height="40" rx="8"/>
+    <rect x="60" y="200" width="60" height="40" rx="8"/>
+    <rect x="60" y="275" width="60" height="40" rx="8"/>
+    <rect x="60" y="350" width="60" height="40" rx="8"/>
+
+    <!-- Right Pins -->
+    <rect x="392" y="125" width="60" height="40" rx="8"/>
+    <rect x="392" y="200" width="60" height="40" rx="8"/>
+    <rect x="392" y="275" width="60" height="40" rx="8"/>
+    <rect x="392" y="350" width="60" height="40" rx="8"/>
+
+    <!-- Bottom Pins -->
+    <rect x="155" y="392" width="40" height="60" rx="8"/>
+    <rect x="236" y="392" width="40" height="60" rx="8"/>
+    <rect x="317" y="392" width="40" height="60" rx="8"/>
+  </g>
+
+  <!-- Main Chip Body -->
+  <rect x="110" y="110" width="292" height="292" rx="40" fill="url(#chipGrad)" filter="url(#shadow)"/>
+  
+  <!-- Highlight Rim on Main Chip Body -->
+  <rect x="111" y="111" width="290" height="290" rx="39" fill="none" stroke="#a3d9b1" stroke-width="2" opacity="0.4"/>
+
+  <!-- Inner Inset Chip Area -->
+  <rect x="155" y="155" width="202" height="202" rx="24" fill="url(#innerChipGrad)" stroke="#183620" stroke-width="3"/>
+
+  <!-- Circuit Traces (Decorative Lines) -->
+  <path d="M 175 175 H 220 V 210
+           M 337 175 H 292 V 200
+           M 175 337 H 210 V 300
+           M 337 337 H 300 V 310" 
+        fill="none" stroke="#2a5836" stroke-width="3" stroke-linecap="round"/>
+
+  <!-- Text: SMART CHIP v2.0 -->
+  <text x="256" y="338" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="16" font-weight="600" fill="#a0cba9" opacity="0.8" text-anchor="middle" letter-spacing="1.5">SMART CHIP <tspan font-size="13" font-weight="normal">v2.0</tspan></text>
+
+  <!-- Signal Waves (Concentric Rings) -->
+  <g stroke="#d0e8ff" fill="none" opacity="0.85" filter="url(#glow)">
+    <circle cx="375" cy="135" r="28" stroke-width="2" opacity="0.9"/>
+    <circle cx="375" cy="135" r="48" stroke-width="2.5" opacity="0.7"/>
+    <circle cx="375" cy="135" r="68" stroke-width="3" opacity="0.5"/>
+    <circle cx="375" cy="135" r="88" stroke-width="3.5" opacity="0.25"/>
+  </g>
+
+  <!-- Metallic Sensor Element (Top Right Corner) -->
+  <g transform="translate(375, 135)">
+    <!-- Gear / Star Outer Rim -->
+    <path d="M0 -16 L4 -8 L12 -12 L8 -3 L16 0 L8 3 L12 12 L4 8 L0 16 L-4 8 L-12 12 L-8 3 L-16 0 L-8 -3 L-12 -12 L-4 -8 Z" fill="url(#metalGrad)" stroke="#2b313d" stroke-width="1"/>
+    
+    <!-- Inner Lens Outer Rim -->
+    <circle cx="0" cy="0" r="9" fill="#1b222a" />
+    <circle cx="0" cy="0" r="7" fill="#6ba4d9" />
+    
+    <!-- Glossy Lens Reflection -->
+    <circle cx="-2" cy="-2" r="3" fill="#ffffff" opacity="0.8" />
+  </g>
+</svg>

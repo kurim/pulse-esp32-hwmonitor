@@ -51,7 +51,8 @@ inline bool initDisplay(const pin_override_t *override = nullptr) {
   applyPinOverrides(override, pins);
 
   bus = new Arduino_ESP32SPI(pins.dc, pins.cs, pins.sclk, pins.mosi, pins.miso, kGenericSpiHost);
-  gfx = new Arduino_ILI9488(bus, pins.rst, 0 /* Rotation */, false /* IPS */);
+  // Rotation kommt aus app_config.rotation statt fest 0 - siehe gc9a01.h.
+  gfx = new Arduino_ILI9488(bus, pins.rst, app_config.rotation % 4, false /* IPS */);
 
   if (pins.bl >= 0) {
     pinMode(pins.bl, OUTPUT);
@@ -62,7 +63,8 @@ inline bool initDisplay(const pin_override_t *override = nullptr) {
 }
 
 inline lv_display_t *initLvglDisplay() {
-  return initLvglDisplaySPI(gfx, WIDTH, HEIGHT);
+  // gfx->width()/height() statt WIDTH/HEIGHT - siehe gc9a01.h.
+  return initLvglDisplaySPI(gfx, gfx->width(), gfx->height());
 }
 
 } // namespace disp_ili9488

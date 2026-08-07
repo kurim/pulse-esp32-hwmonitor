@@ -4,7 +4,7 @@
 #include "board_config.h"
 #include "pin_override.h"
 
-#define FW_VERSION "0.5.0" // Wird in platformio.ini (build_flags) auch an den C-Compiler uebergeben, siehe src/network/github_ota.cpp
+#define FW_VERSION "1.0.0" // Wird in platformio.ini (build_flags) auch an den C-Compiler uebergeben, siehe src/network/github_ota.cpp
 
 // Ringpuffer-Laenge fuer Verlaufsdiagramme (60 Samples = ~1 Min bei 1 Wert/Sek)
 #define HIST_LEN 60

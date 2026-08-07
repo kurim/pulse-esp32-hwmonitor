@@ -10,6 +10,13 @@
 #include <Arduino_GFX_Library.h>
 #include <lvgl.h>
 #include "pin_override.h"
+// app_config.rotation (siehe shared_state.h) - gefahrlos hier inkludierbar:
+// dieser Header (und gc9a01.h/ili9488.h/st7796s.h, die ihn einbinden) wird
+// nur ueber display_factory.h erreicht, das wiederum ausschliesslich aus
+// board_generic.cpp/web_portal.cpp NACH shared_state.h eingebunden wird -
+// anders als board_config.h (das VOR app_config_t in shared_state.h selbst
+// eingebunden wird, siehe generic_devkit.h) liegt hier kein Zirkel vor.
+#include "shared_state.h"
 
 // VSPI existiert nur auf dem klassischen ESP32 (siehe CLAUDE.md, Arduino_GFX-
 // Fallstrick zu spi_num/FSPI/HSPI) - FSPI ist dort der Flash-Bus, auf

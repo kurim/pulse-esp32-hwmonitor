@@ -1597,6 +1597,140 @@ lv_obj_t *create_footer(lv_obj_t *parent, JsonObjectConst) {
   return row;
 }
 
+// Vollflaechiger Standby-Screen fuer eckige Farbdisplays (CYD/JC8048W550/
+// generische ILI9488 etc., siehe layout_default_json()) - Pendant zu
+// create_mono_standby_weather_impl() oben (grosse Uhrzeit, aktuelle
+// Temperatur+Icon, Vorhersage-Reihe), aber mit den ohnehin schon vorhandenen
+// MDI-Icon-Glyphen statt der mono-eigenen 12x12-Bitmaps: das dortige
+// Speicherproblem (bis zu 864 zusaetzliche lv_obj_t bei Font-Icons auf einem
+// 48KB-LV_MEM_SIZE-Pool, siehe Kommentar oben) betrifft nur den mono-1bpp-
+// Renderer - Farbdisplays laufen ueber den normalen lv_label-Widget-Pool und
+// nutzen MDI-Icons bereits gefahrlos in create_weather_card().
+struct WideStandbyWeatherWidget {
+  lv_obj_t *clockLbl;
+  lv_obj_t *dateLbl;
+  lv_obj_t *curIconLbl;
+  lv_obj_t *curTempLbl;
+  lv_obj_t *dayNameLbls[FORECAST_DAYS];
+  lv_obj_t *dayIconLbls[FORECAST_DAYS];
+  lv_obj_t *dayHiLbls[FORECAST_DAYS];
+  lv_obj_t *dayLoLbls[FORECAST_DAYS];
+  int colCount;
+};
+std::vector<WideStandbyWeatherWidget> s_wideStandbyWeatherWidgets;
+
+lv_obj_t *create_wide_standby_weather(lv_obj_t *parent, JsonObjectConst props) {
+  int cols = props["days"] | FORECAST_DAYS;
+  if (cols < 1) cols = 1;
+  if (cols > FORECAST_DAYS) cols = FORECAST_DAYS;
+
+  bool big = is_big_display();
+  const lv_font_t *dateFont    = big ? &lv_font_montserrat_20 : &lv_font_montserrat_16;
+  const lv_font_t *dayIconFont = big ? &mdi_24 : &mdi_20;
+  const lv_font_t *dayTempFont = big ? &lv_font_montserrat_16 : &lv_font_montserrat_12;
+  const lv_font_t *dayNameFont = dayTempFont;
+
+  lv_obj_t *box = lv_obj_create(parent);
+  lv_obj_remove_flag(box, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_style_bg_opa(box, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(box, 0, 0);
+  lv_obj_set_style_pad_all(box, 0, 0);
+  lv_obj_set_layout(box, LV_LAYOUT_FLEX);
+  lv_obj_set_flex_flow(box, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(box, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+  // Antippen beendet den Standby manuell - Gegenstueck zur BOOT-Taste auf
+  // BOARD_GENERIC (displayMonoButtonPoll(), laeuft dort unabhaengig vom
+  // gewaehlten Displaytyp). CYD/JC8048W550 haben keine freie GPIO fuer einen
+  // Taster, aber beide haben Touch - Antippen ist dort der einzige manuelle
+  // Weg zurueck ausser dem naechsten Auto-Zyklus.
+  lv_obj_add_event_cb(
+      box, [](lv_event_t *) { s_monoManualToggleRequested = true; }, LV_EVENT_CLICKED, nullptr);
+
+  WideStandbyWeatherWidget w{};
+  w.colCount = cols;
+
+  // montserrat_32 statt _48: die CYD-Partition (2 statt 4 MB Flash, siehe
+  // CLAUDE.md) hatte vor diesem Widget noch ~114KB frei - _48 ist im
+  // gesamten Projekt bisher NIRGENDS verlinkt (nur _12/_14/_16/_18/_20/_24/
+  // _32 werden schon anderswo genutzt, siehe z.B. create_datetime_card()),
+  // sein Glyphsatz haette beim ersten Gebrauch allein ueber 90KB zusaetzlich
+  // gezogen und die Partition auf ueber 99% gefuellt (an echter Hardware
+  // gemessen). _32 ist bereits bezahlt (Uhrzeit auf dem normalen Dashboard).
+  w.clockLbl = lv_label_create(box);
+  lv_label_set_text(w.clockLbl, "--:--");
+  lv_obj_set_style_text_color(w.clockLbl, lv_color_white(), 0);
+  lv_obj_set_style_text_font(w.clockLbl, &lv_font_montserrat_32, 0);
+
+  w.dateLbl = lv_label_create(box);
+  lv_label_set_text(w.dateLbl, "");
+  lv_obj_set_style_text_color(w.dateLbl, lv_color_hex(0xE0E8F2), 0);
+  lv_obj_set_style_text_font(w.dateLbl, dateFont, 0);
+
+  lv_obj_t *curRow = create_icon_value_row(box);
+  w.curIconLbl = lv_label_create(curRow);
+  lv_label_set_text(w.curIconLbl, MDI_WEATHER_SUNNY);
+  // mdi_28 nicht verwendbar - der generierte Font faellt fuer sein
+  // Notdef-Glyph auf lv_font_montserrat_28 zurueck, das in lv_conf.h nicht
+  // aktiviert ist (siehe LV_FONT_MONTSERRAT_* dort) -> Linkerfehler
+  // "undefined reference to lv_font_montserrat_28". mdi_24 ist die groesste
+  // tatsaechlich nutzbare Stufe (auch von create_weather_card() genutzt).
+  lv_obj_set_style_text_font(w.curIconLbl, &mdi_24, 0);
+
+  w.curTempLbl = lv_label_create(curRow);
+  lv_label_set_text(w.curTempLbl, "--");
+  lv_obj_set_style_text_color(w.curTempLbl, lv_color_white(), 0);
+  lv_obj_set_style_text_font(w.curTempLbl, &lv_font_montserrat_32, 0);
+
+  lv_obj_t *forecastRow = lv_obj_create(box);
+  lv_obj_remove_flag(forecastRow, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_style_bg_opa(forecastRow, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(forecastRow, 0, 0);
+  lv_obj_set_style_pad_all(forecastRow, 0, 0);
+  lv_obj_set_style_pad_column(forecastRow, big ? 16 : 8, 0);
+  lv_obj_set_width(forecastRow, lv_pct(100));
+  lv_obj_set_height(forecastRow, LV_SIZE_CONTENT);
+  lv_obj_set_layout(forecastRow, LV_LAYOUT_FLEX);
+  lv_obj_set_flex_flow(forecastRow, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(forecastRow, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+  for (int i = 0; i < cols; i++) {
+    lv_obj_t *col = lv_obj_create(forecastRow);
+    lv_obj_remove_flag(col, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_bg_opa(col, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(col, 0, 0);
+    lv_obj_set_style_pad_all(col, 0, 0);
+    lv_obj_set_style_pad_row(col, 2, 0);
+    lv_obj_set_size(col, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    lv_obj_set_layout(col, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(col, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(col, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+    w.dayNameLbls[i] = lv_label_create(col);
+    lv_label_set_text(w.dayNameLbls[i], "--");
+    lv_obj_set_style_text_color(w.dayNameLbls[i], lv_color_hex(0xE0E8F2), 0);
+    lv_obj_set_style_text_font(w.dayNameLbls[i], dayNameFont, 0);
+
+    w.dayIconLbls[i] = lv_label_create(col);
+    lv_label_set_text(w.dayIconLbls[i], MDI_WEATHER_SUNNY);
+    lv_obj_set_style_text_font(w.dayIconLbls[i], dayIconFont, 0);
+
+    lv_obj_t *hiLoRow = create_icon_value_row(col);
+    w.dayHiLbls[i] = lv_label_create(hiLoRow);
+    lv_label_set_text(w.dayHiLbls[i], "--");
+    lv_obj_set_style_text_color(w.dayHiLbls[i], lv_color_white(), 0);
+    lv_obj_set_style_text_font(w.dayHiLbls[i], dayTempFont, 0);
+
+    w.dayLoLbls[i] = lv_label_create(hiLoRow);
+    lv_label_set_text(w.dayLoLbls[i], "--");
+    lv_obj_set_style_text_color(w.dayLoLbls[i], lv_color_hex(0x94A3B8), 0);
+    lv_obj_set_style_text_font(w.dayLoLbls[i], dayTempFont, 0);
+  }
+
+  s_wideStandbyWeatherWidgets.push_back(w);
+  return box;
+}
+
 struct WidgetTypeEntry {
   const char *type;
   lv_obj_t *(*create)(lv_obj_t *, JsonObjectConst);
@@ -1611,6 +1745,7 @@ const WidgetTypeEntry kWidgetTypes[] = {
     {"weather_card", create_weather_card},
     {"chart_card", create_chart_card},
     {"footer", create_footer},
+    {"wide_standby_weather", create_wide_standby_weather},
     {"mono_clock", create_mono_clock},
     {"mono_date", create_mono_date},
     {"mono_weekday", create_mono_weekday},
@@ -1655,6 +1790,7 @@ void layout_apply(JsonArrayConst widgets, JsonArrayConst standbyWidgets) {
   s_monoWeatherWidgets.clear();
   s_monoForecastWidgets.clear();
   s_monoStandbyWeatherWidgets.clear();
+  s_wideStandbyWeatherWidgets.clear();
   s_monoStatWidgets.clear();
   s_monoHwCardWidgets.clear();
   s_monoLabelValueWidgets.clear();
@@ -2048,6 +2184,70 @@ static void refresh_mono_standby_weather_widgets(void) {
   }
 }
 
+// Pendant zu refresh_mono_standby_weather_widgets() oben, fuer
+// create_wide_standby_weather() - kein Icon-Redraw-Cache noetig (siehe
+// dortiger Kommentar zum mono-Speicherproblem): lv_label_set_text() auf ein
+// MDI-Glyph ist ein normales Label-Update, kein manuelles Neuzeichnen von
+// Bitmap-Objekten.
+static void refresh_wide_standby_weather_widgets(void) {
+  if (s_wideStandbyWeatherWidgets.empty()) return;
+
+  time_t now = time(nullptr);
+  struct tm t;
+  localtime_r(&now, &t);
+  char timeBuf[8], dateBuf[32];
+  strftime(timeBuf, sizeof(timeBuf), "%H:%M", &t);
+  // %A = C-Locale-Wochentag (Englisch) - dieselbe Konvention wie
+  // refresh_mono_clock_widgets() oben, im Projekt nirgends setlocale().
+  strftime(dateBuf, sizeof(dateBuf), "%A, %d.%m.%Y", &t);
+
+  bool curValid = app_config.weather_enabled && weather_info.valid;
+  const char *curIcon = curValid ? weather_icon_mdi(weather_info.icon) : MDI_WEATHER_CLOUDY;
+  uint32_t curColor = curValid ? weather_icon_color(weather_info.icon) : 0x64748B;
+
+  char buf[24];
+  for (auto &w : s_wideStandbyWeatherWidgets) {
+    lv_label_set_text(w.clockLbl, timeBuf);
+    lv_label_set_text(w.dateLbl, dateBuf);
+
+    lv_label_set_text(w.curIconLbl, curIcon);
+    lv_obj_set_style_text_color(w.curIconLbl, lv_color_hex(curColor), 0);
+    if (curValid) {
+      int tempR = (int)(weather_info.temp_c + (weather_info.temp_c >= 0 ? 0.5f : -0.5f));
+      snprintf(buf, sizeof(buf), "%d\xc2\xb0" "C", tempR);
+      lv_label_set_text(w.curTempLbl, buf);
+    } else {
+      lv_label_set_text(w.curTempLbl, "--");
+    }
+
+    for (int i = 0; i < w.colCount; i++) {
+      bool dayValid = forecast_info.valid && i < forecast_info.day_count;
+      if (dayValid) {
+        const forecast_day_t &d = forecast_info.days[i];
+        // date_epoch bereits lokal verschoben (siehe fetch_forecast() in
+        // weather_service.cpp) - gmtime_r statt localtime_r, siehe
+        // refresh_mono_forecast_widgets() oben fuer denselben Fallstrick.
+        time_t dt = (time_t)d.date_epoch;
+        struct tm tmv;
+        gmtime_r(&dt, &tmv);
+        lv_label_set_text(w.dayNameLbls[i], weather_weekday_abbr(tmv.tm_wday));
+        lv_label_set_text(w.dayIconLbls[i], weather_icon_mdi(d.icon));
+        int hi = (int)(d.temp_max + (d.temp_max >= 0 ? 0.5f : -0.5f));
+        int lo = (int)(d.temp_min + (d.temp_min >= 0 ? 0.5f : -0.5f));
+        snprintf(buf, sizeof(buf), "%d\xc2\xb0" "C", hi);
+        lv_label_set_text(w.dayHiLbls[i], buf);
+        snprintf(buf, sizeof(buf), "%d\xc2\xb0" "C", lo);
+        lv_label_set_text(w.dayLoLbls[i], buf);
+      } else {
+        lv_label_set_text(w.dayNameLbls[i], "--");
+        lv_label_set_text(w.dayIconLbls[i], MDI_WEATHER_CLOUDY);
+        lv_label_set_text(w.dayHiLbls[i], "--");
+        lv_label_set_text(w.dayLoLbls[i], "--");
+      }
+    }
+  }
+}
+
 static void refresh_mono_stat_widgets(void) {
   if (s_monoStatWidgets.empty()) return;
   hw_data_lock();
@@ -2135,16 +2335,21 @@ static void refresh_mono_label_value_widgets(void) {
   hw_data_unlock();
 }
 
-// Standby-Auswertung fuer Mono: dieselbe Formel wie zuvor im hartcodierten
-// display_mono.cpp (app_config.standby_timeout_s als Trigger, weiterhin im
-// Web-UI editierbar) - baut jetzt aber kein eigenes Widget mehr, sondern
-// blendet nur zwischen den beiden vom Layout-Editor gebauten Sets um
-// (s_dashboardContentWidgets/s_standbyWidgets), analog zum bestehenden
-// Dashboard/Settings-Tab-Umschalter oben in dieser Datei. s_monoStandby/
-// s_monoStandbyAuto/s_monoManualToggleRequested sind weiter oben (vor
-// layout_apply()) deklariert, siehe dortiger Kommentar.
+// Standby-Auswertung: urspruenglich nur fuer Mono (dieselbe Formel wie
+// zuvor im hartcodierten display_mono.cpp, app_config.standby_timeout_s als
+// Trigger, weiterhin im Web-UI editierbar), mittlerweile fuer jedes Board
+// mit Layout-Editor generalisiert (s_standbyWidgets ist fuer alle anderen
+// Boards ohnehin leer und macht diese Funktion dort zum No-Op, siehe
+// layout_default_json()) - nur rund (GC9A01) bleibt aussen vor, das hat
+// seine eigene, unabhaengige Standby-Logik in display_round.cpp. Baut kein
+// eigenes Widget, sondern blendet nur zwischen den beiden vom Layout-Editor
+// gebauten Sets um (s_dashboardContentWidgets/s_standbyWidgets), analog zum
+// bestehenden Dashboard/Settings-Tab-Umschalter oben in dieser Datei.
+// s_monoStandby/s_monoStandbyAuto/s_monoManualToggleRequested sind weiter
+// oben (vor layout_apply()) deklariert, siehe dortiger Kommentar - Name
+// historisch (nur fuer Mono eingefuehrt), gilt inzwischen fuer jedes Board.
 static void refresh_mono_standby_visibility(void) {
-  if (!displayIsMono() || s_standbyWidgets.empty()) return;
+  if (!displaySupportsLayoutEditor() || s_standbyWidgets.empty()) return;
 
   hw_data_lock();
   bool everReceived  = hw_info.ever_received;
@@ -2232,6 +2437,7 @@ void layout_refresh_bindings(void) {
   refresh_mono_clock_widgets();
   refresh_mono_forecast_widgets();
   refresh_mono_standby_weather_widgets();
+  refresh_wide_standby_weather_widgets();
   refresh_mono_stat_widgets();
   refresh_mono_hw_card_widgets();
   refresh_mono_label_value_widgets();
@@ -2374,7 +2580,6 @@ String layout_default_json(int16_t w, int16_t h) {
   JsonDocument doc;
   doc["version"] = 1;
   JsonArray widgets = doc["widgets"].to<JsonArray>();
-  doc["standby_widgets"].to<JsonArray>(); // leer - nur Mono nutzt Standby-Layouts
 
   int16_t margin = 5;
   int16_t gap = 10;
@@ -2401,6 +2606,20 @@ String layout_default_json(int16_t w, int16_t h) {
   int16_t row2Y = row1Y + row1H + gap;
   int16_t footerY = h - margin - footerH;
   int16_t footerW = w - 2 * margin;
+
+  // Ein einzelnes vollflaechiges Standby-Widget statt eines eigenen Rasters
+  // (anders als Mono oben mit drei separaten Widgets) - create_wide_standby_
+  // weather() ist bereits in sich geschlossen (Uhr/Datum/Wetter/Vorhersage),
+  // dieselbe "eine Karte deckt alles ab"-Idee wie bei den vier festen
+  // Dashboard-Karten unten.
+  JsonArray standby = doc["standby_widgets"].to<JsonArray>();
+  JsonObject standbyWidget = standby.add<JsonObject>();
+  standbyWidget["id"] = "standby1";
+  standbyWidget["type"] = "wide_standby_weather";
+  standbyWidget["x"] = margin;
+  standbyWidget["y"] = margin;
+  standbyWidget["w"] = w - 2 * margin;
+  standbyWidget["h"] = h - 2 * margin;
 
   auto addWidget = [&](const char *id, const char *type, int16_t x, int16_t y, int16_t ww, int16_t hh) {
     JsonObject o = widgets.add<JsonObject>();

@@ -2,10 +2,8 @@
 
 #include "display_common.h"
 
-// -----------------------------------------------------------------------------
 // ILI9488 (320x480 TFT) - siehe gc9a01.h fuer die Begruendung des Namespace-
 // Musters (mehrere Display-Header sollen gemeinsam kompilierbar sein).
-// -----------------------------------------------------------------------------
 namespace disp_ili9488 {
 
 inline constexpr const char *NAME   = "ILI9488";

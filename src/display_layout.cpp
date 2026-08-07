@@ -453,8 +453,8 @@ lv_obj_t *create_chart_card(lv_obj_t *parent, JsonObjectConst props) {
 // --- Mono-Widgets (SSD1309/SH1106, 128x64) ---
 //
 // Eigene, bewusst schlichte Widget-Typen statt der Karten oben - Mono hat
-// laut dem fruehreren display_mono.cpp-Kommentar (1bpp-Schwellwert-
-// Renderer, siehe disp_mono_oled_i2c::flushCb()) grundsaetzlich KEINE
+// (1bpp-Schwellwert-Renderer, siehe disp_mono_oled_i2c::flushCb())
+// grundsaetzlich KEINE
 // anti-aliasing-faehigen Formen (keine Rundungen/Farbverlaeufe), nur harte
 // Rechtecke/Linien und die unscii-Bitmapfonts. create_card() (Rahmen mit
 // Radius) ist hier deshalb bewusst NICHT die Basis, anders als bei den
@@ -491,7 +491,7 @@ std::vector<MonoLabelValueWidget> s_monoLabelValueWidgets;
 
 // props["big"]: false = kleine Kopfzeilen-Uhr (unscii_8, wie im alten
 // hartcodierten Dashboard), true = grosse zentrierte Standby-Uhr
-// (unscii_16, wie der bisherige display_mono.cpp-Standby-Bildschirm). Die
+// (unscii_16, wie der fruehere hartcodierte Mono-Standby-Bildschirm). Die
 // Layout-Engine kennt die zugewiesene Groesse eines Widgets erst NACH dem
 // create()-Aufruf (layout_apply() setzt x/y/w/h danach, siehe unten) -
 // deshalb ein explizites Prop statt eine Grossenheuristik zur Bauzeit.
@@ -990,7 +990,7 @@ lv_obj_t *create_mono_standby_weather_wday(lv_obj_t *parent, JsonObjectConst pro
 }
 
 // CPU-/GPU-Statuszeile: Label ("CPU 62%") + Balken + Temp/Watt-Zeile,
-// deckungsgleich mit dem alten hartcodierten display_mono.cpp-Dashboard,
+// deckungsgleich mit dem alten hartcodierten Mono-Dashboard,
 // nur als generische Widget-Fabrik statt fest verdrahteter Positionen.
 lv_obj_t *build_mono_stat(lv_obj_t *parent, bool isGpu) {
   lv_obj_t *box = lv_obj_create(parent);
@@ -1161,8 +1161,8 @@ lv_obj_t *create_mono_cpu_card(lv_obj_t *parent, JsonObjectConst props) { return
 lv_obj_t *create_mono_gpu_card(lv_obj_t *parent, JsonObjectConst props) { return build_mono_hw_card(parent, true, props); }
 
 // Freistehende 1px-Linie (o.ae. per w/h frei skalierbar) - reiner weisser
-// Volltonblock ohne Rand/Rundung, exakt dasselbe Muster wie die frueher in
-// display_mono.cpp fest verdrahteten Trennlinien (dort "s_divider1/2"),
+// Volltonblock ohne Rand/Rundung, exakt dasselbe Muster wie die im alten
+// Mono-Dashboard fest verdrahteten Trennlinien (dort "s_divider1/2"),
 // jetzt aber frei platzierbar/dimensionierbar ueber den Layout-Editor.
 // w/h bestimmen Ausrichtung: h klein + w gross -> horizontale Linie, w klein
 // + h gross -> vertikale Linie - kein eigenes Props-Feld noetig, das
@@ -2336,7 +2336,7 @@ static void refresh_mono_label_value_widgets(void) {
 }
 
 // Standby-Auswertung: urspruenglich nur fuer Mono (dieselbe Formel wie
-// zuvor im hartcodierten display_mono.cpp, app_config.standby_timeout_s als
+// zuvor im hartcodierten Mono-Dashboard, app_config.standby_timeout_s als
 // Trigger, weiterhin im Web-UI editierbar), mittlerweile fuer jedes Board
 // mit Layout-Editor generalisiert (s_standbyWidgets ist fuer alle anderen
 // Boards ohnehin leer und macht diese Funktion dort zum No-Op, siehe
@@ -2523,7 +2523,7 @@ int16_t displayHeightPx(void) {
 }
 
 // Grundlayout fuer Mono (128x64): Dashboard reproduziert 1:1 das alte
-// hartcodierte display_mono.cpp-Layout (Datum links/Uhr rechts als
+// hartcodierte Mono-Layout (Datum links/Uhr rechts als
 // Kopfzeile, CPU-/GPU-Statuszeile darunter). standby_widgets ist "Variante
 // 1" aus der Anfrage (grosse Uhr + Datum + Wochentag, siehe Referenzfoto) -
 // "Variante 2" (Uhr+Datum+Wetter) gibt es nur als Preset im Web-Editor

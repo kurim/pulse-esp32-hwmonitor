@@ -2,13 +2,11 @@
 
 #include "display_common.h"
 
-// -----------------------------------------------------------------------------
 // GC9A01 (240x240 rundes Display) - alles in einem eigenen Namespace, damit
 // dieser Header zusammen mit den anderen SPI-TFT-Headern in ein einziges
 // Firmware-Image kompiliert werden kann (Laufzeit-Auswahl ueber
 // display_factory.h). Kein #define fuer Name/Groesse/Pins - Makros wuerden
 // beim gemeinsamen Einbinden mit den anderen Displays kollidieren.
-// -----------------------------------------------------------------------------
 namespace disp_gc9a01 {
 
 inline constexpr const char *NAME   = "GC9A01";

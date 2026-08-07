@@ -64,29 +64,25 @@ void displayDrawBootScreen()
         s_bootLogoAnimFinished = false;
         lv_timer_create(mono_boot_logo_timer_cb, kBootLogoMonoMinMs, NULL);
 
-        // 1. Logo-Label erzeugen und Text zuweisen
         s_bootLogo = lv_label_create(scr);
         lv_label_set_text(s_bootLogo, kBootLogoMono);
         lv_obj_set_style_text_color(s_bootLogo, lv_color_white(), 0);
         lv_obj_set_style_text_font(s_bootLogo, &lv_font_unscii_8, 0); 
         lv_obj_align(s_bootLogo, LV_ALIGN_CENTER, 0, -10);
 
-        // 2. Status-Label erzeugen
         s_bootStatus = lv_label_create(scr);
-        lv_label_set_text(s_bootStatus, "Booting..."); // Oder initial leer lassen
+        lv_label_set_text(s_bootStatus, "Booting...");
         lv_obj_set_style_text_color(s_bootStatus, lv_color_white(), 0);
         lv_obj_set_style_text_font(s_bootStatus, &lv_font_unscii_8, 0);
         lv_obj_set_style_text_align(s_bootStatus, LV_TEXT_ALIGN_CENTER, 0);
         lv_obj_set_width(s_bootStatus, lv_pct(100));
         lv_label_set_long_mode(s_bootStatus, LV_LABEL_LONG_WRAP);
 
-        // Status unter dem Logo ausrichten (Y Offset +12)
         lv_obj_align(s_bootStatus, LV_ALIGN_CENTER, 0, 12);
         
         return;
     }
 
-    // 1. Logo-Label initialisieren
     s_bootLogo = lv_label_create(scr);
     s_animIndex = 0;
     s_animBuffer[0] = '\0';
@@ -106,7 +102,6 @@ void displayDrawBootScreen()
         lv_obj_align(s_bootLogo, LV_ALIGN_CENTER, 0, -20);
     }
 
-    // 2. Status-Label initialisieren
     s_bootStatus = lv_label_create(scr);
     lv_label_set_text(s_bootStatus, "");
     lv_obj_set_style_text_color(s_bootStatus, lv_palette_main(LV_PALETTE_GREY), 0);
@@ -119,7 +114,6 @@ void displayDrawBootScreen()
         lv_obj_align(s_bootStatus, LV_ALIGN_BOTTOM_MID, 0, -15);
     }
 
-    // 3. Animation starten (non-blocking)
     s_bootLogoAnimFinished = false;
     lv_timer_create(boot_logo_timer_cb, 10, NULL);
 }

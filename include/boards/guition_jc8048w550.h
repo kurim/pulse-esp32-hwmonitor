@@ -4,21 +4,17 @@
 #include <lvgl.h>
 #include <Wire.h>
 #include <gt911_lite.h>
-// -----------------------------------------------------------------------------
-// Pin-Definitionen Guition JC8048W550
-// -----------------------------------------------------------------------------
+
 #define BOARD_NAME "Guition JC8048W550"
 #define BOARD_HAS_DISPLAY 1
 #define BOARD_HAS_TOUCH 1
 #define BOARD_HAS_SD 1
 #define LCD_WIDTH 800
 #define LCD_HEIGHT 480
-// RGB Timing / Control
 #define GFX_DE 40
 #define GFX_VSYNC 41
 #define GFX_HSYNC 39
 #define GFX_PCLK 42
-// RGB 565 Data Pins
 #define GFX_R0 45
 #define GFX_R1 48
 #define GFX_R2 47
@@ -36,11 +32,9 @@
 #define GFX_B3 9
 #define GFX_B4 1
 
-// Backlight Pin (PWM-faehig)
 #define GFX_BL 2
 #define BOARD_HAS_BACKLIGHT_PWM 1
 
-// Touch (GT911) & SD Card Defs
 #define TOUCH_GT911_SDA 19
 #define TOUCH_GT911_SCL 20
 #define TOUCH_GT911_INT 18
@@ -55,10 +49,7 @@
 #define blue RGB565_BLUE
 #define red RGB565_RED
 
-// -----------------------------------------------------------------------------
 // Treibereinrichtung (ST7262 RGB-Parallel)
-// -----------------------------------------------------------------------------
-
 inline Arduino_ESP32RGBPanel *rgbpanel = new Arduino_ESP32RGBPanel(
     GFX_DE, GFX_VSYNC, GFX_HSYNC, GFX_PCLK,
     GFX_R0, GFX_R1, GFX_R2, GFX_R3, GFX_R4,
@@ -77,10 +68,6 @@ inline Arduino_ESP32RGBPanel *rgbpanel = new Arduino_ESP32RGBPanel(
 inline Arduino_RGB_Display *gfx = new Arduino_RGB_Display(
     LCD_WIDTH, LCD_HEIGHT, rgbpanel, 0, true
 );
-
-// -----------------------------------------------------------------------------
-// Initialisierungs-Funktion
-// -----------------------------------------------------------------------------
 
 inline bool initBoardDisplay()
 {
@@ -118,7 +105,6 @@ inline void boardDisplayBacklight(bool on)
 // Panel-Unterlagen dokumentiert). Ohne Remap waeren ~80% des Reglerwegs
 // unbrauchbar (immer "aus"). Deshalb 1..255 auf den tatsaechlich sichtbaren
 // Bereich [kMinVisibleDuty..255] strecken, nur level==0 bleibt hart aus.
-
 inline void boardDisplaySetBrightness(uint8_t level)
 {
   static bool attached = false;
@@ -137,11 +123,9 @@ inline void boardDisplaySetBrightness(uint8_t level)
   ledcWrite(GFX_BL, (uint8_t)duty);
 }
 
-// -----------------------------------------------------------------------------
 // LVGL-Anbindung: RGB-Panel hat einen dauerhaften Framebuffer in PSRAM, den
 // die GDMA kontinuierlich ausgibt - LVGL rendert im DIRECT-Modus direkt
 // hinein, ein Kopieren in einen separaten Draw-Buffer entfaellt.
-// -----------------------------------------------------------------------------
 #if defined(CONFIG_IDF_TARGET_ESP32S3)
 #include "esp32s3/rom/cache.h"
 #endif
@@ -167,11 +151,9 @@ inline void jc8048w550_flush_cb(lv_display_t *disp, const lv_area_t *area, uint8
   // 4. L1-Cache der CPU erzwingen, die Daten sofort in den PSRAM zu flushen
   Cache_WriteBack_Addr(aligned_start, aligned_size);
 
-  // 5. LVGL den Abschluss melden
   lv_display_flush_ready(disp);
 }
 
-// -----------------------------------------------------------------------------
 // Touch (GT911) - I2C, gepollt statt IRQ-getrieben (gleiche Konvention wie
 // cyd_2432s028r.h: kein IRQ-Handler, lv_indev_set_read_cb() reicht bei den
 // hier ueblichen LVGL-Refreshraten).
@@ -195,7 +177,6 @@ inline void jc8048w550_flush_cb(lv_display_t *disp, const lv_area_t *area, uint8
 // Koordinaten, bietet GT911_Lite::begin(&wire, sensitivity, w, h) eine
 // dritte Ueberladung, die die Aufloesung direkt in die Chip-Konfiguration
 // schreibt.
-
 inline TwoWire touchWire(1);
 inline GT911_Lite touchCtrl;
 inline void initBoardTouch()

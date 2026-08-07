@@ -550,12 +550,25 @@ void handleFotaCheckResult(AsyncWebServerRequest *request)
     request->send(response);
 }
 
-#if defined(BOARD_HAS_PSRAM)
+#if defined(BOARD_HAS_PSRAM) || defined(FOTA_DIRECT_CHECK)
 // Boards mit PSRAM haben genug freien Heap fuer den GitHub-TLS-Handshake
 // auch im laufenden Betrieb (siehe github_ota.h fuer die Gegenseite) - Check
 // und Update laufen deshalb hier direkt im Request-Handler, kein Reboot-
 // Umweg noetig. Antwortform bewusst OHNE "rebooting" - dashboard.html
 // unterscheidet daran diesen Fall vom Reboot-Fall unten.
+//
+// FOTA_DIRECT_CHECK: Opt-in-Flag fuer denselben direkten Weg auf einem Board
+// OHNE PSRAM. Auf dem CYD getestet (nachdem github_ota_check() auf den
+// leichtgewichtigen github.com-Redirect umgestellt wurde statt der ~14-20 KB
+// grossen api.github.com-JSON-Antwort) und live wieder mit mbedtls -10368
+// "X509 - Allocation of memory failed" gescheitert - der im laufenden
+// Betrieb (WiFiManager/AsyncWebServer/MQTT/LVGL-Pool bereits reserviert)
+// verbleibende ~35 KB grosse zusammenhaengende Block reicht selbst fuer den
+// minimalen Check-Handshake nicht, das war keine Eigenschaft der grossen
+// JSON-Antwort, sondern strukturell. Deshalb fuer cyd_base bewusst NICHT
+// gesetzt (siehe platformio.ini) - bleibt als Flag erhalten, falls es sich
+// auf einem anderen zukuenftigen Board ohne PSRAM lohnt, das erneut zu
+// pruefen.
 void handleFotaCheckTrigger(AsyncWebServerRequest *request)
 {
     bool ok = github_ota_check();

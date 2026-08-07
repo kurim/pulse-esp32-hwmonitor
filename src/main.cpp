@@ -12,6 +12,7 @@
 #include "weather_service.h"
 #include "display_layout.h"
 #include "layout_store.h"
+#include "github_ota.h"
 
 // Nur auf BOARD_GENERIC ueberhaupt wahr sein kann; steuert in loop(), ob
 // LVGL-UI-Aufrufe stattfinden (siehe setup() unten).
@@ -25,6 +26,21 @@ void setup() {
   config_store_init();
   config_set_defaults(&app_config);
   config_store_load(&app_config);
+
+  // wifi_provision_begin() jetzt VOR jeglicher Display-/LVGL-Initialisierung
+  // statt danach (fruehere Reihenfolge, siehe Git-Historie) - Grund ist
+  // ausschliesslich ota_boot_run_pending_action() direkt darunter, siehe
+  // deren Kommentar in github_ota.h. web_portal_begin() weiter unten in
+  // dieser Funktion bleibt zwingend NACH wifi_provision_begin() (siehe
+  // web_portal.h - AsyncTCP braucht das STA-Netif zuerst), das ist durch
+  // dieses Vorziehen nicht veraendert.
+  wifi_provision_begin();
+
+  // No-Op im ueblichen Fall (kein Web-Handler hat eine Aktion angefordert) -
+  // kehrt dann sofort zurueck, der Rest von setup() laeuft unveraendert
+  // weiter. Kehrt bei einem erfolgreichen Update NIE zurueck (ESP.restart()
+  // passiert bereits darin).
+  ota_boot_run_pending_action();
 
 #if defined(BOARD_GENERIC)
   // Generische Devkits (ESP32/S3/C3): welches Panel - falls ueberhaupt eins
@@ -61,14 +77,11 @@ void setup() {
     layout_queue_begin();
   }
 
-  // Reihenfolge wichtig: wifi_provision_begin() ruft WiFi.mode(WIFI_STA) auf
-  // (legt synchron das STA-Netif an) - erst danach darf web_portal_begin()
-  // den AsyncWebServer per .begin() tatsaechlich lauschen lassen, sonst legt
-  // AsyncTCP seine interne Queue an, bevor das Netif existiert, und crasht
-  // mit "assert failed: xQueueSemaphoreTake" noch in setup(). Die
-  // WiFiManager-Routen werden in wifi_provision_begin() nur REGISTRIERT
-  // (attachWebServer/attachUI), das ist auch vor .begin() unproblematisch.
-  wifi_provision_begin();          // nicht blockierend, siehe wifi_provision.h
+  // wifi_provision_begin() lief bereits ganz oben in setup() (siehe dortiger
+  // Kommentar) - web_portal_begin() muss weiterhin NACH ihr stehen (legt
+  // erst das STA-Netif an, das AsyncTCP fuer seine interne Queue braucht,
+  // sonst "assert failed: xQueueSemaphoreTake" noch in setup()), das ist
+  // hier weiterhin der Fall.
   web_portal_begin();               // Dashboard/REST-API, startet den Server (.begin())
   mqtt_handler_begin();
   serial_handler_begin();

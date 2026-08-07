@@ -1077,43 +1077,95 @@
     // Rein manuell (Button-Klick) - kein automatischer/periodischer Check,
     // um das Geraet nicht unnoetig gegen GitHub telefonieren zu lassen
     // (siehe github_ota.h fuer die Begruendung, u.a. auch TLS-Handling).
+    //
+    // Auf Boards OHNE PSRAM (CYD, ESP32-C3) reicht der freie Heap fuer den
+    // GitHub-TLS-Handshake im laufenden Betrieb nicht zuverlaessig (LVGLs
+    // 48-KB-Pool, WiFiManager/AsyncWebServer, MQTT sind dann schon
+    // reserviert) - live beobachtet als mbedtls X509/BIGNUM-Allokations-
+    // fehler. Auf diesen Boards loesen POST /api/fota/check und
+    // POST /api/fota/update deshalb nur noch einen Reboot aus (siehe
+    // ota_boot_run_pending_action() in github_ota.cpp) und antworten
+    // sofort mit {rebooting:true}; das eigentliche Ergebnis holt dieses
+    // Skript erst danach ab, sobald das Geraet wieder antwortet. Auf
+    // Boards MIT PSRAM (S3, JC8048W550) antworten dieselben Endpunkte
+    // weiterhin sofort mit dem vollstaendigen Ergebnis (kein Reboot noetig)
+    // - beide Faelle werden hier anhand von data.rebooting unterschieden,
+    // kein separates Board-Flag noetig.
+    async function waitUntilBackOnline(maxWaitMs) {
+      const start = Date.now();
+      while (Date.now() - start < maxWaitMs) {
+        try {
+          await api('/api/status');
+          return true;
+        } catch (e) {
+          await new Promise(r => setTimeout(r, 1000));
+        }
+      }
+      return false;
+    }
+
+    function renderFotaCheckResult(data) {
+      if (!data.ok) {
+        $('fotaCheckStatus').style.display = '';
+        $('fotaCheckStatus').textContent = 'Fehler: ' + (data.error || 'unbekannt');
+      } else if (data.has_result === false) {
+        $('fotaCheckStatus').style.display = '';
+        $('fotaCheckStatus').textContent = 'Kein Ergebnis erhalten - bitte erneut prüfen';
+      } else if (data.update_available) {
+        $('fotaCheckStatus').style.display = 'none';
+        $('fotaCurrentVersion').textContent = data.current_version;
+        $('fotaLatestVersion').textContent = data.latest_version;
+        $('fotaUpdateBanner').style.display = '';
+      } else {
+        $('fotaCheckStatus').style.display = '';
+        $('fotaCheckStatus').textContent = 'Aktuell (v' + data.current_version + ') - kein Update verfügbar (neueste Version: v' + data.latest_version + ')';
+      }
+    }
+
     $('btnFotaCheck').addEventListener('click', async () => {
       $('btnFotaCheck').disabled = true;
       $('fotaCheckStatus').style.display = '';
       $('fotaCheckStatus').textContent = 'Prüfe...';
       $('fotaUpdateBanner').style.display = 'none';
+
+      let data;
       try {
-        const data = await api('/api/fota/check');
-        if (!data.ok) {
-          $('fotaCheckStatus').textContent = 'Fehler: ' + (data.error || 'unbekannt');
-        } else if (data.update_available) {
-          $('fotaCheckStatus').style.display = 'none';
-          $('fotaCurrentVersion').textContent = data.current_version;
-          $('fotaLatestVersion').textContent = data.latest_version;
-          $('fotaUpdateBanner').style.display = '';
-        } else {
-          $('fotaCheckStatus').textContent = 'Aktuell (v' + data.current_version + ') - kein Update verfügbar (neueste Version: v' + data.latest_version + ')';
-        }
+        data = await api('/api/fota/check', { method: 'POST' });
       } catch (e) {
-        $('fotaCheckStatus').textContent = 'Fehler bei der Prüfung: ' + e.message;
+        // Boards ohne PSRAM: der sofortige Reboot reisst die Verbindung ab,
+        // bevor die Antwort ankommt - wie rebooting:true behandeln.
+        data = { rebooting: true };
+      }
+
+      if (!data.rebooting) {
+        renderFotaCheckResult(data);
+        $('btnFotaCheck').disabled = false;
+        return;
+      }
+
+      $('fotaCheckStatus').textContent = 'Gerät startet für die Prüfung neu...';
+      await new Promise(r => setTimeout(r, 3000));
+      const back = await waitUntilBackOnline(30000);
+      if (!back) {
+        $('fotaCheckStatus').textContent = 'Gerät antwortet nach dem Neustart nicht (Timeout)';
+        $('btnFotaCheck').disabled = false;
+        return;
+      }
+      try {
+        data = await api('/api/fota/check');
+        renderFotaCheckResult(data);
+      } catch (e) {
+        $('fotaCheckStatus').textContent = 'Fehler beim Abrufen des Ergebnisses: ' + e.message;
       } finally {
         $('btnFotaCheck').disabled = false;
       }
     });
 
-    // Download+Flash von GitHub laeuft serverseitig in einem eigenen Task
-    // im Hintergrund (siehe github_ota_start_update() in github_ota.cpp) -
-    // /api/fota/update stoesst das nur noch an und antwortet sofort,
-    // Fortschritt/Ergebnis kommt per Polling ueber /api/fota/progress.
-    // Vorherige Version wartete mit einer einzelnen (bis zu 120s) Anfrage
-    // auf den kompletten Download+Flash-Vorgang direkt im ESP32-Request-
-    // Handler - blockierte dabei den AsyncTCP-Task so lange, dass dessen
-    // eigener Task-Watchdog zuschlug und das Geraet mitten im Update
-    // neu startete (live beobachtet bei einem ~1.8MB-Image).
     $('btnFotaUpdate').addEventListener('click', async () => {
       if (!confirm('Neueste Firmware von GitHub laden, flashen und neustarten?')) return;
       $('btnFotaUpdate').disabled = true;
       $('btnFotaUpdate').textContent = 'Lädt & flasht...';
+      const expectedVersion = $('fotaLatestVersion').textContent;
 
       const reset = () => {
         $('btnFotaUpdate').disabled = false;
@@ -1124,9 +1176,7 @@
       try {
         data = await api('/api/fota/update', { method: 'POST' });
       } catch (e) {
-        toast('Fehler: ' + e.message);
-        reset();
-        return;
+        data = { ok: true, rebooting: true };
       }
       if (!data.ok) {
         toast('Fehler: ' + (data.error || 'unbekannt'));
@@ -1134,39 +1184,86 @@
         return;
       }
 
-      // state: 0=idle, 1=laeuft, 2=erfolgreich (Geraet startet neu), 3=Fehler
-      // (siehe GithubOtaState in github_ota.h).
-      let pollFailCount = 0;
-      const poll = async () => {
-        let p;
-        try {
-          p = await api('/api/fota/progress');
-          pollFailCount = 0;
-        } catch (e) {
-          // Erst nach mehreren Fehlversuchen IN FOLGE als "Geraet startet
-          // neu" werten - ein einzelner Aussetzer kann auch nur ein
-          // kurzer WLAN-Hakler waehrend des laufenden Downloads sein, der
-          // Download selbst laeuft davon unbeeindruckt im Hintergrund-Task
-          // weiter.
-          if (++pollFailCount >= 3) {
+      if (!data.rebooting) {
+        // Board mit PSRAM: Download+Flash laufen bereits im Hintergrund-Task
+        // (github_ota_start_update()), Fortschritt per Polling wie bisher.
+        // state: 0=idle, 1=laeuft, 2=erfolgreich (Geraet startet neu),
+        // 3=Fehler (siehe GithubOtaState in github_ota.h).
+        let pollFailCount = 0;
+        const poll = async () => {
+          let p;
+          try {
+            p = await api('/api/fota/progress');
+            pollFailCount = 0;
+          } catch (e) {
+            // Erst nach mehreren Fehlversuchen IN FOLGE als "Geraet startet
+            // neu" werten - ein einzelner Aussetzer kann auch nur ein
+            // kurzer WLAN-Hakler sein, der Download laeuft davon
+            // unbeeindruckt im Hintergrund-Task weiter.
+            if (++pollFailCount >= 3) {
+              toast('Firmware geflasht, Neustart...');
+            } else {
+              setTimeout(poll, 1000);
+            }
+            return;
+          }
+          if (p.state === 2) {
             toast('Firmware geflasht, Neustart...');
+          } else if (p.state === 3) {
+            toast('Fehler: ' + (p.error || 'unbekannt'));
+            reset();
           } else {
+            const pct = p.total ? Math.round(p.done / p.total * 100) : 0;
+            $('btnFotaUpdate').textContent = p.total ? ('Lädt & flasht... ' + pct + '%') : 'Lädt & flasht...';
             setTimeout(poll, 1000);
           }
-          return;
-        }
-        if (p.state === 2) {
-          toast('Firmware geflasht, Neustart...');
-        } else if (p.state === 3) {
-          toast('Fehler: ' + (p.error || 'unbekannt'));
-          reset();
+        };
+        setTimeout(poll, 500);
+        return;
+      }
+
+      // Board ohne PSRAM: Download+Flash passieren erst im naechsten Boot,
+      // VOR dem Start des Webservers (siehe Kommentar oben) - waehrenddessen
+      // ist /api/fota/progress NICHT erreichbar, anders als im PSRAM-Fall
+      // oben. Erfolg wird stattdessen daran erkannt, dass /api/status nach
+      // dem Reboot eine NEUE esp.fw_version meldet; bei einem Fehlschlag
+      // faellt das Geraet auf die alte Firmware zurueck und
+      // /api/fota/progress traegt den Fehler aus dem Boot-Versuch.
+      $('btnFotaUpdate').textContent = 'Lädt, flasht, startet neu...';
+      await new Promise(r => setTimeout(r, 5000));
+      const back = await waitUntilBackOnline(90000);
+      if (!back) {
+        toast('Gerät antwortet nach dem Update-Versuch nicht (Timeout)');
+        reset();
+        return;
+      }
+
+      let status;
+      try {
+        status = await api('/api/status');
+      } catch (e) {
+        toast('Fehler beim Abrufen des Status nach dem Update');
+        reset();
+        return;
+      }
+
+      if (expectedVersion && status.esp && status.esp.fw_version === expectedVersion) {
+        toast('Firmware erfolgreich auf v' + status.esp.fw_version + ' aktualisiert');
+        setTimeout(() => location.reload(), 1500);
+        return;
+      }
+
+      try {
+        const p = await api('/api/fota/progress');
+        if (p.state === 3 && p.error) {
+          toast('Update fehlgeschlagen: ' + p.error);
         } else {
-          const pct = p.total ? Math.round(p.done / p.total * 100) : 0;
-          $('btnFotaUpdate').textContent = p.total ? ('Lädt & flasht... ' + pct + '%') : 'Lädt & flasht...';
-          setTimeout(poll, 1000);
+          toast('Update wurde nicht angewendet - bitte Status prüfen');
         }
-      };
-      setTimeout(poll, 500);
+      } catch (e) {
+        toast('Update-Status konnte nicht ermittelt werden');
+      }
+      reset();
     });
 
     // --- FOTA ---

@@ -523,11 +523,53 @@ void handleOtaDone(AsyncWebServerRequest *request)
     }
 }
 
-// Blockiert den AsyncTCP-Task fuer die Dauer eines HTTPS-Requests (siehe
-// github_ota.h) - der GitHub-API-Aufruf selbst ist klein (ein paar KB JSON)
-// und dauert wenige hundert ms bis wenige Sekunden, anders als der
-// eigentliche Firmware-Download in handleFotaUpdate() unten (siehe dort).
-void handleFotaCheck(AsyncWebServerRequest *request)
+// Liest nur das Ergebnis des letzten github_ota_check()-Aufrufs (egal ob der
+// aus diesem oder einem frueheren Boot stammt, siehe ota_boot_run_pending_
+// action() in github_ota.cpp) - loest selbst KEINEN Check aus, siehe
+// handleFotaCheckTrigger() unten dafuer. has_result unterscheidet "noch nie
+// geprueft" (leere current_version/error) von einem tatsaechlichen Ergebnis,
+// dashboard.html zeigt im ersten Fall einen neutralen Hinweis statt "kein
+// Update verfuegbar (neueste Version: v)".
+void handleFotaCheckResult(AsyncWebServerRequest *request)
+{
+    bool hasResult = github_ota_latest_version()[0] != '\0' || github_ota_error()[0] != '\0';
+    bool ok = github_ota_error()[0] == '\0';
+    JsonDocument doc;
+    doc["ok"] = ok;
+    doc["has_result"] = hasResult;
+    doc["current_version"] = FW_VERSION;
+    doc["latest_version"] = github_ota_latest_version();
+    doc["update_available"] = github_ota_update_available();
+    if (!ok) {
+        doc["error"] = github_ota_error();
+    }
+    String out;
+    serializeJson(doc, out);
+    AsyncWebServerResponse *response = request->beginResponse(200, "application/json", out);
+    response->addHeader("Cache-Control", "no-store");
+    request->send(response);
+}
+
+#if defined(BOARD_HAS_PSRAM) || defined(FOTA_DIRECT_CHECK)
+// Boards mit PSRAM haben genug freien Heap fuer den GitHub-TLS-Handshake
+// auch im laufenden Betrieb (siehe github_ota.h fuer die Gegenseite) - Check
+// und Update laufen deshalb hier direkt im Request-Handler, kein Reboot-
+// Umweg noetig. Antwortform bewusst OHNE "rebooting" - dashboard.html
+// unterscheidet daran diesen Fall vom Reboot-Fall unten.
+//
+// FOTA_DIRECT_CHECK: Opt-in-Flag fuer denselben direkten Weg auf einem Board
+// OHNE PSRAM. Auf dem CYD getestet (nachdem github_ota_check() auf den
+// leichtgewichtigen github.com-Redirect umgestellt wurde statt der ~14-20 KB
+// grossen api.github.com-JSON-Antwort) und live wieder mit mbedtls -10368
+// "X509 - Allocation of memory failed" gescheitert - der im laufenden
+// Betrieb (WiFiManager/AsyncWebServer/MQTT/LVGL-Pool bereits reserviert)
+// verbleibende ~35 KB grosse zusammenhaengende Block reicht selbst fuer den
+// minimalen Check-Handshake nicht, das war keine Eigenschaft der grossen
+// JSON-Antwort, sondern strukturell. Deshalb fuer cyd_base bewusst NICHT
+// gesetzt (siehe platformio.ini) - bleibt als Flag erhalten, falls es sich
+// auf einem anderen zukuenftigen Board ohne PSRAM lohnt, das erneut zu
+// pruefen.
+void handleFotaCheckTrigger(AsyncWebServerRequest *request)
 {
     bool ok = github_ota_check();
     JsonDocument doc;
@@ -546,22 +588,10 @@ void handleFotaCheck(AsyncWebServerRequest *request)
 }
 
 // Startet Download+Flash nur noch (github_ota_start_update() spawnt einen
-// eigenen Task und kehrt sofort zurueck) statt sie hier im AsyncTCP-
-// Request-Handler abzuwarten - eine vorherige, synchrone Variante blockierte
-// den AsyncTCP-Task fuer die gesamte Download+Flash-Dauer und loeste dessen
-// Task-Watchdog aus, sobald das laenger als CONFIG_ESP_TASK_WDT_TIMEOUT_S
-// dauerte (live beobachtet bei einem ~1.8MB-Image, siehe github_ota.h).
-// Fortschritt/Ergebnis holt sich dashboard.html per Polling ueber
-// handleFotaProgress() unten.
-void handleFotaUpdate(AsyncWebServerRequest *request)
+// eigenen Task und kehrt sofort zurueck) - Fortschritt/Ergebnis holt sich
+// dashboard.html per Polling ueber handleFotaProgress() unten.
+void handleFotaUpdateTrigger(AsyncWebServerRequest *request)
 {
-    // Kein impliziter Re-Check hier - der Nutzer hat den Update-Banner nach
-    // einem vorherigen handleFotaCheck() gesehen (dashboard.html), das
-    // gefundene Asset (github_ota.cpp, Datei-scope-statisch) ist noch
-    // gueltig. Ein zweiter API-Call waere nur unnoetige Latenz.
-    // Immer HTTP 200, Erfolg/Fehler nur ueber "ok" im Body (wie bei
-    // handleFotaCheck oben) - erspart dashboard.html das Auseinanderklauben
-    // von api()s Error-Message bei einem Fehlschlag.
     bool started = github_ota_start_update();
     JsonDocument doc;
     doc["ok"] = started;
@@ -572,6 +602,50 @@ void handleFotaUpdate(AsyncWebServerRequest *request)
     serializeJson(doc, out);
     request->send(200, "application/json", out);
 }
+#else
+// Boards OHNE PSRAM (CYD, ESP32-C3): stoesst KEINEN Check hier im laufenden
+// Betrieb an, sondern nur noch beim NAECHSTEN Boot, VOR Display-/LVGL-/MQTT-
+// Init (siehe github_ota.h, ota_boot_run_pending_action()) - der GitHub-TLS-
+// Handshake braucht mehr zusammenhaengenden Heap, als im laufenden Betrieb
+// frei ist (live beobachtet: mbedtls X509/BIGNUM-Allokationsfehler trotz
+// ausgereizter TLS-Puffer-Tuning, siehe platformio.ini). dashboard.html
+// pollt nach dem Reboot /api/status, bis das Geraet wieder antwortet, und
+// liest dann per GET auf denselben Pfad (handleFotaCheckResult oben) das
+// frische Ergebnis.
+void handleFotaCheckTrigger(AsyncWebServerRequest *request)
+{
+    github_ota_set_pending_boot_action(OTA_BOOT_ACTION_CHECK);
+    AsyncWebServerResponse *response = request->beginResponse(200, "application/json", "{\"ok\":true,\"rebooting\":true}");
+    response->addHeader("Connection", "close");
+    request->send(response);
+    delay(200);
+    ESP.restart();
+}
+
+// Dieselbe Begruendung wie handleFotaCheckTrigger() oben - Download+Flash
+// passieren jetzt ebenfalls erst im naechsten Boot, VOR Display-/LVGL-/MQTT-
+// Init (ota_boot_run_pending_action() ruft dort selbst github_ota_check()
+// erneut auf, um ein zwischenzeitlich neues Release/Asset zu erkennen, dann
+// bei Bedarf github_ota_start_update()). Live-Fortschritt (Bytes) ueber
+// handleFotaProgress() ist waehrend dieses Downloads NICHT erreichbar - der
+// Webserver startet ja selbst erst danach - dashboard.html zeigt
+// stattdessen nur einen "laedt, Geraet startet neu" Hinweis und erkennt
+// Erfolg/Misserfolg nach dem Reboot am esp.fw_version-Feld von /api/status
+// bzw. am state/error von handleFotaProgress().
+void handleFotaUpdateTrigger(AsyncWebServerRequest *request)
+{
+    if (!github_ota_update_available()) {
+        request->send(400, "application/json", "{\"ok\":false,\"error\":\"Kein Update bekannt - zuerst pruefen\"}");
+        return;
+    }
+    github_ota_set_pending_boot_action(OTA_BOOT_ACTION_UPDATE);
+    AsyncWebServerResponse *response = request->beginResponse(200, "application/json", "{\"ok\":true,\"rebooting\":true}");
+    response->addHeader("Connection", "close");
+    request->send(response);
+    delay(200);
+    ESP.restart();
+}
+#endif
 
 void handleFotaProgress(AsyncWebServerRequest *request)
 {
@@ -645,8 +719,9 @@ void web_portal_begin(void)
     s_server.on("/api/reboot", HTTP_POST, handleReboot);
     s_server.on("/api/factory_reset", HTTP_POST, handleFactoryReset);
     s_server.on("/api/ota", HTTP_POST, handleOtaDone, handleOtaUpload);
-    s_server.on("/api/fota/check", HTTP_GET, handleFotaCheck);
-    s_server.on("/api/fota/update", HTTP_POST, handleFotaUpdate);
+    s_server.on("/api/fota/check", HTTP_GET, handleFotaCheckResult);
+    s_server.on("/api/fota/check", HTTP_POST, handleFotaCheckTrigger);
+    s_server.on("/api/fota/update", HTTP_POST, handleFotaUpdateTrigger);
     s_server.on("/api/fota/progress", HTTP_GET, handleFotaProgress);
 
     s_server.begin();

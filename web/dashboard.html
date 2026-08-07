@@ -1584,7 +1584,7 @@
       const isChart = w.type === 'chart_card';
       const isLabelValue = w.type === 'mono_label_value';
       const isMonoCard = w.type === 'mono_cpu_card' || w.type === 'mono_gpu_card';
-      const isForecast = w.type === 'mono_forecast' || w.type === 'mono_standby_weather' || w.type === 'mono_standby_weather_wday';
+      const isForecast = w.type === 'mono_forecast' || w.type === 'mono_standby_weather' || w.type === 'mono_standby_weather_wday' || w.type === 'wide_standby_weather';
       let html = `
         <div class="field"><label>Typ</label><input value="${w.type}" disabled></div>
         <div class="row">
@@ -1670,6 +1670,12 @@
       gpu_card_flat: { w: 160, h: 200, props: {} },
       chart_card: { w: 150, h: 120, props: { source: 'cpu', metric: 'load' } },
       footer: { w: 220, h: 44, props: {} },
+      // full: vollflaechig statt fester Pixelmasse - das Widget ist als
+      // Einzel-Vollbild gedacht und muss auf 320x240 (CYD) wie 800x480
+      // (JC8048W550) passen, editorAddWidget() leitet die Groesse deshalb
+      // aus s_editorW/s_editorH ab (Margin 5 wie im Grundlayout, siehe
+      // layout_default_json() in display_layout.cpp).
+      wide_standby_weather: { full: true, props: { days: 5 } },
       mono_clock: { w: 80, h: 18, props: {} },
       mono_date: { w: 100, h: 10, props: {} },
       mono_weekday: { w: 100, h: 10, props: {} },
@@ -1689,7 +1695,10 @@
       const d = EDITOR_DEFAULTS[type];
       if (!d) return;
       const id = newWidgetId();
-      activeWidgets().push({ id, type, x: 10, y: 10, w: d.w, h: d.h, props: { ...d.props } });
+      const geo = d.full
+        ? { x: 5, y: 5, w: s_editorW - 10, h: s_editorH - 10 }
+        : { x: 10, y: 10, w: d.w, h: d.h };
+      activeWidgets().push({ id, type, ...geo, props: { ...d.props } });
       editorSelect(id);
     }
 

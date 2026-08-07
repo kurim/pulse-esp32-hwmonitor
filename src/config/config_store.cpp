@@ -21,9 +21,8 @@ static void get_str(Preferences &p, const char *key, char *dst, size_t dst_size)
 
 void config_store_load(app_config_t *cfg)
 {
-    // Hier auf false ändern, um das NOT_FOUND beim ersten Start zu verhindern
     if (!s_prefs.begin(NS, /*readOnly=*/false)) {
-        return; 
+        return;
     }
 
     get_str(s_prefs, "wifi_ssid", cfg->wifi_ssid, sizeof(cfg->wifi_ssid));

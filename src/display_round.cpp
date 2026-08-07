@@ -236,7 +236,6 @@ void displayRoundBuild(lv_obj_t *scr)
   s_standby = s_standbyAuto = false;
   s_manualToggleRequested = false;
 
-  //lv_obj_set_style_bg_color(scr, lv_color_hex(0x131B2E), LV_PART_MAIN);
   lv_obj_set_style_bg_color(scr, lv_color_black(), LV_PART_MAIN);
   lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, LV_PART_MAIN);
 

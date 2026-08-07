@@ -12,7 +12,6 @@ static void init_card_style(void) {
 
     lv_style_init(&style_card);
     
-    // Hintergrund & Gradient (Dark Theme)
     lv_style_set_bg_color(&style_card, lv_color_hex(0x1E293B));
 
     // Ecken & Abstände - beides klein gehalten (User-Vorgabe "radius auf 5px",
@@ -21,10 +20,9 @@ static void init_card_style(void) {
     lv_style_set_radius(&style_card, 5);
     lv_style_set_pad_all(&style_card, 5);
     
-    // NEU: Moderner, leicht leuchtender Rand (wie auf deinem Foto!)
-    lv_style_set_border_color(&style_card, lv_color_hex(0x38BDF8)); // Neon Blue / Cyan
+    lv_style_set_border_color(&style_card, lv_color_hex(0x38BDF8));
     lv_style_set_border_width(&style_card, 2);
-    lv_style_set_border_opa(&style_card, LV_OPA_40); // Leicht transparent
+    lv_style_set_border_opa(&style_card, LV_OPA_40);
 
     style_inited = true;
 }
@@ -38,20 +36,17 @@ static card_container_t create_card(lv_obj_t * parent, int sizeX, int sizeY) {
 
     card_container_t comp;
 
-    // Haupt-Container
     comp.card = lv_obj_create(parent);
     lv_obj_add_style(comp.card, &style_card, 0);
     lv_obj_set_size(comp.card, sizeX, sizeY);
     
-    // Wichtig: Scrollbalken & Verhalten deaktivieren
     lv_obj_remove_flag(comp.card, LV_OBJ_FLAG_SCROLLABLE);
 
-    // Vertikales Flexbox-Layout für Dashboards
     lv_obj_set_layout(comp.card, LV_LAYOUT_FLEX);
     lv_obj_set_flex_flow(comp.card, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(comp.card, 
-                          LV_FLEX_ALIGN_SPACE_BETWEEN, // Gleichmäßig von oben nach unten verteilen
-                          LV_FLEX_ALIGN_CENTER,        // Horizontal zentrieren
+    lv_obj_set_flex_align(comp.card,
+                          LV_FLEX_ALIGN_SPACE_BETWEEN,
+                          LV_FLEX_ALIGN_CENTER,
                           LV_FLEX_ALIGN_CENTER);
 
     return comp;

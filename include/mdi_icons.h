@@ -5,7 +5,6 @@
 extern "C" {
 #endif
 
-// Deklaration der generierten .c Datei
 extern const lv_font_t mdi_16;
 extern const lv_font_t mdi_20;
 extern const lv_font_t mdi_22;

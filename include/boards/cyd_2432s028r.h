@@ -6,9 +6,6 @@
 #include <SPI.h>
 #include <XPT2046_Touchscreen.h>
 
-// -----------------------------------------------------------------------------
-// Pin-Definitionen ESP32-2432S028 ("CYD" - Cheap Yellow Display)
-// -----------------------------------------------------------------------------
 #define BOARD_NAME "ESP32-2432S028 (CYD)"
 #define BOARD_HAS_DISPLAY 1
 #define BOARD_HAS_TOUCH   1
@@ -16,7 +13,6 @@
 #define LCD_WIDTH  320
 #define LCD_HEIGHT 240
 
-// SPI Pins
 #define CYD_TFT_MISO 12
 #define CYD_TFT_MOSI 13
 #define CYD_TFT_SCLK 14
@@ -24,20 +20,16 @@
 #define CYD_TFT_DC    2
 #define CYD_TFT_RST  -1 // An EN/Reset des ESP32 gekoppelt
 
-// Touch Pins (XPT2046)
 #define CYD_TOUCH_IRQ 36
 #define CYD_TOUCH_MOSI 32
 #define CYD_TOUCH_MISO 39
 #define CYD_TOUCH_CLK 25
 #define CYD_TOUCH_CS 33
 
-// Backlight (PWM-faehig)
 #define GFX_BL 21
 #define BOARD_HAS_BACKLIGHT_PWM 1
 
-// -----------------------------------------------------------------------------
-// Treibereinrichtung (ILI9341 via SPI)
-// -----------------------------------------------------------------------------
+// Treibereinrichtung (ILI9341 via SPI):
 // HSPI, nicht der VSPI-Default (siehe CLAUDE.md) - physisch auf HSPI verdrahtet,
 // Touch (XPT2046) haengt an einem eigenen VSPI-Bus, siehe initBoardTouch()
 // unten. is_shared_interface=false, da Display allein auf HSPI sitzt.
@@ -50,9 +42,6 @@ inline Arduino_GFX *gfx = new Arduino_ILI9341(
     bus, CYD_TFT_RST, 1 /* Rotation: Landscape */
 );
 
-// -----------------------------------------------------------------------------
-// Initialisierungs-Funktion
-// -----------------------------------------------------------------------------
 inline bool initBoardDisplay() {
   pinMode(GFX_BL, OUTPUT);
   digitalWrite(GFX_BL, LOW);
@@ -77,11 +66,9 @@ inline void boardDisplaySetBrightness(uint8_t level) {
   ledcWrite(GFX_BL, level);
 }
 
-// -----------------------------------------------------------------------------
 // LVGL-Anbindung: SPI-Panel hat kein adressierbares Framebuffer wie das
 // RGB-Panel - LVGL rendert partiell in einen kleinen Draw-Buffer im internen
 // RAM, die Flush-Callback schiebt jede Kachel per SPI raus.
-// -----------------------------------------------------------------------------
 inline void cyd_flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map) {
   uint32_t w = area->x2 - area->x1 + 1;
   uint32_t h = area->y2 - area->y1 + 1;
@@ -89,7 +76,6 @@ inline void cyd_flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *px_
   lv_display_flush_ready(disp);
 }
 
-// -----------------------------------------------------------------------------
 // Touch (XPT2046) - Hardware-SPI ueber einen eigenen VSPI-Bus. Eigene
 // SPIClass-Instanz statt der Default-SPI (die waere fuer klassisches VSPI
 // mit anderen Pins belegt). Vorher testweise per Bitbang
@@ -97,7 +83,6 @@ inline void cyd_flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *px_
 // digitalWrite/digitalRead in einer Schleife ist inhaerent langsamer als ein
 // Hardware-SPI-Peripheral) - zurueck auf die Original-Bibliothek von
 // PaulStoffregen.
-// -----------------------------------------------------------------------------
 inline SPIClass touchSPI(VSPI);
 inline XPT2046_Touchscreen touchCtrl(CYD_TOUCH_CS, CYD_TOUCH_IRQ);
 

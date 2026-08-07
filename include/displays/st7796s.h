@@ -2,10 +2,8 @@
 
 #include "display_common.h"
 
-// -----------------------------------------------------------------------------
 // ST7796S (320x480 TFT) - siehe gc9a01.h fuer die Begruendung des Namespace-
 // Musters (mehrere Display-Header sollen gemeinsam kompilierbar sein).
-// -----------------------------------------------------------------------------
 namespace disp_st7796s {
 
 inline constexpr const char *NAME   = "ST7796S";

@@ -1,4 +1,3 @@
-// include/board_config.h
 #pragma once
 
 #if defined(BOARD_CYD_2432S028R)

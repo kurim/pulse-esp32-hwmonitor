@@ -42,7 +42,7 @@ void config_set_defaults(app_config_t *cfg)
     cfg->brightness = 255;
     cfg->rotation   = 1;
     cfg->display_type = board_profile_default();
-    cfg->standby_timeout_s = 120; // 2 Minuten
+    cfg->standby_timeout_s = 120;
     cfg->cpu_arc_color = 0x00B2FE; // Cyan, siehe display_round.cpp
     cfg->gpu_arc_color = 0x9B41FE; // Violett
     strcpy(cfg->language, "de");

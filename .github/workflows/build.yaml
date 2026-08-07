@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   # Laedt einmalig die Pakete (Toolchains, Framework) fuer ALLE sieben Envs
@@ -187,11 +188,23 @@ jobs:
           ref: platformio
           path: docs-checkout
 
-      - name: docs/firmware/latest/ aktualisieren und committen
+      # platformio ist geschuetzt (PR-Pflicht + verifizierte Commit-
+      # Signaturen) - ein direkter "git push" scheitert an beidem (siehe
+      # GH013-Fehler beim ersten Versuch hier). Stattdessen auf einen eigenen
+      # Branch pushen und per PR gegen platformio stellen; ein normaler
+      # "git push" kann nicht signieren, ein ueber die GitHub-UI/-API
+      # gemergter Commit dagegen automatisch schon. Bewusst kein Auto-Merge
+      # hier - der PR-Zwang auf platformio ist vermutlich genau fuer einen
+      # menschlichen Review-Schritt gedacht, den ein selbst-mergender Workflow
+      # wieder aushebeln wuerde.
+      - name: docs/firmware/latest/ aktualisieren und PR erstellen
         working-directory: docs-checkout
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME#v}"
+          BRANCH="docs/firmware-v${VERSION}"
 
           mkdir -p docs/firmware/latest
           rm -f docs/firmware/latest/*.bin
@@ -211,5 +224,17 @@ jobs:
             echo "Keine Aenderungen an docs/firmware/latest - nichts zu committen."
             exit 0
           fi
+
+          git checkout -b "$BRANCH"
           git commit -m "docs: web flasher firmware auf v${VERSION} aktualisieren"
-          git push origin HEAD:platformio
+          git push -f origin "$BRANCH"
+
+          if gh pr view "$BRANCH" --json state -q .state >/dev/null 2>&1; then
+            echo "PR fuer $BRANCH existiert bereits."
+          else
+            gh pr create \
+              --base platformio \
+              --head "$BRANCH" \
+              --title "docs: web flasher firmware auf v${VERSION} aktualisieren" \
+              --body "Automatisch von .github/workflows/build.yaml erzeugt (Release v${VERSION}). Aktualisiert docs/firmware/latest/ fuer den Browser-Flasher - zum Uebernehmen mergen."
+          fi

@@ -24,12 +24,14 @@ void displayDrawInit();
 // Periodisch aus main.cpp loop() aufrufen, gedrosselt.
 void displayDrawUpdate();
 
-// Liest die BOOT-Taste als manuellen Standby-Umschalter fuer rundes UND
-// Mono-Display (no-op auf allen anderen Boards/Displays UND ausserhalb des
-// ESP32-C3, siehe displayRoundButtonPoll()/displayMonoButtonPoll() in
-// display_round.h/display_layout.h) - UNGEDROSSELT jede loop()-Iteration
-// aufrufen, sonst koennte ein kurzer Tastendruck zwischen zwei
-// displayDrawUpdate()-Takten (500ms) verloren gehen.
+// Liest die BOOT-Taste als manuellen Standby-Umschalter - rundes Display
+// ueber displayRoundButtonPoll() (nur ESP32-C3), alle anderen Boards mit
+// Standby-Widgets (BOARD_GENERIC, CYD, JC8048W550) ueber
+// displayMonoButtonPoll() (siehe dortige Kommentare in
+// display_round.h/display_layout.h fuer die jeweiligen No-op-Faelle) -
+// UNGEDROSSELT jede loop()-Iteration aufrufen, sonst koennte ein kurzer
+// Tastendruck zwischen zwei displayDrawUpdate()-Takten (500ms) verloren
+// gehen.
 void displayDrawButtonPoll();
 
 bool displayIsBootAnimFinished();

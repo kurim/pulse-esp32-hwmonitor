@@ -85,11 +85,12 @@ bool touchCalibrationNeeded(void);
 // um zum normalen Boot-Ablauf zurueckzukehren.
 void beginFirstBootTouchCalibration(void);
 
-// Liest die BOOT-Taste (jedes generische Devkit - Pin ist chip-abhaengig,
-// siehe Begruendung in display_layout.cpp) und schaltet damit manuell
-// zwischen Dashboard- und Standby-Layout um (unabhaengig vom automatischen
-// standby_timeout_s) - Mono-Gegenstueck zu displayRoundButtonPoll()
-// (display_round.h). No-op auf CYD/JC8048W550 und wenn gerade kein
-// Mono-Display aktiv ist. UNGEDROSSELT jede loop()-Iteration aufrufen,
-// siehe displayRoundButtonPoll()-Kommentar in display_draw.h fuer den Grund.
+// Liest die BOOT-Taste (Pin ist chip-abhaengig, siehe Begruendung in
+// display_layout.cpp) und schaltet damit manuell zwischen Dashboard- und
+// Standby-Layout um (unabhaengig vom automatischen standby_timeout_s) -
+// Mono-Gegenstueck zu displayRoundButtonPoll() (display_round.h). Aktiv auf
+// BOARD_GENERIC, BOARD_CYD_2432S028R und BOARD_JC8048W550; No-op sonst und
+// wenn gerade kein Layout mit Standby-Widgets aktiv ist. UNGEDROSSELT jede
+// loop()-Iteration aufrufen, siehe displayRoundButtonPoll()-Kommentar in
+// display_draw.h fuer den Grund.
 void displayMonoButtonPoll(void);

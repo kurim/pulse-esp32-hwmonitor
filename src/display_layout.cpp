@@ -1639,11 +1639,11 @@ lv_obj_t *create_wide_standby_weather(lv_obj_t *parent, JsonObjectConst props) {
   lv_obj_set_flex_flow(box, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_flex_align(box, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
-  // Antippen beendet den Standby manuell - Gegenstueck zur BOOT-Taste auf
-  // BOARD_GENERIC (displayMonoButtonPoll(), laeuft dort unabhaengig vom
-  // gewaehlten Displaytyp). CYD/JC8048W550 haben keine freie GPIO fuer einen
-  // Taster, aber beide haben Touch - Antippen ist dort der einzige manuelle
-  // Weg zurueck ausser dem naechsten Auto-Zyklus.
+  // Antippen beendet den Standby manuell - zusaetzlich zur BOOT-Taste
+  // (displayMonoButtonPoll() weiter unten, mittlerweile auch fuer
+  // CYD/JC8048W550 aktiv). Beide Boards haben Touch, das bleibt der
+  // bequemere Weg direkt am Screen; die BOOT-Taste greift auch, wenn gerade
+  // nicht auf den Standby-Screen getippt werden kann/soll.
   lv_obj_add_event_cb(
       box, [](lv_event_t *) { s_monoManualToggleRequested = true; }, LV_EVENT_CLICKED, nullptr);
 
@@ -1714,6 +1714,7 @@ lv_obj_t *create_wide_standby_weather(lv_obj_t *parent, JsonObjectConst props) {
     w.dayIconLbls[i] = lv_label_create(col);
     lv_label_set_text(w.dayIconLbls[i], MDI_WEATHER_SUNNY);
     lv_obj_set_style_text_font(w.dayIconLbls[i], dayIconFont, 0);
+    lv_obj_set_style_text_color(w.dayIconLbls[i], lv_color_hex(weather_icon_color("01d")), 0);
 
     lv_obj_t *hiLoRow = create_icon_value_row(col);
     w.dayHiLbls[i] = lv_label_create(hiLoRow);
@@ -2232,6 +2233,7 @@ static void refresh_wide_standby_weather_widgets(void) {
         gmtime_r(&dt, &tmv);
         lv_label_set_text(w.dayNameLbls[i], weather_weekday_abbr(tmv.tm_wday));
         lv_label_set_text(w.dayIconLbls[i], weather_icon_mdi(d.icon));
+        lv_obj_set_style_text_color(w.dayIconLbls[i], lv_color_hex(weather_icon_color(d.icon)), 0);
         int hi = (int)(d.temp_max + (d.temp_max >= 0 ? 0.5f : -0.5f));
         int lo = (int)(d.temp_min + (d.temp_min >= 0 ? 0.5f : -0.5f));
         snprintf(buf, sizeof(buf), "%d\xc2\xb0" "C", hi);
@@ -2241,6 +2243,7 @@ static void refresh_wide_standby_weather_widgets(void) {
       } else {
         lv_label_set_text(w.dayNameLbls[i], "--");
         lv_label_set_text(w.dayIconLbls[i], MDI_WEATHER_CLOUDY);
+        lv_obj_set_style_text_color(w.dayIconLbls[i], lv_color_hex(0x64748B), 0);
         lv_label_set_text(w.dayHiLbls[i], "--");
         lv_label_set_text(w.dayLoLbls[i], "--");
       }
@@ -2380,6 +2383,16 @@ static void refresh_mono_standby_visibility(void) {
     if (s_monoStandby) lv_obj_remove_flag(o, LV_OBJ_FLAG_HIDDEN);
     else lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);
   }
+  // Footer bleibt sonst IMMER sichtbar (das ist beim Dashboard/Settings-Tab-
+  // Umschalter oben ausdruecklich gewollt, siehe dortiger Kommentar) - der
+  // volflaechige Standby-Screen (create_wide_standby_weather()) ueberlappt
+  // aber genau den Footer-Streifen am unteren Rand (layout_default_json()
+  // deckt fuers Standby-Widget h - 2*margin ab), ohne dieses Ausblenden
+  // bliebe die Tab-Leiste als Fremdkoerper ueber der Standby-Uhr sichtbar.
+  if (s_footerObj) {
+    if (s_monoStandby) lv_obj_add_flag(s_footerObj, LV_OBJ_FLAG_HIDDEN);
+    else lv_obj_remove_flag(s_footerObj, LV_OBJ_FLAG_HIDDEN);
+  }
 }
 
 // BOOT-Taste als manueller Standby-Umschalter, exaktes Gegenstueck zu
@@ -2392,7 +2405,15 @@ static void refresh_mono_standby_visibility(void) {
 // displayDrawButtonPoll() in display_draw.cpp), reine Duplikation von ~15
 // Zeilen ist hier lesbarer als eine gemeinsame Abstraktion fuer zwei
 // Aufrufer.
-#if defined(BOARD_GENERIC)
+//
+// Auch fuer CYD/JC8048W550 aktiv (User-Vorgabe: BOOT-Taste soll dort
+// ebenfalls als Umschalter dienen) - beide sind klassischer ESP32 bzw.
+// ESP32-S3, landen also im GPIO0-Zweig unten. GPIO0 ist auf keinem der
+// beiden Boards fuer Display/Touch/Backlight verdrahtet (siehe
+// boards/cyd_2432s028r.h, boards/guition_jc8048w550.h), das Lesen als
+// INPUT_PULLUP kollidiert mit nichts - Antippen des Standby-Screens (siehe
+// create_wide_standby_weather() oben) bleibt zusaetzlich moeglich.
+#if defined(BOARD_GENERIC) || defined(BOARD_CYD_2432S028R) || defined(BOARD_JC8048W550)
 
 void displayMonoButtonPoll(void) {
 #if CONFIG_IDF_TARGET_ESP32C3

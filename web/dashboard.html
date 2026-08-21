@@ -1450,6 +1450,7 @@
       ['mono_gpu_card', '+ GPU (Karte)'],
       ['mono_line', '+ Linie'],
       ['mono_label_value', '+ Label - Wert'],
+      ['value_bar', '+ Balken'],
     ];
     const CARD_PALETTE = [
       ['datetime_card', '+ Datum/Uhrzeit'],
@@ -1461,6 +1462,7 @@
       ['chart_card', '+ Verlauf'],
       ['footer', '+ Footer'],
       ['wide_standby_weather', '+ Uhr/Wetter (Vollbild, Standby)'],
+      ['value_bar', '+ Balken'],
     ];
 
     // Palette ist kontextuell (Mono hat eigene kleine Widget-Typen), der
@@ -1512,6 +1514,9 @@
       }
       if (w.type === 'mono_label_value') {
         return 'Label-Wert: ' + (w.props.label || w.props.key || '?');
+      }
+      if (w.type === 'value_bar') {
+        return 'Balken: ' + (w.props.key || '?');
       }
       if (w.type === 'mono_clock' && w.props.big) {
         return 'Uhr (groß)';
@@ -1576,7 +1581,19 @@
       w.y = Math.max(0, Math.min(s_editorH - w.h, snapToGrid(y)));
       editorRender();
     });
-    window.addEventListener('pointerup', () => { s_dragId = null; });
+    // editorRenderProps() nach dem Loslassen erneut aufrufen: das Props-
+    // Panel (propX/propY etc.) wird waehrend des Ziehens NICHT live
+    // mitaktualisiert (pointermove oben ruft nur editorRender() fuer die
+    // Canvas-Box auf), blieb bislang also auf der Position VOR dem Drag
+    // stehen. Ein Klick auf "Uebernehmen" direkt nach dem Ziehen las dann
+    // diese veralteten propX/propY-Werte aus und ueberschrieb die gerade
+    // gezogene Position damit wieder - das Widget "sprang zurueck" und
+    // musste erneut verschoben werden (User-Bugreport).
+    window.addEventListener('pointerup', () => {
+      const wasDragging = s_dragId !== null;
+      s_dragId = null;
+      if (wasDragging) editorRenderProps();
+    });
 
     // chart_card (Quelle/Messwert) und mono_label_value (Key/Label/Unit)
     // sind die einzigen Typen mit eigenen Props - alle anderen (Karten UND
@@ -1596,6 +1613,7 @@
       }
       const isChart = w.type === 'chart_card';
       const isLabelValue = w.type === 'mono_label_value';
+      const isValueBar = w.type === 'value_bar';
       const isMonoCard = w.type === 'mono_cpu_card' || w.type === 'mono_gpu_card';
       const isForecast = w.type === 'mono_forecast' || w.type === 'mono_standby_weather' || w.type === 'mono_standby_weather_wday' || w.type === 'wide_standby_weather';
       let html = `
@@ -1630,6 +1648,23 @@
           </div>
           <div class="field"><label>Einheit (z.B. %, C, W, MB)</label><input id="propLvUnit" value="${w.props.unit || ''}"></div>`;
       }
+      if (isValueBar) {
+        const dynOptionsHtml = s_dynKeys.map(k => `<option value="${k}">`).join('');
+        const rangeOptionsHtml = [['percent', 'Prozent (0-100)'], ['temp', 'Temp (anpassbar)']]
+          .map(([v, l]) => `<option value="${v}"${v === (w.props.range || 'percent') ? ' selected' : ''}>${l}</option>`)
+          .join('');
+        html += `
+          <div class="field">
+            <label>Feldname (aus PC-App)</label>
+            <input id="propBarKey" value="${w.props.key || ''}" list="lvKeyList">
+            <datalist id="lvKeyList">${dynOptionsHtml}</datalist>
+          </div>
+          <div class="field"><label>Wertebereich</label><select id="propBarRange">${rangeOptionsHtml}</select></div>
+          <div class="row">
+            <div class="field"><label>Min (bei Temp)</label><input type="number" id="propBarMin" value="${w.props.rangeMin ?? 0}"></div>
+            <div class="field"><label>Max (bei Temp)</label><input type="number" id="propBarMax" value="${w.props.rangeMax ?? 100}"></div>
+          </div>`;
+      }
       if (isMonoCard) {
         const borderChecked = w.props.border !== false ? 'checked' : '';
         const bigChecked = w.props.big ? 'checked' : '';
@@ -1660,6 +1695,10 @@
         if ($('propLvLabel')) w.props.label = $('propLvLabel').value;
         if ($('propLvKey')) w.props.key = $('propLvKey').value;
         if ($('propLvUnit')) w.props.unit = $('propLvUnit').value;
+        if ($('propBarKey')) w.props.key = $('propBarKey').value;
+        if ($('propBarRange')) w.props.range = $('propBarRange').value;
+        if ($('propBarMin')) w.props.rangeMin = parseFloat($('propBarMin').value) || 0;
+        if ($('propBarMax')) w.props.rangeMax = parseFloat($('propBarMax').value) || 100;
         if ($('propBorder')) w.props.border = $('propBorder').checked;
         if ($('propBig')) w.props.big = $('propBig').checked;
         if ($('propFcDays')) w.props.days = Math.max(1, Math.min(5, parseInt($('propFcDays').value, 10) || 3));
@@ -1702,6 +1741,7 @@
       mono_gpu_card: { w: 64, h: 64, props: { border: true, big: true } },
       mono_line: { w: 100, h: 1, props: {} },
       mono_label_value: { w: 100, h: 10, props: { key: '', label: '', unit: '' } },
+      value_bar: { w: 100, h: 10, props: { key: '', range: 'percent', rangeMin: 0, rangeMax: 100 } },
     };
 
     function editorAddWidget(type) {

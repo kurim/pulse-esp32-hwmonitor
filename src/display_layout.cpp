@@ -482,6 +482,13 @@ struct MonoLabelValueWidget {
   String key;
   String unit;
 };
+// Range (percent/temp) wird einmalig bei der Erstellung per lv_bar_set_range
+// auf das lv_bar-Objekt gelegt (LVGL clamped lv_bar_set_value() automatisch
+// dagegen) - im Refresh-Zyklus wird deshalb nur noch der Key gebraucht.
+struct ValueBarWidget {
+  lv_obj_t *bar;
+  String key;
+};
 
 std::vector<MonoClockWidget>      s_monoClockWidgets;
 std::vector<MonoDateWidget>       s_monoDateWidgets;
@@ -490,6 +497,7 @@ std::vector<MonoWeatherWidget>    s_monoWeatherWidgets;
 std::vector<MonoStatWidget>       s_monoStatWidgets;
 std::vector<MonoHwCardWidget>     s_monoHwCardWidgets;
 std::vector<MonoLabelValueWidget> s_monoLabelValueWidgets;
+std::vector<ValueBarWidget>       s_valueBarWidgets;
 
 // props["big"]: false = kleine Kopfzeilen-Uhr (unscii_8, wie im alten
 // hartcodierten Dashboard), true = grosse zentrierte Standby-Uhr
@@ -1277,6 +1285,59 @@ lv_obj_t *create_mono_label_value(lv_obj_t *parent, JsonObjectConst props) {
   return row;
 }
 
+// Frei platzierbarer lv_bar, Wertequelle wie mono_label_value oben
+// (props["key"] gegen die 6 festen hw_info-Namen ODER dyn_values) - anders
+// als der fest verdrahtete Balken in build_hw_card() nicht an CPU/GPU-Last
+// gebunden, sondern an einen beliebigen MQTT-Wert (Issue #64). Anders als
+// mono_label_value oben in BEIDEN Paletten (MONO_PALETTE UND CARD_PALETTE
+// in dashboard.html) wählbar - Styling passt sich per displayIsMono() an
+// (blockig/weiss auf Mono, gruen->rot-Verlauf wie build_hw_card() auf den
+// Farbdisplays). Fuer "gilt fuer alle ausser round" ist keine
+// Sonderbehandlung noetig: das GC9A01-Rund-Display erreicht den generischen
+// Layout-Editor (und damit kWidgetTypes) laut dashboard.html gar nicht erst.
+// props["range"] (Default "percent"): "percent" fixiert den Balken auf
+// 0-100, "temp" nutzt stattdessen props["rangeMin"]/["rangeMax"] (User-
+// Vorgabe: Wertebereich-Dropdown "Temp (anpassbar)" vs. "Prozent").
+// Breite/Hoehe kommen wie bei jedem anderen Widget generisch aus x/y/w/h
+// in layout_apply() - der lv_bar ist hier direkt das Root-Objekt, kein
+// Wrapper noetig.
+lv_obj_t *create_value_bar(lv_obj_t *parent, JsonObjectConst props) {
+  lv_obj_t *bar = lv_bar_create(parent);
+
+  bool isTemp = strcmp(props["range"] | "percent", "temp") == 0;
+  float rangeMin = props["rangeMin"] | 0;
+  float rangeMax = props["rangeMax"] | 100;
+  if (isTemp && rangeMax > rangeMin) {
+    lv_bar_set_range(bar, (int32_t)rangeMin, (int32_t)rangeMax);
+  } else {
+    lv_bar_set_range(bar, 0, 100); // ungueltiger/leerer Bereich faellt auf Prozent zurueck
+  }
+
+  if (displayIsMono()) {
+    // Gleicher blockiger, AA-freier Look wie der Rest der Mono-UI (siehe
+    // z.B. build_mono_hw_card()) - Aussenrahmen weiss, Fuellung weiss ohne
+    // Verlauf, keine Rundung.
+    lv_obj_set_style_radius(bar, 0, LV_PART_MAIN);
+    lv_obj_set_style_radius(bar, 0, LV_PART_INDICATOR);
+    lv_obj_set_style_bg_opa(bar, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_border_width(bar, 1, LV_PART_MAIN);
+    lv_obj_set_style_border_color(bar, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(bar, lv_color_white(), LV_PART_INDICATOR);
+    lv_obj_set_style_bg_opa(bar, LV_OPA_COVER, LV_PART_INDICATOR);
+  } else {
+    // Gleicher gruen->rot Verlauf wie der fest verdrahtete Balken in
+    // build_hw_card() (dort ausfuehrlich begruendet).
+    lv_obj_set_style_bg_color(bar, lv_color_hex(0x334155), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(bar, lv_color_hex(0x32CD32), LV_PART_INDICATOR);
+    lv_obj_set_style_bg_grad_color(bar, lv_color_hex(0xDC0900), LV_PART_INDICATOR);
+    lv_obj_set_style_bg_grad_dir(bar, LV_GRAD_DIR_HOR, LV_PART_INDICATOR);
+  }
+
+  const char *key = props["key"] | "";
+  s_valueBarWidgets.push_back({bar, String(key)});
+  return bar;
+}
+
 // --- Dashboard/Einstellungen als echte Tabs (Footer-Icons) ---
 //
 // Settings war zuerst ein Vollbild-Overlay ueber dem Dashboard - User-Vorgabe
@@ -1828,6 +1889,7 @@ const WidgetTypeEntry kWidgetTypes[] = {
     {"mono_gpu_card", create_mono_gpu_card},
     {"mono_line", create_mono_line},
     {"mono_label_value", create_mono_label_value},
+    {"value_bar", create_value_bar},
 };
 
 enum class LayoutCmdType { kApplyFull };
@@ -1863,6 +1925,7 @@ void layout_apply(JsonArrayConst widgets, JsonArrayConst standbyWidgets) {
   s_monoStatWidgets.clear();
   s_monoHwCardWidgets.clear();
   s_monoLabelValueWidgets.clear();
+  s_valueBarWidgets.clear();
   // Der Settings-Tab-Inhalt sowie Footer/Pill-Handles sind Kinder von scr -
   // lv_obj_clean() hat sie (falls vorhanden) gerade mit geloescht, die
   // Zeiger waeren sonst dangling. Tab-Zustand faellt bei jedem Rebuild
@@ -2374,6 +2437,28 @@ static void refresh_mono_hw_card_widgets(void) {
 // props["key"] gegen die 6 festen hw_info-Namen pruefen, sonst Fallback auf
 // dyn_values (siehe shared_state.h/hw_data.cpp) - deckt sowohl die
 // Grundwerte als auch beliebige weitere vom PC-Client gesendete Felder ab.
+// Gemeinsame Kern-Lookup-Logik fuer mono_label_value UND value_bar (siehe
+// refresh_value_bar_widgets() unten) - Aufrufer haelt bereits hw_data_lock()
+// (dyn_values ist unter demselben Lock geschuetzt wie hw_info).
+static bool resolve_hw_value(const char *key,
+                              float cpuLoad, float cpuTemp, float cpuPower,
+                              float gpuLoad, float gpuTemp, float gpuPower,
+                              float &out) {
+  if (strcmp(key, "cpu_load") == 0)       { out = cpuLoad;  return true; }
+  if (strcmp(key, "cpu_temp") == 0)       { out = cpuTemp;  return true; }
+  if (strcmp(key, "cpu_power") == 0)      { out = cpuPower; return true; }
+  if (strcmp(key, "gpu_load") == 0)       { out = gpuLoad;  return true; }
+  if (strcmp(key, "gpu_temp") == 0)       { out = gpuTemp;  return true; }
+  if (strcmp(key, "gpu_power") == 0)      { out = gpuPower; return true; }
+  for (int i = 0; i < dyn_values_count; i++) {
+    if (strncmp(dyn_values[i].key, key, sizeof(dyn_values[i].key)) == 0) {
+      out = dyn_values[i].value;
+      return true;
+    }
+  }
+  return false;
+}
+
 static void refresh_mono_label_value_widgets(void) {
   if (s_monoLabelValueWidgets.empty()) return;
   hw_data_lock();
@@ -2382,30 +2467,32 @@ static void refresh_mono_label_value_widgets(void) {
 
   char buf[24];
   for (auto &w : s_monoLabelValueWidgets) {
-    const char *key = w.key.c_str();
-    bool found = true;
-    float val = 0;
-    if (strcmp(key, "cpu_load") == 0)       val = cpuLoad;
-    else if (strcmp(key, "cpu_temp") == 0)  val = cpuTemp;
-    else if (strcmp(key, "cpu_power") == 0) val = cpuPower;
-    else if (strcmp(key, "gpu_load") == 0)  val = gpuLoad;
-    else if (strcmp(key, "gpu_temp") == 0)  val = gpuTemp;
-    else if (strcmp(key, "gpu_power") == 0) val = gpuPower;
-    else {
-      found = false;
-      for (int i = 0; i < dyn_values_count; i++) {
-        if (strncmp(dyn_values[i].key, key, sizeof(dyn_values[i].key)) == 0) {
-          val = dyn_values[i].value;
-          found = true;
-          break;
-        }
-      }
-    }
-    if (found) {
+    float val;
+    if (resolve_hw_value(w.key.c_str(), cpuLoad, cpuTemp, cpuPower, gpuLoad, gpuTemp, gpuPower, val)) {
       snprintf(buf, sizeof(buf), "%d%s", (int)(val + (val >= 0 ? 0.5f : -0.5f)), w.unit.c_str());
       lv_label_set_text(w.valLbl, buf);
     } else {
       lv_label_set_text(w.valLbl, "--");
+    }
+  }
+  hw_data_unlock();
+}
+
+// Wie refresh_mono_label_value_widgets() oben, nur ohne Textformatierung -
+// die Range (Prozent/Temp) sitzt bereits als lv_bar_set_range() auf dem
+// Objekt (siehe create_value_bar()), lv_bar_set_value() clamped automatisch.
+// Kein Treffer -> Balken behaelt einfach seinen letzten Wert (kein "--"-
+// Aequivalent fuer einen Balken sinnvoll darstellbar).
+static void refresh_value_bar_widgets(void) {
+  if (s_valueBarWidgets.empty()) return;
+  hw_data_lock();
+  float cpuLoad = hw_info.cpu_load, cpuTemp = hw_info.cpu_temp, cpuPower = hw_info.cpu_power;
+  float gpuLoad = hw_info.gpu_load, gpuTemp = hw_info.gpu_temp, gpuPower = hw_info.gpu_power;
+
+  for (auto &w : s_valueBarWidgets) {
+    float val;
+    if (resolve_hw_value(w.key.c_str(), cpuLoad, cpuTemp, cpuPower, gpuLoad, gpuTemp, gpuPower, val)) {
+      lv_bar_set_value(w.bar, (int32_t)(val + (val >= 0 ? 0.5f : -0.5f)), LV_ANIM_OFF);
     }
   }
   hw_data_unlock();
@@ -2557,6 +2644,7 @@ void layout_refresh_bindings(void) {
   refresh_mono_stat_widgets();
   refresh_mono_hw_card_widgets();
   refresh_mono_label_value_widgets();
+  refresh_value_bar_widgets();
   refresh_mono_standby_visibility();
 }
 

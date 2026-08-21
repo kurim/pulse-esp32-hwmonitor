@@ -18,6 +18,7 @@
 // Laufzeit fest (app_config.display_type) - siehe display_draw.cpp fuer
 // dasselbe Muster.
 #include "displays/display_factory.h"
+#include "displays/mono_oled_i2c.h"
 #endif
 
 namespace {
@@ -2426,6 +2427,21 @@ void displayMonoButtonPoll(void) {
   static bool initialized = false;
   static bool lastLevel = true; // INPUT_PULLUP: HIGH = losgelassen
   static uint32_t lastChangeMs = 0;
+
+#if CONFIG_IDF_TARGET_ESP32C3
+  // GPIO9 ist auf dem C3 gleichzeitig der Default-SCL-Pin des mono-I2C-OLEDs
+  // (siehe displays/mono_oled_i2c.h) - pinMode(INPUT_PULLUP) reisst dessen
+  // GPIO-Matrix-Routing vom I2C-Peripheral los, jeder folgende Wire-Transfer
+  // schlaegt danach mit "bus is not initialized" fehl. Solange SCL
+  // tatsaechlich auf 9 liegt (Default oder per NVS-Override), bleibt die
+  // Taste hier deaktiviert statt das Display zu zerschiessen.
+  if (displayIsMono()) {
+    int8_t scl = (app_config.mono_i2c_pins.scl != PIN_UNSET)
+                     ? app_config.mono_i2c_pins.scl
+                     : disp_mono_oled_i2c::DEFAULT_SCL;
+    if (scl == kButtonPin) return;
+  }
+#endif
 
   if (!initialized) {
     pinMode(kButtonPin, INPUT_PULLUP);

@@ -523,8 +523,12 @@ void displayRoundUpdate(void)
 
   // Automatischer Standby bei Signalverlust - noSignal ueberschreibt einen
   // manuell per Taste beendeten Standby wieder, solange weiterhin nichts
-  // ankommt (siehe Kommentar bei s_standby oben).
-  bool noSignal = everReceived &&
+  // ankommt (siehe Kommentar bei s_standby oben). !everReceived greift
+  // sofort (kein Timeout-Warten): wurden seit Boot noch nie Daten
+  // empfangen, gibt es auch keinen sinnvollen lastUpdateMs-Bezugspunkt -
+  // ohne diesen Zweig blieb das Geraet nach einem Boot ohne MQTT/USB fuer
+  // immer im normalen Dashboard (issue #62).
+  bool noSignal = !everReceived ||
                   (now_ms() - lastUpdateMs) > (int64_t)app_config.standby_timeout_s * 1000;
   if (noSignal) {
     s_standby = true;

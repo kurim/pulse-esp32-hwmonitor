@@ -35,6 +35,7 @@ AsyncWebServer s_server(80);
 // mehreren Chunks liefern kann (siehe onBody-Signatur unten).
 String s_configBody;
 String s_layoutBody; // dieselbe Chunk-Sammel-Logik, eigener Puffer fuer /api/layout
+String s_importBody; // dieselbe Chunk-Sammel-Logik, eigener Puffer fuer /api/config/import
 
 void handleStatus(AsyncWebServerRequest *request)
 {
@@ -123,20 +124,26 @@ void handleHwData(AsyncWebServerRequest *request)
     request->send(200, "application/json", out);
 }
 
-void handleGetConfig(AsyncWebServerRequest *request)
+// Gemeinsam von handleGetConfig() (includeSecrets=false, siehe dortige
+// "leer = unveraendert" Konvention in handlePostConfig()) und
+// handleConfigExport() (includeSecrets = Opt-in-Checkbox im Dashboard)
+// genutzt, damit das Feld-Mapping nur an einer Stelle gepflegt wird.
+void buildConfigDoc(JsonDocument &doc, bool includeSecrets)
 {
-    JsonDocument doc;
     doc["mqtt_host"] = app_config.mqtt_host;
     doc["mqtt_port"] = app_config.mqtt_port;
     doc["mqtt_user"] = app_config.mqtt_user;
-    // mqtt_pass bewusst NICHT gesendet - siehe handlePostConfig() fuer die
-    // "leer = unveraendert" Konvention beim Speichern.
+    if (includeSecrets) {
+        doc["mqtt_pass"] = app_config.mqtt_pass;
+    }
     doc["mqtt_topic"] = app_config.mqtt_topic;
     doc["hw_source"] = (uint8_t)app_config.hw_source;
     doc["tz"] = app_config.tz;
     doc["ntp_server"] = app_config.ntp_server;
     doc["weather_enabled"] = app_config.weather_enabled;
-    doc["weather_api_key"] = app_config.weather_api_key;
+    if (includeSecrets) {
+        doc["weather_api_key"] = app_config.weather_api_key;
+    }
     doc["weather_city"] = app_config.weather_city;
     doc["weather_units"] = app_config.weather_units;
     doc["brightness"] = app_config.brightness;
@@ -256,7 +263,12 @@ void handleGetConfig(AsyncWebServerRequest *request)
     addDefaultsI2c("7"); // DISPLAY_GENERIC_SSD1309
     addDefaultsI2c("8"); // DISPLAY_GENERIC_SH1106
 #endif
+}
 
+void handleGetConfig(AsyncWebServerRequest *request)
+{
+    JsonDocument doc;
+    buildConfigDoc(doc, /*includeSecrets=*/false);
     String out;
     serializeJson(doc, out);
     request->send(200, "application/json", out);
@@ -265,16 +277,11 @@ void handleGetConfig(AsyncWebServerRequest *request)
 // Partial-Merge: nur Felder uebernehmen, die im Body tatsaechlich enthalten
 // sind. Kein Live-Apply auf laufende Subsysteme (mqtt_handler, time_service,
 // ...) - jede Aenderung verlangt einen manuellen Neustart, siehe Plan.
-void handlePostConfig(AsyncWebServerRequest *request)
+// Gemeinsam von handlePostConfig() und handleConfigImport() genutzt (Import
+// wendet denselben Merge auf ein zusaetzlich aus einer Datei geladenes doc
+// an), damit das Feld-Mapping nur an einer Stelle gepflegt wird.
+void applyConfigFields(JsonDocument &doc)
 {
-    JsonDocument doc;
-    DeserializationError err = deserializeJson(doc, s_configBody);
-    s_configBody = "";
-    if (err) {
-        request->send(400, "application/json", "{\"ok\":false,\"error\":\"bad json\"}");
-        return;
-    }
-
     if (doc["mqtt_host"].is<const char *>())  strlcpy(app_config.mqtt_host,  doc["mqtt_host"],  sizeof(app_config.mqtt_host));
     if (doc["mqtt_port"].is<uint16_t>())      app_config.mqtt_port = doc["mqtt_port"];
     if (doc["mqtt_user"].is<const char *>())  strlcpy(app_config.mqtt_user,  doc["mqtt_user"],  sizeof(app_config.mqtt_user));
@@ -350,7 +357,19 @@ void handlePostConfig(AsyncWebServerRequest *request)
         JsonVariant addr = po["addr"];
         app_config.mono_i2c_pins.i2c_addr = addr.is<int>() ? (uint8_t)addr.as<int>() : 0;
     }
+}
 
+void handlePostConfig(AsyncWebServerRequest *request)
+{
+    JsonDocument doc;
+    DeserializationError err = deserializeJson(doc, s_configBody);
+    s_configBody = "";
+    if (err) {
+        request->send(400, "application/json", "{\"ok\":false,\"error\":\"bad json\"}");
+        return;
+    }
+
+    applyConfigFields(doc);
     config_store_save(&app_config);
     request->send(200, "application/json", "{\"ok\":true}");
 }
@@ -384,9 +403,43 @@ void handleGetLayoutDefault(AsyncWebServerRequest *request)
     request->send(response);
 }
 
-// Speichert + wendet sofort an (ueber die Thread-Safe-Queue, siehe
-// display_layout.h - dieser Handler laeuft im AsyncTCP-Task, darf LVGL
-// niemals direkt anfassen).
+// Speichert + wendet ein Layout-JSON sofort an (ueber die Thread-Safe-Queue,
+// siehe display_layout.h - handlePostLayout() laeuft im AsyncTCP-Task, darf
+// LVGL niemals direkt anfassen). Gemeinsam von handlePostLayout() und
+// handleConfigImport() genutzt. Liefert false nur bei "zu gross fuer NVS"
+// (siehe layout_store_save()).
+//
+// Ein explizit gespeichertes LEERES Widgets-Array ("Alles entfernen" +
+// Speichern) wuerde sonst dauerhaft einen leeren Screen persistieren - von
+// aussen nicht mehr von "noch nie gespeichert" unterscheidbar, aber OHNE den
+// Fallback auf das generierte Grundlayout, da der JSON-String selbst nicht
+// leer ist (siehe layout_store_load()). Nur "leer", wenn BEIDE Arrays leer
+// sind - ein Standby-only oder Dashboard-only gespeichertes Layout (nur auf
+// Mono ueberhaupt relevant) darf nicht faelschlich als Reset gewertet
+// werden. Stattdessen wird der Store in diesem Fall geleert, damit GET
+// /api/layout und der naechste Boot wieder auf das Grundlayout
+// zurueckfallen - konsistent mit "Auf Grundlayout zuruecksetzen" statt
+// einer Sackgasse.
+bool applyLayoutJson(const String &json)
+{
+    JsonDocument doc;
+    bool isEmpty = deserializeJson(doc, json) == DeserializationError::Ok &&
+                   doc["widgets"].as<JsonArrayConst>().size() == 0 &&
+                   doc["standby_widgets"].as<JsonArrayConst>().size() == 0;
+    if (isEmpty) {
+        layout_store_clear();
+        String defaultJson = layout_default_json(displayWidthPx(), displayHeightPx());
+        layout_queue_push_apply(defaultJson);
+        return true;
+    }
+
+    if (!layout_store_save(json)) {
+        return false;
+    }
+    layout_queue_push_apply(json);
+    return true;
+}
+
 void handlePostLayout(AsyncWebServerRequest *request)
 {
     if (!displaySupportsLayoutEditor()) {
@@ -395,38 +448,76 @@ void handlePostLayout(AsyncWebServerRequest *request)
         return;
     }
 
-    // Ein explizit gespeichertes LEERES Widgets-Array ("Alles entfernen" +
-    // Speichern) wuerde sonst dauerhaft einen leeren Screen persistieren -
-    // von aussen nicht mehr von "noch nie gespeichert" unterscheidbar, aber
-    // OHNE den Fallback auf das generierte Grundlayout, da der JSON-String
-    // selbst nicht leer ist (siehe layout_store_load()). Nur "leer", wenn
-    // BEIDE Arrays leer sind - ein Standby-only oder Dashboard-only
-    // gespeichertes Layout (nur auf Mono ueberhaupt relevant) darf nicht
-    // faelschlich als Reset gewertet werden. Stattdessen wird
-    // der Store in diesem Fall geleert, damit GET /api/layout und der
-    // naechste Boot wieder auf das Grundlayout zurueckfallen - konsistent
-    // mit "Auf Grundlayout zuruecksetzen" statt einer Sackgasse.
-    JsonDocument doc;
-    bool isEmpty = deserializeJson(doc, s_layoutBody) == DeserializationError::Ok &&
-                   doc["widgets"].as<JsonArrayConst>().size() == 0 &&
-                   doc["standby_widgets"].as<JsonArrayConst>().size() == 0;
-    if (isEmpty) {
-        layout_store_clear();
-        String defaultJson = layout_default_json(displayWidthPx(), displayHeightPx());
-        layout_queue_push_apply(defaultJson);
-        s_layoutBody = "";
-        request->send(200, "application/json", "{\"ok\":true}");
-        return;
-    }
-
-    if (!layout_store_save(s_layoutBody)) {
-        s_layoutBody = "";
+    bool ok = applyLayoutJson(s_layoutBody);
+    s_layoutBody = "";
+    if (!ok) {
         request->send(400, "application/json", "{\"ok\":false,\"error\":\"layout too large\"}");
         return;
     }
-    layout_queue_push_apply(s_layoutBody);
-    s_layoutBody = "";
     request->send(200, "application/json", "{\"ok\":true}");
+}
+
+// Buendelt Konfiguration + (falls vorhanden) Layout in eine einzige
+// herunterladbare JSON-Datei (Issue #63 - Backup/Restore). include_secrets
+// ist ein bewusstes Opt-in im Dashboard (Checkbox "gefaehrlich") - ohne
+// diesen Parameter enthaelt die Datei weder mqtt_pass noch weather_api_key.
+void handleConfigExport(AsyncWebServerRequest *request)
+{
+    JsonDocument doc;
+    buildConfigDoc(doc, /*includeSecrets=*/request->hasParam("include_secrets"));
+
+    // Layout nur auf Displays mit Editor mit exportieren (runde Displays
+    // haben keine Widget-Liste, siehe displaySupportsLayoutEditor()) -
+    // dieselbe Grundlayout-Fallback-Logik wie handleGetLayout().
+    if (displaySupportsLayoutEditor()) {
+        String layoutJson = layout_store_load();
+        if (layoutJson.length() == 0) {
+            layoutJson = layout_default_json(displayWidthPx(), displayHeightPx());
+        }
+        deserializeJson(doc["layout"], layoutJson);
+    }
+
+    String out;
+    serializeJson(doc, out);
+    AsyncWebServerResponse *response = request->beginResponse(200, "application/json", out);
+    // Loest im Browser direkt den nativen Datei-Download aus, kein Blob-/JS-
+    // Umweg im Dashboard noetig.
+    response->addHeader("Content-Disposition", "attachment; filename=\"pulse-config.json\"");
+    request->send(response);
+}
+
+// Gegenstueck zu handleConfigExport() - erwartet dieselbe Datei zurueck.
+// Wendet Config-Felder wie handlePostConfig() an (kein Live-Apply, manueller
+// Neustart empfohlen, siehe dashboard.html), das Layout dagegen sofort (wie
+// handlePostLayout()). Ein "layout"-Schluessel wird still ignoriert, wenn
+// dieses Display keinen Layout-Editor hat (z.B. Import einer CYD-Config auf
+// ein rundes Display) - kein Fehlerfall.
+void handleConfigImport(AsyncWebServerRequest *request)
+{
+    JsonDocument doc;
+    DeserializationError err = deserializeJson(doc, s_importBody);
+    s_importBody = "";
+    if (err) {
+        request->send(400, "application/json", "{\"ok\":false,\"error\":\"bad json\"}");
+        return;
+    }
+
+    applyConfigFields(doc);
+    config_store_save(&app_config);
+
+    bool layoutApplied = false;
+    if (doc["layout"].is<JsonObject>() && displaySupportsLayoutEditor()) {
+        String layoutJson;
+        serializeJson(doc["layout"], layoutJson);
+        layoutApplied = applyLayoutJson(layoutJson);
+    }
+
+    JsonDocument resp;
+    resp["ok"] = true;
+    resp["layout_applied"] = layoutApplied;
+    String out;
+    serializeJson(resp, out);
+    request->send(200, "application/json", out);
 }
 
 void handleReboot(AsyncWebServerRequest *request)
@@ -436,12 +527,12 @@ void handleReboot(AsyncWebServerRequest *request)
     ESP.restart();
 }
 
-// Dieselbe (einzige) Seite fuer "/", "/settings" und "/fota" - es ist eine
-// Single-Page-App, das JS entscheidet anhand von location.pathname beim Laden
-// und history.pushState() beim Tab-Wechsel, welcher Tab aktiv ist (siehe
-// dashboard.html "--- Tabs ---"). So sind die drei Tabs direkt per URL
-// erreichbar/verlinkbar/reload-fest, ohne eine zweite Kopie der Seite zu
-// brauchen.
+// Dieselbe (einzige) Seite fuer "/", "/settings", "/backup", "/fota" und
+// "/editor" - es ist eine Single-Page-App, das JS entscheidet anhand von
+// location.pathname beim Laden und history.pushState() beim Tab-Wechsel,
+// welcher Tab aktiv ist (siehe dashboard.html "--- Tabs ---"). So sind alle
+// Tabs direkt per URL erreichbar/verlinkbar/reload-fest, ohne eine zweite
+// Kopie der Seite zu brauchen.
 void handleDashboard(AsyncWebServerRequest *request)
 {
     AsyncWebServerResponse *response = request->beginResponse(
@@ -695,6 +786,7 @@ void web_portal_begin(void)
 {
     s_server.on("/", HTTP_GET, handleDashboard);
     s_server.on("/settings", HTTP_GET, handleDashboard);
+    s_server.on("/backup", HTTP_GET, handleDashboard);
     s_server.on("/fota", HTTP_GET, handleDashboard);
     s_server.on("/editor", HTTP_GET, handleDashboard);
 
@@ -709,6 +801,20 @@ void web_portal_begin(void)
 
     s_server.on("/api/status", HTTP_GET, handleStatus);
     s_server.on("/api/hwdata", HTTP_GET, handleHwData);
+    // Wie bei /api/layout weiter unten: die spezifischeren /api/config/...-
+    // Pfade muessen VOR dem einfachen String-URI "/api/config" registriert
+    // werden, da ESPAsyncWebServer letzteren als "BackwardCompatible"-Matcher
+    // behandelt (regex-aequivalent zu ^/api/config(/.*)?$) und sonst jede
+    // Anfrage an /api/config/export bzw. /api/config/import faelschlich von
+    // handleGetConfig()/handlePostConfig() beantwortet wuerde.
+    s_server.on("/api/config/export", HTTP_GET, handleConfigExport);
+    s_server.on(
+        "/api/config/import", HTTP_POST, handleConfigImport, nullptr,
+        [](AsyncWebServerRequest * /*request*/, uint8_t *data, size_t len, size_t index, size_t total) {
+            if (index == 0) s_importBody = "";
+            s_importBody.concat((const char *)data, len);
+            (void)total;
+        });
     s_server.on("/api/config", HTTP_GET, handleGetConfig);
     s_server.on(
         "/api/config", HTTP_POST, handlePostConfig, nullptr,

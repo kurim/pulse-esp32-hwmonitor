@@ -3,6 +3,7 @@
 #include <time.h>
 #include "shared_state.h"
 #include "display_layout.h"
+#include "displays/mono_oled_i2c.h"
 #include "mdi_icons.h"
 #include "weather_service.h"
 
@@ -522,8 +523,12 @@ void displayRoundUpdate(void)
 
   // Automatischer Standby bei Signalverlust - noSignal ueberschreibt einen
   // manuell per Taste beendeten Standby wieder, solange weiterhin nichts
-  // ankommt (siehe Kommentar bei s_standby oben).
-  bool noSignal = everReceived &&
+  // ankommt (siehe Kommentar bei s_standby oben). !everReceived greift
+  // sofort (kein Timeout-Warten): wurden seit Boot noch nie Daten
+  // empfangen, gibt es auch keinen sinnvollen lastUpdateMs-Bezugspunkt -
+  // ohne diesen Zweig blieb das Geraet nach einem Boot ohne MQTT/USB fuer
+  // immer im normalen Dashboard (issue #62).
+  bool noSignal = !everReceived ||
                   (now_ms() - lastUpdateMs) > (int64_t)app_config.standby_timeout_s * 1000;
   if (noSignal) {
     s_standby = true;
@@ -646,6 +651,20 @@ void displayRoundButtonPoll(void)
   static bool initialized = false;
   static bool lastLevel = true;        // INPUT_PULLUP: HIGH = losgelassen
   static uint32_t lastChangeMs = 0;
+
+#if CONFIG_IDF_TARGET_ESP32C3
+  // Gleicher GPIO9-Konflikt wie bei displayMonoButtonPoll() (display_layout.cpp) -
+  // diese Funktion laeuft unconditional jeden loop()-Tick (displayDrawButtonPoll()),
+  // auch wenn gerade ein mono-I2C-OLED aktiv ist. Ohne diesen Guard reisst
+  // pinMode(9, INPUT_PULLUP) den I2C-SCL-Pin aus dem Bus, sobald displayDrawButtonPoll()
+  // zum ersten Mal laeuft - siehe dortigen Kommentar fuer Details.
+  if (displayIsMono()) {
+    int8_t scl = (app_config.mono_i2c_pins.scl != PIN_UNSET)
+                     ? app_config.mono_i2c_pins.scl
+                     : disp_mono_oled_i2c::DEFAULT_SCL;
+    if (scl == kButtonPin) return;
+  }
+#endif
 
   if (!initialized) {
     pinMode(kButtonPin, INPUT_PULLUP);

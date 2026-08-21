@@ -2,6 +2,7 @@
 #include "shared_state.h"
 #include "config_store.h"
 #include "mdi_icons.h"
+#include "mono_fonts.h"
 #include "weather_service.h"
 #include "wifi_provision.h"
 #include "lv_template.h"
@@ -1041,7 +1042,7 @@ lv_obj_t *create_mono_gpu_stat(lv_obj_t *parent, JsonObjectConst) { return build
 // weiter unten) - ein Bit pro Pixel, jedes gesetzte Bit wird als eigenes
 // 1px-Rechteck (radius 0, keine Rundung) gezeichnet. Ein Byte pro Zeile,
 // die 7 relevanten Spalten liegen in Bit 6 (links) bis Bit 0 (rechts).
-static const uint8_t kMonoIconChip[7] = {
+static const uint16_t kMonoIconChip[7] = {
   0b0101010,
   0b1111111,
   0b1000001,
@@ -1050,7 +1051,7 @@ static const uint8_t kMonoIconChip[7] = {
   0b1111111,
   0b0101010,
 };
-static const uint8_t kMonoIconFlash[7] = {
+static const uint16_t kMonoIconFlash[7] = {
   0b0000110, // . . . XX .  (Start oben rechts)
   0b0001100, // . . XX . .
   0b0011000, // . XX . . .
@@ -1059,7 +1060,7 @@ static const uint8_t kMonoIconFlash[7] = {
   0b0001100, // . . XX . .
   0b0011000, // . XX . . .  (Ende unten links)
 };
-static const uint8_t kMonoIconTherm[7] = {
+static const uint16_t kMonoIconTherm[7] = {
   0b0011000,
   0b0010000,
   0b0011000,
@@ -1069,10 +1070,54 @@ static const uint8_t kMonoIconTherm[7] = {
   0b0111000,
 };
 
-void draw_mono_pixel_icon(lv_obj_t *parent, const uint8_t rows[7], int16_t x, int16_t y) {
-  for (int8_t r = 0; r < 7; r++) {
-    for (int8_t c = 0; c < 7; c++) {
-      if (!(rows[r] & (1 << (6 - c)))) continue;
+// 9x9-Varianten fuer den big-Modus (siehe build_mono_hw_card()) - User-
+// Feedback zur ersten 14x14-Fassung (7x7 einfach 2x blockskaliert): die
+// Icon-Hoehe passte nicht zur Tamzen-Fonthoehe. Tamzen8x16b hat eine
+// Versalhoehe von 9px (siehe BBX/Bitmap-Zeilen in tamzen_8x16_bold.c,
+// Tinte nur in Zeile 3-11 von 16) - diese Icons sind deshalb nativ auf
+// 9x9 gezeichnet (kein Block-Scale mehr) statt hochskaliert, damit sie
+// exakt auf Zahlenhoehe kommen.
+static const uint16_t kMonoIconChipBig[9] = {
+  0b010101010,
+  0b111111111,
+  0b100000001,
+  0b100000001,
+  0b100000001,
+  0b100000001,
+  0b100000001,
+  0b111111111,
+  0b010101010,
+};
+static const uint16_t kMonoIconFlashBig[9] = {
+  0b000000011,
+  0b000000110,
+  0b000001100,
+  0b000011000,
+  0b001111100,
+  0b000000011,
+  0b000000110,
+  0b000001100,
+  0b000011000,
+};
+static const uint16_t kMonoIconThermBig[9] = {
+  0b000011100,
+  0b000010000,
+  0b000011000,
+  0b000010000,
+  0b000011100,
+  0b000010000,
+  0b001111100,
+  0b011111110,
+  0b001111100,
+};
+
+// n = Kantenlaenge des quadratischen Icons (7 im small-, 9 im big-Modus,
+// siehe oben) - ein Bit pro Pixel, jedes gesetzte Bit wird als eigenes
+// 1px-Rechteck (radius 0, keine Rundung, kein Antialiasing) gezeichnet.
+void draw_mono_pixel_icon(lv_obj_t *parent, const uint16_t *rows, int8_t n, int16_t x, int16_t y) {
+  for (int8_t r = 0; r < n; r++) {
+    for (int8_t c = 0; c < n; c++) {
+      if (!(rows[r] & (1 << (n - 1 - c)))) continue;
       lv_obj_t *px = lv_obj_create(parent);
       lv_obj_remove_flag(px, LV_OBJ_FLAG_SCROLLABLE);
       lv_obj_set_style_radius(px, 0, 0);
@@ -1087,29 +1132,46 @@ void draw_mono_pixel_icon(lv_obj_t *parent, const uint8_t rows[7], int16_t x, in
 
 // Mono-Variante der "flachen" Karte (cpu_card_flat/gpu_card_flat oben,
 // User-Referenzfoto: weisser Rahmen, grosse Ueberschrift, Last/Watt/Temp
-// als eigene Zeilen), jetzt MIT Icons (siehe draw_mono_pixel_icon() oben -
-// User-Vorgabe anhand von clock_pacman.cpp, dass handgezeichnete
-// Pixel-Icons anders als Icon-Fonts auf dem 1bpp-Renderer funktionieren)
-// und OHNE abgerundete Ecken (lv_obj_set_style_radius 0 - eine Rundung wird
-// von LVGL antialiasiert gezeichnet, exakt das Problem, das mono ueberall
-// sonst vermeidet). Last-Zeile nutzt fuer CPU UND GPU dasselbe Chip-Icon -
-// die Ueberschrift unterscheidet ohnehin schon zwischen beiden, ein
-// separates GPU-Icon bei 7x7px waere kaum unterscheidbar.
+// als eigene Zeilen), MIT Icons auf allen Werte-Zeilen (siehe
+// draw_mono_pixel_icon() oben - User-Vorgabe anhand von clock_pacman.cpp,
+// dass handgezeichnete Pixel-Icons anders als Icon-Fonts auf dem
+// 1bpp-Renderer funktionieren) und OHNE abgerundete Ecken
+// (lv_obj_set_style_radius 0 - eine Rundung wird von LVGL antialiasiert
+// gezeichnet, exakt das Problem, das mono ueberall sonst vermeidet).
+// Last-Zeile nutzt fuer CPU UND GPU dasselbe Chip-Icon - die Ueberschrift
+// unterscheidet ohnehin schon zwischen beiden, ein separates GPU-Icon bei
+// 7x7px waere kaum unterscheidbar.
 // props["border"] (Default true): Rahmen ein-/ausschaltbar - User-Vorgabe,
 // manche Layouts wollen die Karte nur als unsichtbaren Platzhalter fuer
 // Last/Watt/Temp nutzen, ohne die Linien.
-// props["big"] (Default false): unscii_16 statt unscii_8 fuer alle 4 Zeilen
-// (Titel + 3 Werte) - User-Vorgabe fuer eine 64x64 grosse Karte ("Font
-// maximieren"). unscii_16 ist mit 16px Vorschubbreite pro Zeichen genauso
-// breit wie hoch (siehe Kommentar bei kBootLogoMono in display_draw.cpp) -
-// bei 64px Breite ist neben einem Icon (7px) UND vierstelligem Text
-// ("100%") in dieser Groesse kein Platz mehr, deshalb im big-Modus KEINE
-// Icons, nur die (dafuer maximal grossen) Zahlen.
+// props["big"] (Default false): Tamzen 8x16 Bold (siehe mono_fonts.h)
+// statt unscii_8 fuer alle 4 Zeilen (Titel + 3 Werte) - User-Vorgabe fuer
+// eine 64x64 grosse Karte ("Font maximieren"), aber MIT Icon auf den
+// Werte-Zeilen. unscii_16 (16px Vorschubbreite) liess dafuer keinen Platz -
+// ein Icon (7px) + vierstelliger Text ("100%") braucht mehr als die 64px
+// Kartenbreite. Tamzen8x16b ist bei gleicher Zeilenhoehe (16px, damit
+// weiterhin 4 Zeilen exakt die 64px Kartenhoehe fuellen) nur 8px statt
+// 16px pro Zeichen breit - Icon + vierstelliger Wert passt bequem.
 lv_obj_t *build_mono_hw_card(lv_obj_t *parent, bool isGpu, JsonObjectConst props) {
   bool border = props["border"] | true;
   bool big = props["big"] | false;
-  const lv_font_t *font = big ? &lv_font_unscii_16 : &lv_font_unscii_8;
+  const lv_font_t *font = big ? &tamzen_8x16_bold : &lv_font_unscii_8;
   int16_t rowH = big ? 16 : 10;
+  // Im big-Modus die nativ groesseren 9x9-Icons (kMonoIcon*Big, siehe oben) -
+  // 9px trifft die Versalhoehe von Tamzen8x16b, User-Feedback zur ersten
+  // Fassung war, dass eine reine 2x-Blockskalierung (14x14) nicht zur
+  // Fonthoehe passte. Im small-Modus (10px Zeilenhoehe, unscii_8) bleibt es
+  // bei den alten 7x7-Icons.
+  int16_t iconSize = big ? 9 : 7;
+  // Im big-Modus Icon+Text als Block horizontal auf der 64px Kartenbreite
+  // zentrieren (User-Vorgabe) statt am linken Rand zu kleben. Blockbreite:
+  // Icon + 2px Abstand + 4 Zeichen Tamzen (8px/Zeichen) - die 4 ist an
+  // "%3d" + Einheitszeichen in refresh_mono_hw_card_widgets() gekoppelt
+  // (immer genau 4 Zeichen, siehe dortiger Kommentar).
+  int16_t bigBlockW = iconSize + 2 + 4 * 8;
+  int16_t iconX = big ? (64 - bigBlockW) / 2 : 2;
+  int16_t iconY = big ? (rowH - iconSize) / 2 : 0; // im big-Modus vertikal zentriert, im small-Modus wie bisher oben buendig mit dem Text
+  int16_t textX = iconX + iconSize + 2; // Icon + 2px Abstand
 
   lv_obj_t *box = lv_obj_create(parent);
   lv_obj_remove_flag(box, LV_OBJ_FLAG_SCROLLABLE);
@@ -1123,7 +1185,16 @@ lv_obj_t *build_mono_hw_card(lv_obj_t *parent, bool isGpu, JsonObjectConst props
   lv_label_set_text(title, isGpu ? "GPU" : "CPU");
   lv_obj_set_style_text_color(title, lv_color_white(), 0);
   lv_obj_set_style_text_font(title, font, 0);
-  lv_obj_set_pos(title, big ? 0 : 2, big ? 0 : 1);
+  if (big) {
+    // User-Vorgabe: Titel horizontal zentriert statt linksbuendig auf der
+    // vollen Kartenbreite (100% statt fixer 64px, falls die Karte im
+    // Layout-Editor mal anders dimensioniert wird).
+    lv_obj_set_width(title, LV_PCT(100));
+    lv_obj_set_style_text_align(title, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_pos(title, 0, 0);
+  } else {
+    lv_obj_set_pos(title, 2, 1);
+  }
 
   lv_obj_t *loadLbl = lv_label_create(box);
   lv_label_set_text(loadLbl, "");
@@ -1140,20 +1211,16 @@ lv_obj_t *build_mono_hw_card(lv_obj_t *parent, bool isGpu, JsonObjectConst props
   lv_obj_set_style_text_color(tempLbl, lv_color_white(), 0);
   lv_obj_set_style_text_font(tempLbl, font, 0);
 
-  if (big) {
-    // Kein Icon (siehe Kommentar oben) - Zahl beginnt bei x=0, volle Breite.
-    lv_obj_set_pos(loadLbl, 0, rowH);
-    lv_obj_set_pos(powerLbl, 0, rowH * 2);
-    lv_obj_set_pos(tempLbl, 0, rowH * 3);
-  } else {
-    // Icon links (7px + 2px Abstand), Text ab x=11.
-    draw_mono_pixel_icon(box, kMonoIconChip, 2, 12);
-    lv_obj_set_pos(loadLbl, 11, 12);
-    draw_mono_pixel_icon(box, kMonoIconFlash, 2, 22);
-    lv_obj_set_pos(powerLbl, 11, 22);
-    draw_mono_pixel_icon(box, kMonoIconTherm, 2, 32);
-    lv_obj_set_pos(tempLbl, 11, 32);
-  }
+  int16_t rowY1 = big ? rowH : 12;
+  int16_t rowY2 = big ? rowH * 2 : 22;
+  int16_t rowY3 = big ? rowH * 3 : 32;
+
+  draw_mono_pixel_icon(box, big ? kMonoIconChipBig : kMonoIconChip, iconSize, iconX, rowY1 + iconY);
+  lv_obj_set_pos(loadLbl, textX, rowY1);
+  draw_mono_pixel_icon(box, big ? kMonoIconFlashBig : kMonoIconFlash, iconSize, iconX, rowY2 + iconY);
+  lv_obj_set_pos(powerLbl, textX, rowY2);
+  draw_mono_pixel_icon(box, big ? kMonoIconThermBig : kMonoIconTherm, iconSize, iconX, rowY3 + iconY);
+  lv_obj_set_pos(tempLbl, textX, rowY3);
 
   s_monoHwCardWidgets.push_back({isGpu, loadLbl, powerLbl, tempLbl});
   return box;
@@ -2290,11 +2357,16 @@ static void refresh_mono_hw_card_widgets(void) {
     float temp  = w.isGpu ? gpuTemp  : cpuTemp;
     float power = w.isGpu ? gpuPower : cpuPower;
 
-    snprintf(buf, sizeof(buf), "%d%%", (int)(load + 0.5f));
+    // Zahl rechtsbuendig auf 3 Stellen mit Leerzeichen aufgefuellt (User-
+    // Vorgabe: "icon __0%" statt "icon 0%") - sonst wandert die Einheit
+    // (%/W/C) je nach Ziffernzahl hin und her, weil Tamzen/unscii feste
+    // Zeichenbreite haben und der Text linksbuendig direkt nach dem Icon
+    // beginnt.
+    snprintf(buf, sizeof(buf), "%3d%%", (int)(load + 0.5f));
     lv_label_set_text(w.loadLbl, buf);
-    snprintf(buf, sizeof(buf), "%dW", (int)(power + 0.5f));
+    snprintf(buf, sizeof(buf), "%3dW", (int)(power + 0.5f));
     lv_label_set_text(w.powerLbl, buf);
-    snprintf(buf, sizeof(buf), "%dC", (int)(temp + 0.5f));
+    snprintf(buf, sizeof(buf), "%3dC", (int)(temp + 0.5f));
     lv_label_set_text(w.tempLbl, buf);
   }
 }

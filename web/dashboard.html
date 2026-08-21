@@ -260,6 +260,19 @@
       cursor: pointer;
     }
 
+    /* Häkchen rechtsbündig: Label-Text links, Checkbox an den rechten Rand der Zeile */
+    .field label:has(input[type="checkbox"]) {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+    }
+
+    .field input[type="checkbox"] {
+      width: auto;
+      margin: 0;
+    }
+
     .row {
       display: flex;
       gap: 10px;
@@ -474,7 +487,7 @@
 
         <div class="card settings-section">
           <h3>🌥️ Wetter</h3>
-          <div class="field"><label><input type="checkbox" id="weatherEnabled" style="width:auto"> Aktiviert</label></div>
+          <div class="field"><label>Aktiviert <input type="checkbox" id="weatherEnabled"></label></div>
           <div class="field">
             <label>OpenWeatherMap API-Key (<a href="https://openweathermap.org/api" target="_blank" rel="noopener">API-Key holen</a>)</label>
             <input id="weatherKey">
@@ -1621,8 +1634,8 @@
         const borderChecked = w.props.border !== false ? 'checked' : '';
         const bigChecked = w.props.big ? 'checked' : '';
         html += `
-          <div class="field"><label><input type="checkbox" id="propBorder" ${borderChecked}> Rahmen anzeigen</label></div>
-          <div class="field"><label><input type="checkbox" id="propBig" ${bigChecked}> Große Schrift (kein Icon, für ~64x64)</label></div>`;
+          <div class="field"><label>Rahmen anzeigen <input type="checkbox" id="propBorder" ${borderChecked}></label></div>
+          <div class="field"><label>Große Schrift (mit Icon, für ~64x64) <input type="checkbox" id="propBig" ${bigChecked}></label></div>`;
       }
       if (isForecast) {
         html += `

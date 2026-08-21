@@ -142,13 +142,16 @@ void loop() {
         static bool         stageShown   = false;
         static uint32_t     stageStartMs = 0;
         // Wetter braucht ein deutlich groesseres Zeitfenster als HW-Daten/NTP:
-        // der erste HTTPS-Abruf nach dem Boot scheitert haeufig (AsyncTCP/
-        // WiFiManager sind noch nicht "eingeschwungen", siehe
-        // weather_service.cpp) und der erfolgreiche Abruf landet in der Praxis
-        // typischerweise erst 60-65s nach dem Boot (naechster 30s-Retry-Tick) -
-        // mit den vorherigen 8s liefen displayDrawInit()/layout_apply() also
-        // IMMER vor gueltigen Wetterdaten, die Wetterkarte blieb dauerhaft leer
-        // bis zum naechsten Refresh-Zyklus.
+        // weather_service.cpp pollt zwar mittlerweile im 1s-Takt, bis der
+        // erste Abruf durchgelaufen ist (siehe dortiger Kommentar), aber der
+        // Abruf selbst haengt noch am WiFi-Connect (asynchron, siehe
+        // wifi_provision_begin()) und kann bei einem instabilen Netz/AP
+        // durchaus ein paar Sekunden brauchen. 60s ist bewusst grosszuegig
+        // als Fallback fuer diesen selteneren Fall - im Normalfall liegen
+        // gueltige Wetterdaten schon nach 1-3s vor. Mit den vorherigen 8s
+        // liefen displayDrawInit()/layout_apply() sonst IMMER vor gueltigen
+        // Wetterdaten, die Wetterkarte blieb dauerhaft leer bis zum naechsten
+        // Refresh-Zyklus.
         constexpr uint32_t kHwDataTimeoutMs  = 8000;
         constexpr uint32_t kNtpTimeoutMs     = 8000;
         constexpr uint32_t kWeatherTimeoutMs = 60000;

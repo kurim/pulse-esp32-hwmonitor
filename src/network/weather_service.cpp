@@ -242,12 +242,34 @@ static void fetch_forecast(void)
 
 static void weather_task(void *arg)
 {
+    // Kurz nach ARDUINO_EVENT_WIFI_STA_GOT_IP (siehe wifi_provision.cpp) ist
+    // lwIP intern noch mit dem DHCP-Abschluss beschaeftigt - ein Netzwerk-
+    // aufruf (DNS/HTTP) zu frueh danach hat live einen Absturz ausgeloest
+    // ("assert failed: sys_untimeout ... Required to lock TCPIP core
+    // functionality!"), reproduzierbar vor allem beim allerersten Boot nach
+    // dem Flashen, je nach genauem Timing. Mit dem alten 30s-Poll-Takt hat
+    // der erste echte Abruf dieses enge Zeitfenster meist per Zufall
+    // verpasst, mit dem neuen 1s-Takt (siehe unten) trifft er es viel
+    // oefter. Deshalb hier explizit kWifiSettleMs seit dem letzten
+    // (Re-)Connect abwarten, bevor ueberhaupt ein Abruf versucht wird - gilt
+    // nicht nur fuer den Boot-Fall, sondern auch nach einem spaeteren WiFi-
+    // Drop+Reconnect waehrend der Laufzeit.
+    constexpr uint32_t kWifiSettleMs = 2000;
+    bool     wasConnected     = false;
+    uint32_t connectedSinceMs = 0;
+
     for (;;) {
+        if (wifi_connected && !wasConnected) {
+            connectedSinceMs = millis();
+        }
+        wasConnected = wifi_connected;
+        bool settled = wifi_connected && (millis() - connectedSinceMs >= kWifiSettleMs);
+
         // ota_in_progress: siehe shared_state.h - ein HTTPS-Abruf waehrend
         // eines laufenden FOTA-Uploads konkurriert um denselben knappen,
         // zusammenhaengenden Heap und kann beides zum Scheitern bringen.
         // Faellige Abrufe holen sich einfach den naechsten 30s-Tick nach.
-        if (app_config.weather_enabled && !ota_in_progress) {
+        if (app_config.weather_enabled && !ota_in_progress && settled) {
             if (weather_info.last_fetch_ms == 0 ||
                 now_ms() - weather_info.last_fetch_ms > FETCH_INTERVAL_MS) {
                 fetch_weather();
@@ -257,7 +279,20 @@ static void weather_task(void *arg)
                 fetch_forecast();
             }
         }
-        vTaskDelay(pdMS_TO_TICKS(30 * 1000)); // alle 30 s pruefen, Abrufe seltener (siehe oben)
+        // Kurzes Poll-Intervall, bis der allererste Abruf erfolgreich war:
+        // weather_service_begin() (main.cpp) startet diesen Task VOR dem
+        // WiFi-Connect (wifi_provision_begin() verbindet asynchron) - die
+        // erste Runde hier scheitert deshalb fast immer am wifi_connected-
+        // Check in fetch_weather()/fetch_forecast() und laesst last_fetch_ms
+        // bei 0. Mit einer festen 30s-Wartezeit dauerte es dadurch oft
+        // 30-65s nach dem Boot, bis ueberhaupt ein echter Abruf versucht
+        // wurde, obwohl der Abruf selbst nur ein paar hundert ms braucht
+        // (siehe main.cpp kWeatherTimeoutMs-Kommentar). Sobald der erste
+        // Abruf durchgelaufen ist, reicht die grobe 30s-Taktung wieder, da
+        // die eigentlichen Intervalle (FETCH_INTERVAL_MS/
+        // FORECAST_FETCH_INTERVAL_MS) ohnehin viel groesser sind.
+        bool firstFetchPending = weather_info.last_fetch_ms == 0;
+        vTaskDelay(pdMS_TO_TICKS(firstFetchPending ? 1000 : 30 * 1000));
     }
 }
 

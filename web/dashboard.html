@@ -370,6 +370,7 @@
       <nav>
         <button data-tab="dashboard" class="active">ℹ️ Dashboard</button>
         <button data-tab="settings">⚙️ Settings</button>
+        <button data-tab="backup">📦 Backup</button>
         <button data-tab="fota">💾 FOTA</button>
         <button data-tab="editor" id="navEditor" style="display:none">🎨 Editor</button>
         <button id="btnReboot" class="btn">🔄 Reboot</button>
@@ -575,6 +576,19 @@
       </div>
     </section>
 
+    <section id="tab-backup" class="tab">
+      <div class="card" style="max-width:520px">
+        <h3 style="margin-top:0;color:var(--blue)">📦 Backup / Wiederherstellen</h3>
+        <div class="status-line">Exportiert MQTT-, Zeit-, Wetter-, Anzeige- und Pin-Einstellungen (sowie das Dashboard-/Standby-Layout, falls dieses Display einen Editor hat) als JSON-Datei. Passwörter (MQTT, Wetter-API-Key) werden standardmäßig ausgelassen.</div>
+        <div class="field"><label>Passwörter einschließen ⚠️ (Klartext in der Datei)<input type="checkbox" id="exportIncludeSecrets"></label></div>
+        <div class="actions"><button class="btn" id="btnConfigExport">Konfiguration exportieren</button></div>
+        <hr style="border-color:#334155;margin:20px 0">
+        <div class="field"><label>Config-Datei (.json)</label><input type="file" id="configImportFile" accept=".json"></div>
+        <div class="status-line">Überschreibt die aktuellen Einstellungen. Änderungen (außer Layout) wirken erst nach einem Neustart.</div>
+        <div class="actions"><button class="btn primary" id="btnConfigImport">Importieren</button></div>
+      </div>
+    </section>
+
     <section id="tab-fota" class="tab">
       <div class="card" style="max-width:520px">
         <h3 style="margin-top:0;color:var(--blue)">⬆ Firmware</h3>
@@ -671,7 +685,7 @@
     // entschieden, welcher Tab aktiv ist.
     function tabFromPath(path) {
       const p = path.replace(/^\/+|\/+$/g, '');
-      return (p === 'settings' || p === 'fota' || p === 'editor') ? p : 'dashboard';
+      return (p === 'settings' || p === 'backup' || p === 'fota' || p === 'editor') ? p : 'dashboard';
     }
 
     async function activateTab(tab, pushUrl) {
@@ -1055,6 +1069,42 @@
         addr: pinValHex('pinI2cAddr'),
       },
     }));
+
+    // --- Settings: Backup/Wiederherstellen (Issue #63) ---
+    $('btnConfigExport').addEventListener('click', () => {
+      const includeSecrets = $('exportIncludeSecrets').checked;
+      // Normale Browser-Navigation statt fetch/Blob - der Content-Disposition-
+      // Header der Antwort (siehe web_portal.cpp handleConfigExport) loest den
+      // nativen Download-Dialog aus.
+      window.location.href = '/api/config/export' + (includeSecrets ? '?include_secrets=1' : '');
+    });
+
+    $('btnConfigImport').addEventListener('click', () => {
+      const fileInput = $('configImportFile');
+      const file = fileInput.files[0];
+      if (!file) { toast('Bitte zuerst eine Datei auswählen'); return; }
+
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const text = reader.result;
+        try {
+          JSON.parse(text); // fruehe Validierung, bevor der Nutzer gefragt wird
+        } catch (e) {
+          toast('Ungültige JSON-Datei');
+          return;
+        }
+        if (!confirm('Konfiguration wirklich importieren und überschreiben?')) return;
+        try {
+          await api('/api/config/import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: text });
+          toast('Konfiguration importiert - Neustart empfohlen');
+          fileInput.value = '';
+          loadConfig();
+        } catch (e) {
+          toast('Import fehlgeschlagen');
+        }
+      };
+      reader.readAsText(file);
+    });
 
     // --- Settings: WLAN (WiFiManager REST API) ---
     // /api/wifi/scan ist zweistufig: der erste Aufruf stoesst nur einen

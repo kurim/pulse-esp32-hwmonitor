@@ -5,6 +5,9 @@
 #include "layout_store.h"
 #include "wifi_provision.h"
 #include "github_ota.h"
+#include "mqtt_handler.h"
+#include "serial_handler.h"
+#include "time_service.h"
 #include <ArduinoJson.h>
 #include <WiFi.h>
 #include <Update.h>
@@ -275,26 +278,42 @@ void handleGetConfig(AsyncWebServerRequest *request)
 }
 
 // Partial-Merge: nur Felder uebernehmen, die im Body tatsaechlich enthalten
-// sind. Kein Live-Apply auf laufende Subsysteme (mqtt_handler, time_service,
-// ...) - jede Aenderung verlangt einen manuellen Neustart, siehe Plan.
-// Gemeinsam von handlePostConfig() und handleConfigImport() genutzt (Import
-// wendet denselben Merge auf ein zusaetzlich aus einer Datei geladenes doc
-// an), damit das Feld-Mapping nur an einer Stelle gepflegt wird.
+// sind. Gemeinsam von handlePostConfig() und handleConfigImport() genutzt
+// (Import wendet denselben Merge auf ein zusaetzlich aus einer Datei
+// geladenes doc an), damit das Feld-Mapping nur an einer Stelle gepflegt
+// wird.
+//
+// MQTT/hw_source und Zeit/NTP werden am Ende sofort angewendet (kein Reboot
+// noetig - mqtt_handler_apply_config()/time_service_begin() sind dieselben
+// Funktionen, die main.cpp auch beim Boot aufruft, beide gefahrlos erneut
+// aufrufbar). Anzeige/Pins bleiben bewusst reboot-pflichtig - ein Live-
+// Reinit des SPI-Displaytreibers/LVGL waere ein deutlich groesseres
+// Absturzrisiko fuer wenig Komfortgewinn.
 void applyConfigFields(JsonDocument &doc)
 {
-    if (doc["mqtt_host"].is<const char *>())  strlcpy(app_config.mqtt_host,  doc["mqtt_host"],  sizeof(app_config.mqtt_host));
-    if (doc["mqtt_port"].is<uint16_t>())      app_config.mqtt_port = doc["mqtt_port"];
-    if (doc["mqtt_user"].is<const char *>())  strlcpy(app_config.mqtt_user,  doc["mqtt_user"],  sizeof(app_config.mqtt_user));
-    if (doc["mqtt_topic"].is<const char *>()) strlcpy(app_config.mqtt_topic, doc["mqtt_topic"], sizeof(app_config.mqtt_topic));
+    bool mqttChanged = false;
+    if (doc["mqtt_host"].is<const char *>())  { strlcpy(app_config.mqtt_host,  doc["mqtt_host"],  sizeof(app_config.mqtt_host)); mqttChanged = true; }
+    if (doc["mqtt_port"].is<uint16_t>())      { app_config.mqtt_port = doc["mqtt_port"]; mqttChanged = true; }
+    if (doc["mqtt_user"].is<const char *>())  { strlcpy(app_config.mqtt_user,  doc["mqtt_user"],  sizeof(app_config.mqtt_user)); mqttChanged = true; }
+    if (doc["mqtt_topic"].is<const char *>()) { strlcpy(app_config.mqtt_topic, doc["mqtt_topic"], sizeof(app_config.mqtt_topic)); mqttChanged = true; }
     // Leeres Passwort im Body = "unveraendert lassen" (das Frontend laesst
     // das Feld beim Laden bewusst leer, siehe handleGetConfig()).
     if (doc["mqtt_pass"].is<const char *>() && strlen(doc["mqtt_pass"]) > 0) {
         strlcpy(app_config.mqtt_pass, doc["mqtt_pass"], sizeof(app_config.mqtt_pass));
+        mqttChanged = true;
     }
-    if (doc["hw_source"].is<uint8_t>())       app_config.hw_source = (hw_source_t)(uint8_t)doc["hw_source"];
+    if (doc["hw_source"].is<uint8_t>()) {
+        app_config.hw_source = (hw_source_t)(uint8_t)doc["hw_source"];
+        // serial_handler_begin() liest hw_source neu (setzt nur ein Flag,
+        // siehe serial_handler.cpp) - mqtt_handler_apply_config() unten
+        // prueft hw_source ebenfalls selbst erneut.
+        serial_handler_begin();
+        mqttChanged = true;
+    }
 
-    if (doc["tz"].is<const char *>())         strlcpy(app_config.tz,         doc["tz"],         sizeof(app_config.tz));
-    if (doc["ntp_server"].is<const char *>()) strlcpy(app_config.ntp_server, doc["ntp_server"], sizeof(app_config.ntp_server));
+    bool timeChanged = false;
+    if (doc["tz"].is<const char *>())         { strlcpy(app_config.tz,         doc["tz"],         sizeof(app_config.tz)); timeChanged = true; }
+    if (doc["ntp_server"].is<const char *>()) { strlcpy(app_config.ntp_server, doc["ntp_server"], sizeof(app_config.ntp_server)); timeChanged = true; }
 
     if (doc["weather_enabled"].is<bool>())        app_config.weather_enabled = doc["weather_enabled"];
     if (doc["weather_api_key"].is<const char *>()) strlcpy(app_config.weather_api_key, doc["weather_api_key"], sizeof(app_config.weather_api_key));
@@ -357,6 +376,12 @@ void applyConfigFields(JsonDocument &doc)
         JsonVariant addr = po["addr"];
         app_config.mono_i2c_pins.i2c_addr = addr.is<int>() ? (uint8_t)addr.as<int>() : 0;
     }
+
+    // Erst hier anwenden, nachdem app_config vollstaendig aktualisiert ist -
+    // mqtt_handler_apply_config()/time_service_begin() lesen die Felder aus
+    // app_config, nicht aus doc.
+    if (mqttChanged) mqtt_handler_apply_config();
+    if (timeChanged) time_service_begin();
 }
 
 void handlePostConfig(AsyncWebServerRequest *request)

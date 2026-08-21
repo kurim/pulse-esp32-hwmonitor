@@ -85,3 +85,18 @@ void mqtt_handler_resume(void)
 {
     s_paused = false;
 }
+
+void mqtt_handler_apply_config(void)
+{
+    // Erst trennen (auch wenn hw_source jetzt USB ist oder der neue Host leer
+    // ist - sonst bliebe eine alte Verbindung mit veralteten Zugangsdaten
+    // bestehen) - mqtt_handler_begin() setzt s_enabled/s_client_id/Server neu
+    // und ist genau die Logik, die main.cpp auch beim Boot ausfuehrt.
+    if (s_client.connected()) {
+        s_client.disconnect();
+    }
+    mqtt_handler_begin();
+    // Sofortiger Reconnect-Versuch statt bis zu 5s auf die naechste
+    // mqtt_handler_loop()-Runde zu warten (siehe dortige Reconnect-Schleife).
+    s_last_reconnect_attempt_ms = 0;
+}

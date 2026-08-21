@@ -584,7 +584,7 @@
         <div class="actions"><button class="btn" id="btnConfigExport">Konfiguration exportieren</button></div>
         <hr style="border-color:#334155;margin:20px 0">
         <div class="field"><label>Config-Datei (.json)</label><input type="file" id="configImportFile" accept=".json"></div>
-        <div class="status-line">Überschreibt die aktuellen Einstellungen. Änderungen (außer Layout) wirken erst nach einem Neustart.</div>
+        <div class="status-line">Überschreibt die aktuellen Einstellungen. MQTT-, Zeit-, Wetter- und Layout-Änderungen wirken sofort, Anzeige- und Pin-Änderungen erst nach einem Neustart.</div>
         <div class="actions"><button class="btn primary" id="btnConfigImport">Importieren</button></div>
       </div>
     </section>
@@ -986,10 +986,14 @@
       }
     });
 
-    async function saveConfig(patch) {
+    // liveMessage: MQTT/Zeit/Wetter wenden sich serverseitig sofort an (siehe
+    // web_portal.cpp applyConfigFields()/weather_service.cpp, das
+    // app_config.weather_* ohnehin bei jedem Poll frisch liest) - kein Reboot
+    // noetig, anders als Anzeige/Pins (Default-Message unten).
+    async function saveConfig(patch, liveMessage) {
       try {
         await api('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) });
-        toast('Gespeichert - Neustart erforderlich');
+        toast(liveMessage || 'Gespeichert - Neustart erforderlich');
       } catch (e) {
         toast('Fehler beim Speichern');
       }
@@ -1002,19 +1006,19 @@
       mqtt_pass: $('mqttPass').value,
       mqtt_topic: $('mqttTopic').value,
       hw_source: parseInt($('hwSource').value, 10),
-    }));
+    }, 'Gespeichert - sofort aktiv'));
 
     $('btnSaveTime').addEventListener('click', () => saveConfig({
       tz: $('tz').value,
       ntp_server: $('ntpServer').value,
-    }));
+    }, 'Gespeichert - sofort aktiv'));
 
     $('btnSaveWeather').addEventListener('click', () => saveConfig({
       weather_enabled: $('weatherEnabled').checked,
       weather_api_key: $('weatherKey').value,
       weather_city: $('weatherCity').value,
       weather_units: $('weatherUnits').value,
-    }));
+    }, 'Gespeichert - sofort aktiv'));
 
     $('btnSaveDisplay').addEventListener('click', () => {
       const patch = {
@@ -1096,7 +1100,7 @@
         if (!confirm('Konfiguration wirklich importieren und überschreiben?')) return;
         try {
           await api('/api/config/import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: text });
-          toast('Konfiguration importiert - Neustart empfohlen');
+          toast('Konfiguration importiert - Anzeige/Pins wirken erst nach Neustart');
           fileInput.value = '';
           loadConfig();
         } catch (e) {

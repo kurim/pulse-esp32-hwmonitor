@@ -20,3 +20,10 @@ void mqtt_handler_pause(void);
 // Hebt mqtt_handler_pause() auf - der naechste mqtt_handler_loop()-Aufruf
 // versucht wieder normal zu (re-)verbinden.
 void mqtt_handler_resume(void);
+
+// Wendet geaenderte MQTT-Einstellungen (Host/Port/User/Pass/Topic) bzw. einen
+// geaenderten hw_source sofort an, ohne Reboot - siehe web_portal.cpp
+// applyConfigFields(). Trennt eine bestehende Verbindung, mqtt_handler_loop()
+// verbindet sich dank der bestehenden 5s-Reconnect-Schleife automatisch mit
+// den neuen Werten neu (bzw. bleibt getrennt, falls hw_source jetzt USB ist).
+void mqtt_handler_apply_config(void);

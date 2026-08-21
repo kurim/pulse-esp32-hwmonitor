@@ -2360,8 +2360,15 @@ static void refresh_mono_standby_visibility(void) {
   int64_t lastUpdate = hw_info.last_update_ms;
   hw_data_unlock();
 
-  bool autoStandby = app_config.standby_timeout_s > 0 && everReceived &&
-                      (now_ms() - lastUpdate) > (int64_t)app_config.standby_timeout_s * 1000;
+  // !everReceived greift sofort (kein Timeout-Warten): wurden seit Boot
+  // noch nie Daten empfangen, gibt es keinen sinnvollen lastUpdate-
+  // Bezugspunkt - ohne diesen Zweig blieb das Geraet nach einem Boot ohne
+  // MQTT/USB fuer immer im normalen Dashboard (issue #62). standby_timeout_s
+  // == 0 bleibt weiterhin die explizite "Auto-Standby aus"-Option und
+  // gewinnt auch hier.
+  bool autoStandby = app_config.standby_timeout_s > 0 &&
+                      (!everReceived ||
+                       (now_ms() - lastUpdate) > (int64_t)app_config.standby_timeout_s * 1000);
 
   if (autoStandby) {
     s_monoStandby = true;

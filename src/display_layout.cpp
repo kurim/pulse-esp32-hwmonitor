@@ -464,6 +464,7 @@ lv_obj_t *create_chart_card(lv_obj_t *parent, JsonObjectConst props) {
 struct MonoClockWidget   { lv_obj_t *lbl; };
 struct MonoDateWidget    { lv_obj_t *lbl; };
 struct MonoWeekdayWidget { lv_obj_t *lbl; };
+struct MonoWeekWidget    { lv_obj_t *lbl; }; // Kalenderwoche, "KW36" (ISO-8601 ueber strftime %V)
 struct MonoWeatherWidget { lv_obj_t *lbl; };
 struct MonoStatWidget {
   bool isGpu;
@@ -493,6 +494,7 @@ struct ValueBarWidget {
 std::vector<MonoClockWidget>      s_monoClockWidgets;
 std::vector<MonoDateWidget>       s_monoDateWidgets;
 std::vector<MonoWeekdayWidget>    s_monoWeekdayWidgets;
+std::vector<MonoWeekWidget>       s_monoWeekWidgets;
 std::vector<MonoWeatherWidget>    s_monoWeatherWidgets;
 std::vector<MonoStatWidget>       s_monoStatWidgets;
 std::vector<MonoHwCardWidget>     s_monoHwCardWidgets;
@@ -538,6 +540,21 @@ lv_obj_t *create_mono_weekday(lv_obj_t *parent, JsonObjectConst) {
   lv_obj_set_style_text_font(lbl, &lv_font_unscii_8, 0);
   lv_obj_set_style_text_align(lbl, LV_TEXT_ALIGN_CENTER, 0);
   s_monoWeekdayWidgets.push_back({lbl});
+  return lbl;
+}
+
+// Kalenderwoche, Format "KWnn" (User-Vorgabe "KW36") - eigenes Widget statt
+// eines Props an mono_date/mono_weekday, damit sie unabhaengig positioniert
+// werden kann. %V (ISO-8601-Woche, strftime) statt %W/%U - deren
+// Wochenzaehlung faengt bei Sonntag/Montag der ersten Kalenderwoche neu an
+// 0 statt der in DE/AT/CH ueblichen ISO-Zaehlung.
+lv_obj_t *create_mono_week(lv_obj_t *parent, JsonObjectConst) {
+  lv_obj_t *lbl = lv_label_create(parent);
+  lv_label_set_text(lbl, "");
+  lv_obj_set_style_text_color(lbl, lv_color_white(), 0);
+  lv_obj_set_style_text_font(lbl, &lv_font_unscii_8, 0);
+  lv_obj_set_style_text_align(lbl, LV_TEXT_ALIGN_CENTER, 0);
+  s_monoWeekWidgets.push_back({lbl});
   return lbl;
 }
 
@@ -1879,6 +1896,7 @@ const WidgetTypeEntry kWidgetTypes[] = {
     {"mono_clock", create_mono_clock},
     {"mono_date", create_mono_date},
     {"mono_weekday", create_mono_weekday},
+    {"mono_week", create_mono_week},
     {"mono_weather_temp", create_mono_weather_temp},
     {"mono_forecast", create_mono_forecast},
     {"mono_standby_weather", create_mono_standby_weather},
@@ -1918,6 +1936,7 @@ void layout_apply(JsonArrayConst widgets, JsonArrayConst standbyWidgets) {
   s_monoClockWidgets.clear();
   s_monoDateWidgets.clear();
   s_monoWeekdayWidgets.clear();
+  s_monoWeekWidgets.clear();
   s_monoWeatherWidgets.clear();
   s_monoForecastWidgets.clear();
   s_monoStandbyWeatherWidgets.clear();
@@ -2195,7 +2214,8 @@ static void refresh_chart_card_widgets(void) {
 
 static void refresh_mono_clock_widgets(void) {
   if (s_monoClockWidgets.empty() && s_monoDateWidgets.empty() &&
-      s_monoWeekdayWidgets.empty() && s_monoWeatherWidgets.empty()) {
+      s_monoWeekdayWidgets.empty() && s_monoWeekWidgets.empty() &&
+      s_monoWeatherWidgets.empty()) {
     return;
   }
   time_t now = time(nullptr);
@@ -2215,6 +2235,12 @@ static void refresh_mono_clock_widgets(void) {
     // %A = C-Locale-Wochentag (Englisch, im Projekt nirgends setlocale())
     strftime(buf, sizeof(buf), "%A", &t);
     for (auto &w : s_monoWeekdayWidgets) lv_label_set_text(w.lbl, buf);
+  }
+  if (!s_monoWeekWidgets.empty()) {
+    // %V = ISO-8601-Kalenderwoche (01-53), zweistellig - "KW" + %V ergibt
+    // exakt das gewuenschte "KW36".
+    strftime(buf, sizeof(buf), "KW%V", &t);
+    for (auto &w : s_monoWeekWidgets) lv_label_set_text(w.lbl, buf);
   }
   if (!s_monoWeatherWidgets.empty()) {
     bool valid = app_config.weather_enabled && weather_info.valid;

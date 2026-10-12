@@ -15,6 +15,12 @@ auseinanderlaufen).
 
 ## [Unreleased]
 
+### Changed
+
+- `lv_conf.h`: `LV_COLOR_DEPTH` (in LVGL 9.6 deprecated) durch
+  `LV_COLOR_FORMAT_DEFAULT` ersetzt, Farbformat bleibt RGB565 ohne Swap; die
+  `#warning` beim Build entfällt.
+
 ## [1.0.8] - 2026-09-02
 
 ### Added

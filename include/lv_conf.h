@@ -1,7 +1,9 @@
 #ifndef LV_CONF_H
 #define LV_CONF_H
 
-#define LV_COLOR_DEPTH 16
+// RGB565 ohne Byte-Swap (== frueheres LV_COLOR_DEPTH 16). Das Byte-Swapping
+// passiert in den Flush-Callbacks bzw. durch Arduino_GFX, nicht in LVGL.
+#define LV_COLOR_FORMAT_DEFAULT LV_COLOR_FORMAT_RGB565
 
 #define LV_USE_CHART   1
 #define LV_USE_ARC     1

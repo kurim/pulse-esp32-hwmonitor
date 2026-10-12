@@ -17,6 +17,10 @@ auseinanderlaufen).
 
 ### Fixed
 
+- Web-Portal (`BOARD_GENERIC`): Bildschirm-Zeitplan, Standby und Farben
+  erschienen erst nach Speichern des Anzeige-Typs und Neuladen. Sie werden jetzt
+  sofort bei Auswahl eines Typs eingeblendet; bei „Kein Display (headless)“
+  erklärt ein Hinweis, warum sie fehlen (#75).
 - Build für alle `BOARD_GENERIC`-Envs (esp32, esp32s3-4mb, esp32s3-8mb,
   esp32c3) schlug fehl: `boardDisplayBacklight()` rief `displayOn()`/
   `displayOff()` auf `Arduino_G` auf, die Methoden gibt es erst in

@@ -17,6 +17,9 @@ auseinanderlaufen).
 
 ### Fixed
 
+- Release-Workflow: Der GitHub-Release-Text wird jetzt aus dem Abschnitt der
+  Tag-Version in `CHANGELOG.md` erzeugt und überschreibt einen bereits
+  vorhandenen Release-Text. Fehlt der Abschnitt, bricht der Job ab.
 - Build für alle `BOARD_GENERIC`-Envs (esp32, esp32s3-4mb, esp32s3-8mb,
   esp32c3) schlug fehl: `boardDisplayBacklight()` rief `displayOn()`/
   `displayOff()` auf `Arduino_G` auf, die Methoden gibt es erst in

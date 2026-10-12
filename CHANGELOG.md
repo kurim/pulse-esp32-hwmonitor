@@ -17,6 +17,15 @@ auseinanderlaufen).
 
 ### Fixed
 
+- CYD (`cyd`, `cyd-v3`): Boot-Schleife mit `assert failed:
+  vApplicationGetTimerTaskMemory port_common.c:97 (pxStackBufferTemp != NULL)`
+  direkt nach dem Start (v1.0.8). Das statische DRAM des klassischen ESP32 war
+  praktisch voll (CI: 2624 Byte frei, in v1.0.7 noch 3376 Byte; `.bss` wuchs
+  um 752 Byte), sodass beim FreeRTOS-Start kein Stack für den Timer-Task mehr
+  reserviert werden konnte. Der LVGL-Zeichenpuffer des CYD hat jetzt 8 statt
+  12 Zeilen und gibt 2560 Byte `.bss` frei (Reserve damit rund 5,2 KB).
+  Wer v1.0.8 schon geflasht hat, kommt nur per USB-Kabel zurück (OTA läuft
+  in der Boot-Schleife nicht mehr).
 - Web-Portal (`BOARD_GENERIC`): Bildschirm-Zeitplan, Standby und Farben
   erschienen erst nach Speichern des Anzeige-Typs und Neuladen. Sie werden jetzt
   sofort bei Auswahl eines Typs eingeblendet; bei „Kein Display (headless)“

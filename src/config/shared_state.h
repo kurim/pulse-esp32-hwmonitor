@@ -4,7 +4,10 @@
 #include "board_config.h"
 #include "pin_override.h"
 
-#define FW_VERSION "1.0.6" // Wird in platformio.ini (build_flags) auch an den C-Compiler uebergeben, siehe src/network/github_ota.cpp
+// FW_VERSION kommt aus CHANGELOG.md (extra_script_version.py, -DFW_VERSION=...)
+#ifndef FW_VERSION
+#error "FW_VERSION fehlt - Build muss ueber PlatformIO laufen (extra_script_version.py liest CHANGELOG.md)"
+#endif
 
 // Ringpuffer-Laenge fuer Verlaufsdiagramme (60 Samples = ~1 Min bei 1 Wert/Sek)
 #define HIST_LEN 60

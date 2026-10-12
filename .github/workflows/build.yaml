@@ -107,15 +107,17 @@ jobs:
           restore-keys: |
             pio-
 
-      # Bei Tag-Push (v1.0.0, ...) FW_VERSION im Quellcode auf den Tag setzen
-      # (ohne fuehrendes "v"), statt den in src/config/shared_state.h fest
-      # eingetragenen Wert zu verwenden - bei manuellem workflow_dispatch
-      # bleibt FW_VERSION aus dem Quellcode unveraendert.
-      - name: FW_VERSION aus Tag setzen
+      # FW_VERSION kommt aus CHANGELOG.md (extra_script_version.py). Bei
+      # Tag-Push (v1.0.0, ...) muss der Tag zur obersten Release-Version im
+      # Changelog passen, sonst heisst das Release anders als die Firmware.
+      - name: Tag gegen CHANGELOG.md pruefen
         if: github.ref_type == 'tag'
         run: |
-          V="${GITHUB_REF_NAME#v}"
-          sed -i "s/#define FW_VERSION \".*\"/#define FW_VERSION \"${V}\"/" src/config/shared_state.h
+          V=$(grep -m1 -oP '^## \[\K[0-9]+\.[0-9]+\.[0-9]+(?=\])' CHANGELOG.md)
+          if [ "v${V}" != "${GITHUB_REF_NAME}" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} passt nicht zur Changelog-Version v${V}"
+            exit 1
+          fi
 
       - name: Build (${{ matrix.env }})
         run: pio run -e ${{ matrix.env }}
@@ -123,7 +125,7 @@ jobs:
       - name: Flashbare Dateien benennen
         id: name
         run: |
-          VERSION=$(grep -oP '(?<=FW_VERSION ")[0-9]+\.[0-9]+\.[0-9]+' src/config/shared_state.h)
+          VERSION=$(grep -m1 -oP '^## \[\K[0-9]+\.[0-9]+\.[0-9]+(?=\])' CHANGELOG.md)
           ENV="${{ matrix.env }}"
           BUILD_DIR=".pio/build/${ENV}"
           FNAME="esp32-hwmonitor-v${VERSION}-pio-${ENV}.bin"

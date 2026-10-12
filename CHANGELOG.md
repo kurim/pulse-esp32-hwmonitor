@@ -15,6 +15,8 @@ auseinanderlaufen).
 
 ## [Unreleased]
 
+## [1.0.9] - 2026-10-12
+
 ### Fixed
 
 - CYD (`cyd`, `cyd-v3`): Boot-Schleife mit `assert failed:
@@ -44,7 +46,7 @@ auseinanderlaufen).
   `LV_COLOR_FORMAT_DEFAULT` ersetzt, Farbformat bleibt RGB565 ohne Swap; die
   `#warning` beim Build entfällt.
 
-## [1.0.8] - 2026-09-02
+## [1.0.8] - 2026-10-12
 
 ### Added
 

@@ -251,8 +251,9 @@ chip families, since `cyd`/`cyd-v3`/`jc8048w550` carry their own board flags
 that a chip-only matrix couldn't express. No manual `esptool merge_bin` step
 needed: pioarduino already produces `firmware.factory.bin` (see above) on
 every build, which is uploaded as-is alongside the OTA-only `firmware.bin`.
-Runs on `workflow_dispatch` and on `v*` tag pushes (which also sets
-`FW_VERSION` from the tag and creates a GitHub release with all artifacts).
+Runs on `workflow_dispatch` and on `v*` tag pushes (which also check the tag
+against `CHANGELOG.md` - the single source of truth for `FW_VERSION`, see
+`extra_script_version.py` - and create a GitHub release with all artifacts).
 
 > **Captive portal detection on phones can briefly exhaust sockets**:
 > iOS/Android/Windows check internet connectivity in the setup AP via

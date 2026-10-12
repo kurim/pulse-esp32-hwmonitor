@@ -80,10 +80,7 @@ void boardDisplayBacklight(bool on) {
   // hier nicht abfragbar). Ohne schaltbaren Pin dunkelt die schwarze
   // LVGL-Abdeckung aus screen_schedule.cpp das Bild ab.
   if (isMonoI2c(app_config.display_type)) {
-    if (disp_mono_oled_i2c::panel) {
-      if (on) disp_mono_oled_i2c::panel->displayOn();
-      else    disp_mono_oled_i2c::panel->displayOff();
-    }
+    disp_mono_oled_i2c::setPanelPower(on);
     return;
   }
   int8_t bl = app_config.pin_overrides.bl;

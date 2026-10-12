@@ -15,6 +15,13 @@ auseinanderlaufen).
 
 ## [Unreleased]
 
+### Fixed
+
+- Build für alle `BOARD_GENERIC`-Envs (esp32, esp32s3-4mb, esp32s3-8mb,
+  esp32c3) schlug fehl: `boardDisplayBacklight()` rief `displayOn()`/
+  `displayOff()` auf `Arduino_G` auf, die Methoden gibt es erst in
+  `Arduino_SSD1306`/`Arduino_SH1106` (Bildschirm-Zeitplan, #75).
+
 ### Changed
 
 - `lv_conf.h`: `LV_COLOR_DEPTH` (in LVGL 9.6 deprecated) durch

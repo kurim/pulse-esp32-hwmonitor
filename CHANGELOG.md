@@ -26,6 +26,13 @@ auseinanderlaufen).
   12 Zeilen und gibt 2560 Byte `.bss` frei (Reserve damit rund 5,2 KB).
   Wer v1.0.8 schon geflasht hat, kommt nur per USB-Kabel zurück (OTA läuft
   in der Boot-Schleife nicht mehr).
+- Web-Portal (`BOARD_GENERIC`): Bildschirm-Zeitplan, Standby und Farben
+  erschienen erst nach Speichern des Anzeige-Typs und Neuladen. Sie werden jetzt
+  sofort bei Auswahl eines Typs eingeblendet; bei „Kein Display (headless)“
+  erklärt ein Hinweis, warum sie fehlen (#75).
+- Release-Workflow: Der GitHub-Release-Text wird jetzt aus dem Abschnitt der
+  Tag-Version in `CHANGELOG.md` erzeugt und überschreibt einen bereits
+  vorhandenen Release-Text. Fehlt der Abschnitt, bricht der Job ab.
 - Build für alle `BOARD_GENERIC`-Envs (esp32, esp32s3-4mb, esp32s3-8mb,
   esp32c3) schlug fehl: `boardDisplayBacklight()` rief `displayOn()`/
   `displayOff()` auf `Arduino_G` auf, die Methoden gibt es erst in

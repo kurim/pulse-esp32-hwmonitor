@@ -160,7 +160,14 @@ inline void initLvglDisplay() {
   // Buffer bewusst klein gehalten: klassischer ESP32 hat nur ~320 KB DRAM,
   // und seit ESPAsyncWebServer/AsyncTCP/WiFiManager fuer den Captive-Portal-
   // Fallback tatsaechlich mitgelinkt werden (wifi_provision.cpp), ist das
-  // .dram0.bss-Segment knapp. 12 Zeilen reichen fuer partielles Rendering.
+  // .dram0.bss-Segment knapp. 8 Zeilen reichen fuer partielles Rendering.
+  //
+  // Konkret (CI-Log "Memory Type Usage Summary", env cyd): v1.0.7 hatte noch
+  // 3376 Byte statisches DRAM frei und bootete, v1.0.8 nur noch 2624 Byte
+  // (.bss +752 Byte) und scheiterte beim FreeRTOS-Start mit "assert failed:
+  // vApplicationGetTimerTaskMemory ... (pxStackBufferTemp != NULL)" - noch
+  // bevor setup() lief. Jede Zeile hier kostet 640 Byte .bss; die Reserve
+  // darf nicht wieder unter ~3,4 KB fallen (siehe CHANGELOG.md / CLAUDE.md).
   //
   // alignas(LV_DRAW_BUF_ALIGN) ist Pflicht: lv_display_set_buffers() prueft
   // die Ausrichtung per LV_ASSERT_FORMAT_MSG (buf1 == lv_draw_buf_align(...)),
@@ -169,7 +176,7 @@ inline void initLvglDisplay() {
   // uint16_t, nicht zwangslaeufig auf den von LVGL geforderten 4 Byte - schlaegt
   // der Assert fehl, ist LV_ASSERT_HANDLER per Default ein stilles while(1);
   // (kein Log, da LV_USE_LOG=0), also ein kompletter Hang ohne jede Ausgabe.
-  static lv_color_t drawBuf[LCD_WIDTH * 12] alignas(LV_DRAW_BUF_ALIGN);
+  static lv_color_t drawBuf[LCD_WIDTH * 8] alignas(LV_DRAW_BUF_ALIGN);
   lv_display_t *disp = lv_display_create(LCD_WIDTH, LCD_HEIGHT);
   lv_display_set_buffers(disp, drawBuf, nullptr, sizeof(drawBuf), LV_DISPLAY_RENDER_MODE_PARTIAL);
   lv_display_set_flush_cb(disp, cyd_flush_cb);

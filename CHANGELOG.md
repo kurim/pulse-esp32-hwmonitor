@@ -15,6 +15,8 @@ auseinanderlaufen).
 
 ## [Unreleased]
 
+## [1.0.8] - 2026-09-02
+
 ### Added
 
 - Bildschirm-Zeitplan: Display zu festen Uhrzeiten ausschalten, wahlweise

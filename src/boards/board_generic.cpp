@@ -71,11 +71,26 @@ void initLvglDisplay() {
   initLvglDisplaySelected();
 }
 
-void boardDisplayBacklight(bool /*on*/) {
-  // Kein eigener Zugriff auf den BL-Pin noetig - initBoardDisplay() (siehe
-  // include/displays/gc9a01.h, ili9488.h, st7796s.h) schaltet das Backlight
-  // bereits beim initDisplay() HIGH, sofern ein gueltiger Pin konfiguriert
-  // ist. Ein separates "aus" gibt es fuer generische Panels bewusst nicht.
+void boardDisplayBacklight(bool on) {
+  // Einschalten uebernimmt initBoardDisplay() (siehe include/displays/
+  // gc9a01.h, ili9488.h, st7796s.h: BL-Pin HIGH beim Init). Ausschalten fuer
+  // den Bildschirm-Aus-Zeitplan (screen_schedule.cpp): OLED -> Panel-
+  // Befehl, SPI-Panel -> BL-Pin, aber nur wenn er per Pin-Override gesetzt
+  // ist (der Default-BL-Pin je Panel steckt in den Display-Headern und ist
+  // hier nicht abfragbar). Ohne schaltbaren Pin dunkelt die schwarze
+  // LVGL-Abdeckung aus screen_schedule.cpp das Bild ab.
+  if (isMonoI2c(app_config.display_type)) {
+    if (disp_mono_oled_i2c::panel) {
+      if (on) disp_mono_oled_i2c::panel->displayOn();
+      else    disp_mono_oled_i2c::panel->displayOff();
+    }
+    return;
+  }
+  int8_t bl = app_config.pin_overrides.bl;
+  if (bl != PIN_UNSET && bl >= 0) {
+    pinMode(bl, OUTPUT);
+    digitalWrite(bl, on ? HIGH : LOW);
+  }
 }
 
 void boardDisplaySetBrightness(uint8_t /*level*/) {

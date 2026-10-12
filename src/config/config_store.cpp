@@ -12,6 +12,13 @@ void config_store_init(void)
 }
 
 // Liest einen String-Schluessel; laesst dst unveraendert, wenn nicht vorhanden.
+// Bildschirm-Aus-Zeitplan als versionierter Blob (Byte fuer Byte statt
+// sizeof(struct), damit Padding/Layout-Aenderungen den NVS-Inhalt nicht
+// stillschweigend falsch deuten): [ver=1][enabled][mode] + 7 x ([off_lo]
+// [off_hi][on_lo][on_hi][enabled]).
+static constexpr uint8_t  kSchedBlobVersion = 1;
+static constexpr size_t   kSchedBlobLen     = 3 + 7 * 5;
+
 static void get_str(Preferences &p, const char *key, char *dst, size_t dst_size)
 {
     if (p.isKey(key)) {
@@ -77,6 +84,25 @@ void config_store_load(app_config_t *cfg)
     cfg->touch_y_max = s_prefs.getShort("touch_ymax", cfg->touch_y_max);
     cfg->touch_calibrated = s_prefs.getUChar("touch_cal", cfg->touch_calibrated ? 1 : 0) != 0;
 
+    if (s_prefs.isKey("scr_sched") && s_prefs.getBytesLength("scr_sched") == kSchedBlobLen) {
+        uint8_t b[kSchedBlobLen];
+        s_prefs.getBytes("scr_sched", b, sizeof(b));
+        if (b[0] == kSchedBlobVersion) {
+            cfg->screen_sched_enabled = b[1] != 0;
+            cfg->screen_sched_mode    = b[2] ? 1 : 0;
+            for (int i = 0; i < 7; i++) {
+                const uint8_t *p = b + 3 + i * 5;
+                uint16_t off = p[0] | (p[1] << 8);
+                uint16_t on  = p[2] | (p[3] << 8);
+                if (off < 1440 && on < 1440) {
+                    cfg->screen_sched_day[i].off_min = off;
+                    cfg->screen_sched_day[i].on_min  = on;
+                    cfg->screen_sched_day[i].enabled = p[4] != 0;
+                }
+            }
+        }
+    }
+
     s_prefs.end();
 }
 
@@ -115,6 +141,20 @@ void config_store_save(const app_config_t *cfg)
     s_prefs.putShort ("touch_ymin", cfg->touch_y_min);
     s_prefs.putShort ("touch_ymax", cfg->touch_y_max);
     s_prefs.putUChar ("touch_cal",  cfg->touch_calibrated ? 1 : 0);
+
+    uint8_t sb[kSchedBlobLen];
+    sb[0] = kSchedBlobVersion;
+    sb[1] = cfg->screen_sched_enabled ? 1 : 0;
+    sb[2] = cfg->screen_sched_mode ? 1 : 0;
+    for (int i = 0; i < 7; i++) {
+        uint8_t *p = sb + 3 + i * 5;
+        p[0] = cfg->screen_sched_day[i].off_min & 0xFF;
+        p[1] = cfg->screen_sched_day[i].off_min >> 8;
+        p[2] = cfg->screen_sched_day[i].on_min & 0xFF;
+        p[3] = cfg->screen_sched_day[i].on_min >> 8;
+        p[4] = cfg->screen_sched_day[i].enabled ? 1 : 0;
+    }
+    s_prefs.putBytes ("scr_sched",  sb, sizeof(sb));
 
     s_prefs.end();
 }

@@ -546,6 +546,22 @@
             <label>Standby / Screensaver nach (Sekunden ohne Signal)</label>
             <input id="standbyTimeout" type="number" min="5" max="3600">
           </div>
+          <div id="schedField" style="display:none">
+            <div class="field">
+              <label><input id="schedEnabled" type="checkbox"> Bildschirm zeitgesteuert ausschalten</label>
+            </div>
+            <div id="schedBody" style="display:none">
+              <div class="field">
+                <label>Zeitplan</label>
+                <select id="schedMode">
+                  <option value="0">Ganze Woche einheitlich</option>
+                  <option value="1">Pro Tag einzeln</option>
+                </select>
+              </div>
+              <div id="schedRows"></div>
+              <div class="status-line">Aus ab / an ab (lokale Zeit). Aus ab spaeter als an ab = laeuft ueber Mitternacht. Ohne Zeitsync bleibt der Bildschirm an. Antippen oder BOOT-Taste weckt ihn 30 s. MQTT-Override: Topic <code>&lt;topic&gt;/screen</code> mit on / off / auto.</div>
+            </div>
+          </div>
           <div class="actions"><button class="btn primary" id="btnSaveDisplay">Speichern</button></div>
         </div>
 
@@ -959,7 +975,59 @@
       if (hasDisplay) {
         $('standbyTimeout').value = c.standby_timeout_s;
       }
+      $('schedField').style.display = hasDisplay ? '' : 'none';
+      if (hasDisplay && c.screen_schedule) loadSchedule(c.screen_schedule);
     }
+
+    // --- Bildschirm-Aus-Zeitplan ---
+    const SCHED_DAYS = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
+    // Baut die Zeilen neu auf: Woche = eine Zeile, sonst sieben. `rows` liefert
+    // die Vorbelegung (fehlende Eintraege fallen auf rows[0] zurueck - beim Wechsel
+    // Woche -> Tag wird Zeile 0 so auf alle Tage kopiert, nichts geht verloren).
+    function buildSchedRows(rows, week) {
+      const box = $('schedRows');
+      box.innerHTML = '';
+      for (let i = 0; i < (week ? 1 : 7); i++) {
+        const d = rows[i] || rows[0];
+        const row = document.createElement('div');
+        row.className = 'row';
+        row.innerHTML =
+          '<div class="field"><label><input type="checkbox" class="sEn"> ' +
+          (week ? 'Jeden Tag' : SCHED_DAYS[i]) + '</label></div>' +
+          '<div class="field"><label>Aus ab</label><input type="time" class="sOff"></div>' +
+          '<div class="field"><label>An ab</label><input type="time" class="sOn"></div>';
+        box.appendChild(row);
+        row.querySelector('.sEn').checked = d.enabled;
+        row.querySelector('.sOff').value = d.off;
+        row.querySelector('.sOn').value = d.on;
+      }
+    }
+    function readSchedRows() {
+      return Array.from($('schedRows').children).map(r => ({
+        enabled: r.querySelector('.sEn').checked,
+        off: r.querySelector('.sOff').value,
+        on: r.querySelector('.sOn').value,
+      }));
+    }
+    function loadSchedule(s) {
+      $('schedEnabled').checked = !!s.enabled;
+      $('schedBody').style.display = s.enabled ? '' : 'none';
+      $('schedMode').value = String(s.mode);
+      buildSchedRows(s.days, s.mode === 0);
+    }
+    function collectSchedule() {
+      const rows = readSchedRows();
+      const week = $('schedMode').value === '0';
+      // Ganze Woche: Zeile 0 fuer alle sieben Tage senden (Geraet nutzt Eintrag 0,
+      // die Kopie haelt die Pro-Tag-Ansicht beim spaeteren Umschalten konsistent).
+      const days = [];
+      for (let i = 0; i < 7; i++) days.push(week ? rows[0] : rows[i]);
+      return { enabled: $('schedEnabled').checked, mode: parseInt($('schedMode').value, 10), days };
+    }
+    $('schedEnabled').addEventListener('change', () => {
+      $('schedBody').style.display = $('schedEnabled').checked ? '' : 'none';
+    });
+    $('schedMode').addEventListener('change', () => buildSchedRows(readSchedRows(), $('schedMode').value === '0'));
 
     // Preset gewaehlt -> POSIX-TZ-Feld uebernehmen. "custom / POSIX" (leerer
     // value) laesst das Feld unangetastet, damit man von einem Preset aus
@@ -1035,6 +1103,9 @@
       }
       if ($('standbyTimeoutField').style.display !== 'none') {
         patch.standby_timeout_s = parseInt($('standbyTimeout').value, 10);
+      }
+      if ($('schedField').style.display !== 'none') {
+        patch.screen_schedule = collectSchedule();
       }
       saveConfig(patch);
     });

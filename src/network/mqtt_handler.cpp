@@ -1,6 +1,7 @@
 #include "mqtt_handler.h"
 #include "shared_state.h"
 #include "hw_data.h"
+#include "screen_schedule.h"
 #include <WiFi.h>
 #include <espMqttClient.h>
 
@@ -12,11 +13,17 @@ static uint32_t      s_last_reconnect_attempt_ms;
 static char          s_client_id[32];
 static bool          s_enabled;
 static bool          s_paused;
+// "<mqtt_topic>/screen": Override fuer den Bildschirm-Aus-Zeitplan
+// (on/off/auto, siehe screen_schedule.h). Eigenes Topic statt im Snapshot,
+// damit der Snapshot-Parser unberuehrt bleibt.
+static char          s_screen_topic[96];
 
 static void onMqttConnect(bool /*sessionPresent*/)
 {
     mqtt_connected = true;
     s_client.subscribe(app_config.mqtt_topic, 0); // QoS 0, siehe CLAUDE.md
+    snprintf(s_screen_topic, sizeof(s_screen_topic), "%s/screen", app_config.mqtt_topic);
+    s_client.subscribe(s_screen_topic, 0);
 }
 
 static void onMqttDisconnect(espMqttClientTypes::DisconnectReason /*reason*/)
@@ -25,9 +32,16 @@ static void onMqttDisconnect(espMqttClientTypes::DisconnectReason /*reason*/)
 }
 
 static void onMqttMessage(const espMqttClientTypes::MessageProperties & /*properties*/,
-                           const char * /*topic*/, const uint8_t *payload, size_t len,
-                           size_t /*index*/, size_t /*total*/)
+                           const char *topic, const uint8_t *payload, size_t len,
+                           size_t index, size_t total)
 {
+    if (strcmp(topic, s_screen_topic) == 0) {
+        // Winziger Payload ("on"/"off"/"auto") - fragmentierte Pakete ignorieren.
+        if (index == 0 && len == total) {
+            screen_schedule_set_override_text((const char *)payload, len);
+        }
+        return;
+    }
     hw_data_apply_json((const char *)payload, (int)len);
     hw_rx_count = hw_rx_count + 1;
 }

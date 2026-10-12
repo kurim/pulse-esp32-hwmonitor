@@ -40,6 +40,15 @@ inline display_type_t board_profile_default(void) {
 // Zentrale, aus NVS geladene/persistierte App-Konfiguration. Siehe
 // src/config/config_store.{h,cpp} (Laden/Speichern) und
 // config_set_defaults() (Defaultwerte, siehe shared_state.cpp).
+// Ein Eintrag des Bildschirm-Aus-Zeitplans (siehe screen_schedule.h).
+// Minuten seit 00:00 (0..1439). off_min > on_min = Fenster laeuft ueber
+// Mitternacht in den Folgetag.
+typedef struct {
+    uint16_t off_min;
+    uint16_t on_min;
+    bool     enabled;
+} screen_sched_day_t;
+
 typedef struct {
     char wifi_ssid[33];
     char wifi_pass[65];
@@ -97,6 +106,13 @@ typedef struct {
     // weil der Weg dahin sonst nur ueber den Footer/Einstellungen-Tab fuehrt,
     // dessen Zahnrad-Icon man ohne kalibrierten Touch kaum treffen kann.
     bool touch_calibrated;
+
+    // Bildschirm-Aus-Zeitplan (Issue #74), siehe screen_schedule.h. Am Ende
+    // angehaengt wie alle neuen Felder. mode 0 = ganze Woche (nur Eintrag 0
+    // zaehlt, gilt fuer alle Tage), mode 1 = pro Tag (Index 0 = Montag).
+    bool               screen_sched_enabled;
+    uint8_t            screen_sched_mode;
+    screen_sched_day_t screen_sched_day[7];
 } app_config_t;
 
 // Live-Hardwarewerte vom PC-Client (MQTT oder Serial, siehe hw_data.h).

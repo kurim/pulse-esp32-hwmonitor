@@ -8,6 +8,7 @@
 #include "mqtt_handler.h"
 #include "serial_handler.h"
 #include "time_service.h"
+#include "screen_schedule.h"
 #include <ArduinoJson.h>
 #include <WiFi.h>
 #include <Update.h>
@@ -189,6 +190,23 @@ void buildConfigDoc(JsonDocument &doc, bool includeSecrets)
     snprintf(colBuf, sizeof(colBuf), "#%06lX", (unsigned long)app_config.gpu_arc_color);
     doc["gpu_arc_color"] = colBuf;
     doc["standby_timeout_s"] = app_config.standby_timeout_s;
+    {
+        // Bildschirm-Aus-Zeitplan, Zeiten als "HH:MM" passend zu <input type="time">.
+        JsonObject ss = doc["screen_schedule"].to<JsonObject>();
+        ss["enabled"] = app_config.screen_sched_enabled;
+        ss["mode"] = app_config.screen_sched_mode;
+        JsonArray days = ss["days"].to<JsonArray>();
+        char buf[6];
+        for (int i = 0; i < 7; i++) {
+            const screen_sched_day_t &d = app_config.screen_sched_day[i];
+            JsonObject o = days.add<JsonObject>();
+            o["enabled"] = d.enabled;
+            snprintf(buf, sizeof(buf), "%02u:%02u", d.off_min / 60, d.off_min % 60);
+            o["off"] = buf;
+            snprintf(buf, sizeof(buf), "%02u:%02u", d.on_min / 60, d.on_min % 60);
+            o["on"] = buf;
+        }
+    }
 #if defined(BOARD_GENERIC)
     // Nur auf generischen Devkits (ESP32/S3/C3) waehlt der Nutzer das Panel
     // selbst - fest verdrahtete Boards (CYD, JC8048W550) kennen ihr Display
@@ -326,6 +344,9 @@ void applyConfigFields(JsonDocument &doc)
         // andere Subsysteme - im Gegensatz zu MQTT/Zeit/etc. lohnt sich hier
         // sofortiges Anwenden statt "speichern + Reboot", siehe dashboard.html.
         boardDisplaySetBrightness(app_config.brightness);
+        // Zeitplan hat Vorrang: war das Display gerade dunkel, wuerde der
+        // Schreibzugriff oben es sonst wieder einschalten.
+        screen_schedule_apply_config();
     }
     if (doc["rotation"].is<uint8_t>())   app_config.rotation   = doc["rotation"];
     if (doc["display_type"].is<uint8_t>()) app_config.display_type = (display_type_t)(uint8_t)doc["display_type"];
@@ -342,6 +363,32 @@ void applyConfigFields(JsonDocument &doc)
     }
     if (doc["language"].is<const char *>()) strlcpy(app_config.language, doc["language"], sizeof(app_config.language));
     if (doc["standby_timeout_s"].is<uint16_t>()) app_config.standby_timeout_s = doc["standby_timeout_s"];
+
+    if (doc["screen_schedule"].is<JsonObject>()) {
+        JsonObject ss = doc["screen_schedule"];
+        if (ss["enabled"].is<bool>()) app_config.screen_sched_enabled = ss["enabled"];
+        if (ss["mode"].is<uint8_t>()) app_config.screen_sched_mode = ss["mode"].as<uint8_t>() ? 1 : 0;
+        if (ss["days"].is<JsonArray>()) {
+            // "HH:MM" -> Minuten; ungueltig -> -1 (Feld bleibt unveraendert).
+            auto parseHm = [](JsonVariant v) -> int {
+                if (!v.is<const char *>()) return -1;
+                unsigned h, m;
+                if (sscanf(v.as<const char *>(), "%u:%u", &h, &m) != 2 || h > 23 || m > 59) return -1;
+                return (int)(h * 60 + m);
+            };
+            int i = 0;
+            for (JsonObject o : ss["days"].as<JsonArray>()) {
+                if (i >= 7) break;
+                screen_sched_day_t &d = app_config.screen_sched_day[i++];
+                if (o["enabled"].is<bool>()) d.enabled = o["enabled"];
+                int off = parseHm(o["off"]);
+                int on  = parseHm(o["on"]);
+                if (off >= 0) d.off_min = off;
+                if (on >= 0)  d.on_min  = on;
+            }
+        }
+        screen_schedule_apply_config();
+    }
 
     // Pin-Overrides kommen als komplettes Objekt (siehe dashboard.html "Pins"-
     // Karte, sendet immer alle 7 Felder zusammen) - jedes Feld ist entweder

@@ -170,10 +170,36 @@ jobs:
         with:
           path: dist
 
+      # Release-Text = Abschnitt der Tag-Version aus CHANGELOG.md (ohne die
+      # Ueberschrift selbst und ohne die Link-Referenzen am Dateiende).
+      # Fehlt der Abschnitt oder ist er leer, bricht der Job ab.
+      - name: Repo auschecken (Changelog)
+        uses: actions/checkout@v6
+        with:
+          sparse-checkout: CHANGELOG.md
+          path: changelog-checkout
+
+      - name: Release-Notes aus CHANGELOG.md extrahieren
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          awk -v v="$VERSION" '
+            /^## \[/ { if (found) exit; if (index($0, "## [" v "]") == 1) { found = 1; next } }
+            found && /^\[[^]]+\]: / { exit }
+            found { print }
+          ' changelog-checkout/CHANGELOG.md > release-notes.md
+          if ! grep -q '[^[:space:]]' release-notes.md; then
+            echo "::error::Kein Changelog-Abschnitt fuer ${VERSION} in CHANGELOG.md gefunden"
+            exit 1
+          fi
+          cat release-notes.md
+
+      # body_path ueberschreibt den Release-Text auch dann, wenn der Release
+      # schon existiert (z.B. manuell oder durch einen frueheren Lauf angelegt).
       - name: GitHub-Release anlegen
         uses: softprops/action-gh-release@v2
         with:
           files: dist/**/*.bin
+          body_path: release-notes.md
 
       # docs/ ist die GitHub-Pages-Seite mit dem Browser-Flasher
       # (docs/flasher.js). GitHub-Release-Assets liegen auf

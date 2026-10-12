@@ -17,6 +17,10 @@ auseinanderlaufen).
 
 ### Fixed
 
+- Web-Portal (`BOARD_GENERIC`): Bildschirm-Zeitplan, Standby und Farben
+  erschienen erst nach Speichern des Anzeige-Typs und Neuladen. Sie werden jetzt
+  sofort bei Auswahl eines Typs eingeblendet; bei „Kein Display (headless)“
+  erklärt ein Hinweis, warum sie fehlen (#75).
 - Release-Workflow: Der GitHub-Release-Text wird jetzt aus dem Abschnitt der
   Tag-Version in `CHANGELOG.md` erzeugt und überschreibt einen bereits
   vorhandenen Release-Text. Fehlt der Abschnitt, bricht der Job ab.

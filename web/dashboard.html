@@ -611,7 +611,16 @@
         <h3 style="margin-top:0;color:var(--blue)">⬆ Firmware</h3>
         <div class="status-line">
           Aktuell: <span id="fwVersion">-</span> (<span id="fwBoard">-</span>)<br>
-          Freier Speicher: <span id="fwHeap">-</span> &middot; Laufzeit: <span id="fwUptime">-</span>
+          Freier Speicher: <span id="fwHeap">-</span> &middot; Laufzeit: <span id="fwUptime">-</span><br>
+          Letzter Neustart: <span id="fwResetReason">-</span>
+        </div>
+        <div id="crashBox" style="display:none;margin:12px 0;padding:12px;border:1px solid var(--red,#e74c3c);border-radius:8px;background:rgba(231,76,60,.1)">
+          <div style="font-weight:600">&#9888; Absturz-Dump gespeichert (<span id="crashSize">-</span>)</div>
+          <div class="status-line" style="margin:4px 0 10px">F&uuml;r die Fehlersuche herunterladen und dem Release-ELF zuordnen (<code>espcoredump.py info_corefile</code>).</div>
+          <div class="actions">
+            <a class="btn" style="text-decoration:none" id="btnCrashDownload" href="/api/coredump" download="pulse-coredump.bin">Dump herunterladen</a>
+            <button class="btn danger" id="btnCrashDelete">L&ouml;schen</button>
+          </div>
         </div>
 
         <div class="actions" style="margin:12px 0">
@@ -784,6 +793,9 @@
       $('fwBoard').textContent = s.esp.board_name;
       $('fwHeap').textContent = (s.esp.free_heap / 1024).toFixed(0) + ' KB';
       $('fwUptime').textContent = fmtUptime(s.esp.uptime_s);
+      $('fwResetReason').textContent = s.esp.reset_reason + (s.esp.reset_was_crash ? ' (Absturz)' : '');
+      $('crashBox').style.display = s.esp.coredump_size > 0 ? '' : 'none';
+      $('crashSize').textContent = (s.esp.coredump_size / 1024).toFixed(0) + ' KB';
 
       // Dashboard-Editor nicht auf runden Displays (GC9A01) - Nav-Button
       // sonst ausgeblendet, siehe display_layout.h.
@@ -1495,6 +1507,17 @@
         xhr.send(form);
       } catch (e) {
         $('otaProgress').textContent = 'Fehler: ' + e.message;
+      }
+    });
+
+    $('btnCrashDelete').addEventListener('click', async () => {
+      if (!confirm('Absturz-Dump löschen?')) return;
+      try {
+        await api('/api/coredump', { method: 'DELETE' });
+        $('crashBox').style.display = 'none';
+        toast('Absturz-Dump gelöscht');
+      } catch (e) {
+        toast('Fehler beim Löschen');
       }
     });
 

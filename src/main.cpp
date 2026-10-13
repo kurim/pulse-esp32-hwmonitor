@@ -14,6 +14,7 @@
 #include "layout_store.h"
 #include "github_ota.h"
 #include "screen_schedule.h"
+#include "crash_report.h"
 
 // Nur auf BOARD_GENERIC ueberhaupt wahr sein kann; steuert in loop(), ob
 // LVGL-UI-Aufrufe stattfinden (siehe setup() unten).
@@ -23,6 +24,7 @@ void setup() {
   Serial.begin(115200);
   delay(500);
   log_w("Pulse ESP32 Hardware-Monitor (Version %s)", FW_VERSION);
+  crash_report_begin(); // Reset-Grund + Core-Dump-Status, siehe crash_report.h
 
   config_store_init();
   config_set_defaults(&app_config);

@@ -178,6 +178,30 @@ starts). Uses the configured time zone/NTP; without a time sync the screen stays
 - MQTT override: publish `on`, `off` or `auto` to `<mqtt_topic>/screen` (RAM only, resets to
   `auto` on reboot).
 
+### Crash analysis (core dump)
+
+Every partition table has a 64 KB `coredump` partition and the firmware writes a
+core dump there on a panic. After a crash, the web portal (tab *Firmware*) shows
+the reset reason of the last boot (`panic`, `task_wdt`, `brownout`, ...) and
+offers the dump for download (`GET /api/coredump`) or deletion
+(`DELETE /api/coredump`). The reset reason is also logged on the serial console
+at boot.
+
+To decode a dump, download the `.elf` matching the firmware version and board
+from the GitHub release (`esp32-hwmonitor-vX.Y.Z-pio-<env>.elf`) and run:
+
+```
+espcoredump.py info_corefile -t raw -c pulse-coredump.bin esp32-hwmonitor-vX.Y.Z-pio-<env>.elf
+```
+
+Without the web portal (e.g. boot loop), read the partition over USB instead
+(offset 0x3F0000 on 4 MB, 0x7F0000 on 8 MB, 0xFF0000 on 16 MB boards, see
+`partitions_*.csv`):
+
+```
+esptool.py read_flash 0x3F0000 0x10000 core.bin
+```
+
 ## Framework mapping (Arduino → ESP-IDF)
 
 | Arduino | ESP-IDF |

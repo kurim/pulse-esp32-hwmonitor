@@ -60,6 +60,12 @@ in `display_factory.h`, zur Laufzeit aus NVS). Ein Firmware-Image enthält alle 
   invertierte Farben.
 - CYD: frei nutzbare GPIOs sind nur 22, 27 und 35 (35 nur Eingang).
 - CYD: Touch hängt auf einem eigenen SPI-Bus (VSPI), Display auf HSPI.
+- CYD / klassischer ESP32: das **statische DRAM** (`.dram0.bss` + `.data`) ist fast voll.
+  Im CI-Log (`Memory Type Usage Summary`, Zeile `DRAM … Remain`) muss für `cyd` eine
+  Reserve von mindestens ~3,4 KB bleiben: v1.0.7 (3376 Byte frei) bootete, v1.0.8
+  (2624 Byte frei) bootete nicht mehr (`assert failed: vApplicationGetTimerTaskMemory
+  … pxStackBufferTemp != NULL`, Boot-Schleife, nur per Kabel zu retten). Große Puffer
+  deshalb nicht als `static` anlegen und bei jedem Merge die Reserve im Log prüfen.
 - ESP32-C3: Strapping-Pins 2, 8, 9 freihalten. GPIO 9 ist die BOOT-Taste und wird als
   Nav-Button für Profile ohne Touch genutzt.
 - ESP32-C3: 400 KB SRAM, kein PSRAM. Ein Vollbild-Framebuffer für GC9A01 wären 112 KB —

@@ -56,6 +56,14 @@ void config_set_defaults(app_config_t *cfg)
     cfg->touch_y_min = 540;
     cfg->touch_y_max = 3417;
     cfg->touch_calibrated = false;
+
+    cfg->screen_sched_enabled = false;
+    cfg->screen_sched_mode    = 0;
+    for (int i = 0; i < 7; i++) {
+        cfg->screen_sched_day[i].off_min = 22 * 60;
+        cfg->screen_sched_day[i].on_min  = 7 * 60;
+        cfg->screen_sched_day[i].enabled = true;
+    }
 }
 
 void history_push(history_t *h, float load, float temp, float power)

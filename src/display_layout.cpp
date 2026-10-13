@@ -1,3 +1,4 @@
+#include "screen_schedule.h"
 #include "display_layout.h"
 #include "shared_state.h"
 #include "config_store.h"
@@ -2646,6 +2647,7 @@ void displayMonoButtonPoll(void) {
     lastChangeMs = now;
     if (lastLevel && !level) { // fallende Flanke: losgelassen -> gedrueckt
       s_monoManualToggleRequested = true;
+      screen_schedule_notify_activity();
     }
     lastLevel = level;
   }

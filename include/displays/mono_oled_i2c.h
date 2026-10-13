@@ -87,7 +87,22 @@ public:
 
 inline Arduino_DataBus *bus   = nullptr;
 inline Arduino_G       *panel = nullptr; // roher SSD1306/SH1106-Treiber (kein Arduino_GFX, siehe oben)
+inline Chip             panelChip = Chip::kSsd1306; // displayOn()/displayOff() gibt es erst in den Subklassen, nicht in Arduino_G
 inline Arduino_GFX     *gfx   = nullptr; // Arduino_Canvas_Mono - das, worauf LVGL tatsaechlich zeichnet
+
+// Panel-Befehl Display an/aus (Bildschirm-Aus-Zeitplan). displayOn()/
+// displayOff() sind nicht in Arduino_G deklariert, nur in Arduino_SSD1306
+// bzw. Arduino_SH1106 - daher der Cast anhand des gemerkten Chips.
+inline void setPanelPower(bool on) {
+  if (!panel) return;
+  if (panelChip == Chip::kSh1106) {
+    auto *p = static_cast<Arduino_SH1106 *>(panel);
+    if (on) p->displayOn(); else p->displayOff();
+  } else {
+    auto *p = static_cast<Arduino_SSD1306 *>(panel);
+    if (on) p->displayOn(); else p->displayOff();
+  }
+}
 
 inline bool initDisplay(const pin_override_i2c_t *override, Chip chip) {
   pin_override_i2c_t pins;
@@ -104,6 +119,7 @@ inline bool initDisplay(const pin_override_i2c_t *override, Chip chip) {
 
   Wire.begin(pins.sda, pins.scl);
   bus = new MonoI2CBus(pins.i2c_addr, I2C_COMMAND_PREFIX, I2C_DATA_PREFIX, &Wire);
+  panelChip = chip;
   panel = (chip == Chip::kSh1106)
               ? static_cast<Arduino_G *>(new Arduino_SH1106(bus, pins.rst, WIDTH, HEIGHT))
               : static_cast<Arduino_G *>(new Arduino_SSD1306(bus, pins.rst, WIDTH, HEIGHT));

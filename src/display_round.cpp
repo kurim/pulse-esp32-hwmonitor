@@ -1,3 +1,4 @@
+#include "screen_schedule.h"
 #include "display_round.h"
 #include <Arduino.h>
 #include <time.h>
@@ -677,6 +678,7 @@ void displayRoundButtonPoll(void)
     lastChangeMs = now;
     if (lastLevel && !level) { // fallende Flanke: losgelassen -> gedrueckt
       s_manualToggleRequested = true;
+      screen_schedule_notify_activity();
     }
     lastLevel = level;
   }

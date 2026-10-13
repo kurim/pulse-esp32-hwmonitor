@@ -164,6 +164,20 @@ content instead of brightness).
 | GND | GND |
 | I2C address | 0x3C |
 
+### Screen-off schedule
+
+Web portal → Display → "Bildschirm zeitgesteuert ausschalten": switches the screen fully
+dark during a time window, either **one schedule for the whole week** or **per weekday**.
+"Off from" later than "on from" means the window runs past midnight (it belongs to the day it
+starts). Uses the configured time zone/NTP; without a time sync the screen stays on.
+
+- Touch or the BOOT button wakes the screen for 30 s.
+- Backlight boards (CYD, JC8048W550) switch the backlight off; every other panel gets a black
+  overlay (generic SPI panels additionally switch the BL pin if one is set in the pin overrides;
+  SSD1309/SH1106 use the panel's display-off command, untested).
+- MQTT override: publish `on`, `off` or `auto` to `<mqtt_topic>/screen` (RAM only, resets to
+  `auto` on reboot).
+
 ## Framework mapping (Arduino → ESP-IDF)
 
 | Arduino | ESP-IDF |
@@ -237,8 +251,9 @@ chip families, since `cyd`/`cyd-v3`/`jc8048w550` carry their own board flags
 that a chip-only matrix couldn't express. No manual `esptool merge_bin` step
 needed: pioarduino already produces `firmware.factory.bin` (see above) on
 every build, which is uploaded as-is alongside the OTA-only `firmware.bin`.
-Runs on `workflow_dispatch` and on `v*` tag pushes (which also sets
-`FW_VERSION` from the tag and creates a GitHub release with all artifacts).
+Runs on `workflow_dispatch` and on `v*` tag pushes (which also check the tag
+against `CHANGELOG.md` - the single source of truth for `FW_VERSION`, see
+`extra_script_version.py` - and create a GitHub release with all artifacts).
 
 > **Captive portal detection on phones can briefly exhaust sockets**:
 > iOS/Android/Windows check internet connectivity in the setup AP via

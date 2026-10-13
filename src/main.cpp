@@ -13,6 +13,7 @@
 #include "display_layout.h"
 #include "layout_store.h"
 #include "github_ota.h"
+#include "screen_schedule.h"
 
 // Nur auf BOARD_GENERIC ueberhaupt wahr sein kann; steuert in loop(), ob
 // LVGL-UI-Aufrufe stattfinden (siehe setup() unten).
@@ -228,6 +229,7 @@ void loop() {
 
   if (s_hasDisplay) {
     displayDrawButtonPoll();
+    if (screenSwitched) screen_schedule_poll();
     layout_queue_process();
     static uint32_t s_lastBindingRefresh = 0;
     if (millis() - s_lastBindingRefresh >= 500) {

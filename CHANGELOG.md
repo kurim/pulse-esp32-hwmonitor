@@ -15,6 +15,17 @@ auseinanderlaufen).
 
 ## [Unreleased]
 
+### Added
+
+- Absturzanalyse: Der Reset-Grund des letzten Starts (`panic`, `task_wdt`,
+  `brownout`, ...) steht im Serial-Log und im Webportal (Tab „Firmware“). Hat
+  ein Absturz einen Core Dump in die `coredump`-Partition geschrieben, bietet
+  das Webportal ihn zum Download (`GET /api/coredump`) und zum Löschen
+  (`DELETE /api/coredump`) an. Der Dump wird direkt aus dem Flash gestreamt,
+  ohne zusätzliche statische Puffer (DRAM-Reserve beim CYD bleibt unverändert).
+- Releases enthalten zu jedem Board das passende `firmware.elf`
+  (`esp32-hwmonitor-vX.Y.Z-pio-<env>.elf`) zum Auswerten der Dumps.
+
 ## [1.0.9] - 2026-10-12
 
 ### Fixed

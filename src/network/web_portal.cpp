@@ -9,6 +9,7 @@
 #include "serial_handler.h"
 #include "time_service.h"
 #include "screen_schedule.h"
+#include "crash_report.h"
 #include <ArduinoJson.h>
 #include <WiFi.h>
 #include <Update.h>
@@ -94,6 +95,9 @@ void handleStatus(AsyncWebServerRequest *request)
     esp["uptime_s"] = millis() / 1000;
     esp["fw_version"] = FW_VERSION;
     esp["board_name"] = BOARD_NAME;
+    esp["reset_reason"] = crash_report_reset_reason();
+    esp["reset_was_crash"] = crash_report_reset_was_crash();
+    esp["coredump_size"] = crash_report_dump_size();
 
     String out;
     serializeJson(doc, out);
@@ -625,6 +629,33 @@ void handleDashboard(AsyncWebServerRequest *request)
     request->send(response);
 }
 
+// Streamt den Core Dump der letzten Absturzes direkt aus der Flash-Partition
+// (kein RAM-Puffer, siehe crash_report.h). Auswertung am PC mit
+// "espcoredump.py info_corefile -t raw -c <datei> <firmware.elf>", das ELF
+// liegt im jeweiligen Release.
+void handleCoredumpGet(AsyncWebServerRequest *request)
+{
+    size_t size = crash_report_dump_size();
+    if (size == 0) {
+        request->send(404, "application/json", "{\"error\":\"no coredump\"}");
+        return;
+    }
+    AsyncWebServerResponse *response = request->beginResponse(
+        "application/octet-stream", size,
+        [](uint8_t *buf, size_t maxLen, size_t index) -> size_t {
+            return crash_report_dump_read(index, buf, maxLen);
+        });
+    response->addHeader("Content-Disposition", "attachment; filename=\"pulse-coredump.bin\"");
+    response->addHeader("Cache-Control", "no-store");
+    request->send(response);
+}
+
+void handleCoredumpDelete(AsyncWebServerRequest *request)
+{
+    bool ok = crash_report_dump_erase();
+    request->send(ok ? 200 : 500, "application/json", ok ? "{\"ok\":true}" : "{\"ok\":false}");
+}
+
 void handleFactoryReset(AsyncWebServerRequest *request)
 {
     config_store_factory_reset();
@@ -914,6 +945,8 @@ void web_portal_begin(void)
             s_layoutBody.concat((const char *)data, len);
             (void)total;
         });
+    s_server.on("/api/coredump", HTTP_GET, handleCoredumpGet);
+    s_server.on("/api/coredump", HTTP_DELETE, handleCoredumpDelete);
     s_server.on("/api/reboot", HTTP_POST, handleReboot);
     s_server.on("/api/factory_reset", HTTP_POST, handleFactoryReset);
     s_server.on("/api/ota", HTTP_POST, handleOtaDone, handleOtaUpload);

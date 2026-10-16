@@ -35,6 +35,8 @@ auseinanderlaufen).
   Modus und vor der ersten Verbindung passiert nichts, es gibt keine
   Neustart-Schleife bei dauerhaft fehlendem WLAN.
 
+## [1.1.0] - 2026-10-13
+
 ### Added
 
 - Absturzanalyse: Der Reset-Grund des letzten Starts (`panic`, `task_wdt`,

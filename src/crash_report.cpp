@@ -1,6 +1,8 @@
 #include "crash_report.h"
 #include <Arduino.h>
+#include <Preferences.h>
 #include <esp_core_dump.h>
+#include <esp_timer.h>
 #include <esp_partition.h>
 #include <esp_system.h>
 
@@ -9,6 +11,19 @@ namespace {
 esp_reset_reason_t s_reason = ESP_RST_UNKNOWN;
 size_t s_dumpAddr = 0; // absolute Flash-Adresse des Dump-Images
 size_t s_dumpSize = 0; // 0 = kein gueltiger Dump
+char   s_customReason[16] = ""; // Grund eines gewollten Neustarts, siehe crash_report_restart()
+volatile uint32_t s_loopBeatMs = 0;
+esp_timer_handle_t s_wdtTimer = nullptr;
+
+void wdtCheck(void *)
+{
+    uint32_t stalled = millis() - s_loopBeatMs;
+    if (stalled > CRASH_REPORT_LOOP_TIMEOUT_MS) {
+        // abort() -> Panic-Handler schreibt den Core Dump (alle Tasks).
+        log_e("loop() haengt seit %u ms - abort()", (unsigned)stalled);
+        abort();
+    }
+}
 
 const esp_partition_t *dumpPartition()
 {
@@ -22,6 +37,20 @@ void crash_report_begin(void)
 {
     s_reason = esp_reset_reason();
     s_dumpSize = 0;
+
+    // Eigener Neustart-Grund aus dem letzten Lauf (crash_report_restart()):
+    // einmal lesen und sofort loeschen, damit er nur den direkt folgenden
+    // Boot beschreibt.
+    s_customReason[0] = '\0';
+    Preferences p;
+    if (p.begin("pulsediag", false)) {
+        String r = p.getString("restart", "");
+        if (r.length() > 0) {
+            strlcpy(s_customReason, r.c_str(), sizeof(s_customReason));
+            p.remove("restart");
+        }
+        p.end();
+    }
 
     // esp_core_dump_image_check() validiert die Pruefsumme des Images; ein
     // halb geschriebener Dump (Reset waehrend des Schreibens) gilt als leer.
@@ -39,6 +68,7 @@ void crash_report_begin(void)
 
 const char *crash_report_reset_reason(void)
 {
+    if (s_customReason[0] != '\0' && s_reason == ESP_RST_SW) return s_customReason;
     switch (s_reason) {
     case ESP_RST_POWERON:   return "poweron";
     case ESP_RST_EXT:       return "external";
@@ -56,6 +86,7 @@ const char *crash_report_reset_reason(void)
 
 bool crash_report_reset_was_crash(void)
 {
+    if (s_customReason[0] != '\0' && s_reason == ESP_RST_SW) return true;
     switch (s_reason) {
     case ESP_RST_PANIC:
     case ESP_RST_INT_WDT:
@@ -88,4 +119,40 @@ bool crash_report_dump_erase(void)
     if (esp_core_dump_image_erase() != ESP_OK) return false;
     s_dumpSize = 0;
     return true;
+}
+
+void crash_report_watchdog_start(void)
+{
+    if (s_wdtTimer) return;
+    s_loopBeatMs = millis();
+    esp_timer_create_args_t args = {};
+    args.callback = wdtCheck;
+    args.name = "loop_wdt";
+    if (esp_timer_create(&args, &s_wdtTimer) == ESP_OK) {
+        esp_timer_start_periodic(s_wdtTimer, 1000 * 1000);
+    }
+}
+
+void crash_report_loop_heartbeat(void)
+{
+    s_loopBeatMs = millis();
+}
+
+void crash_report_restart(const char *reason)
+{
+    Preferences p;
+    if (p.begin("pulsediag", false)) {
+        p.putString("restart", reason);
+        p.end();
+    }
+    ESP.restart();
+}
+
+void crash_report_heap_log(void)
+{
+    static uint32_t last = 0;
+    if (millis() - last < 5UL * 60UL * 1000UL) return;
+    last = millis();
+    log_w("Heap: frei %u, Minimum %u, groesster Block %u", (unsigned)ESP.getFreeHeap(),
+          (unsigned)ESP.getMinFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
 }

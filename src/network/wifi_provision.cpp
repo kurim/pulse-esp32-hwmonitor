@@ -1,6 +1,7 @@
 #include "wifi_provision.h"
 #include "shared_state.h"
 #include "config_store.h"
+#include "crash_report.h"
 #include <WiFi.h>
 #include <Preferences.h>
 #include <ImprovWiFiLibrary.h>
@@ -65,11 +66,23 @@ static ProvisionState s_state         = ProvisionState::kDone;
 static uint32_t       s_stateStartMs  = 0;
 static uint32_t       s_credsWindowMs = 5000;
 
+// WLAN-Selbstheilung (siehe wifi_provision_loop()): Zeitpunkt des letzten
+// Verbindungsverlusts, ob nach dem Boot ueberhaupt schon mal eine Verbindung
+// stand, und ob der Captive-Portal-Fallback laeuft (dann ist "kein WLAN"
+// Normalzustand und wird nicht angefasst).
+static const uint32_t kWifiReconnectAfterMs = 60UL * 1000UL;
+static const uint32_t kWifiRestartAfterMs   = 5UL * 60UL * 1000UL;
+static uint32_t s_disconnectedSinceMs = 0;
+static uint32_t s_lastReconnectMs     = 0;
+static bool     s_everConnected       = false;
+static bool     s_captivePortal       = false;
+
 static void onWiFiEvent(WiFiEvent_t event)
 {
     switch (event) {
     case ARDUINO_EVENT_WIFI_STA_GOT_IP:
         wifi_connected = true;
+        s_everConnected = true;
         // Falls die Verbindung ueber den WiFiManager-Fallback zustande kam
         // (andere Zugangsdaten als zuletzt in app_config gespeichert), hier
         // nachziehen, damit app_config die aktuell genutzten Credentials
@@ -82,6 +95,7 @@ static void onWiFiEvent(WiFiEvent_t event)
         }
         break;
     case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
+        if (wifi_connected || s_disconnectedSinceMs == 0) s_disconnectedSinceMs = millis();
         wifi_connected = false;
         break;
     default:
@@ -114,6 +128,7 @@ static void startCaptivePortalFallback()
     }
     s_wm.fallbackToSoftAp(true);
     s_wm.startBackgroundTask(String(BOARD_NAME) + "-Setup");
+    s_captivePortal = true;
 
     // Verbindung/AP laufen ab hier autonom in einer eigenen Task weiter
     // (WIFIMANAGER::loop()) - wifi_provision_loop() hat danach nichts mehr
@@ -215,6 +230,23 @@ void wifi_provision_loop(void)
 
     case ProvisionState::kDone:
     default:
+        // WLAN-Selbstheilung: Arduinos Auto-Reconnect reicht nicht immer
+        // (nach manchen Disconnect-Gruenden bleibt das Geraet dauerhaft
+        // ohne Netz, Webportal/MQTT tot, waehrend die UI weiterlaeuft). Nur
+        // wenn nach dem Boot schon mal eine Verbindung stand - sonst
+        // uebernimmt der normale Boot-Ablauf (Captive-Portal) und es gibt
+        // keine Neustart-Schleife bei dauerhaft fehlendem WLAN.
+        if (s_everConnected && !s_captivePortal && !wifi_connected && s_disconnectedSinceMs != 0) {
+            uint32_t down = millis() - s_disconnectedSinceMs;
+            if (down >= kWifiRestartAfterMs) {
+                log_e("WLAN seit %u s weg - Neustart", (unsigned)(down / 1000));
+                crash_report_restart("wifi_lost");
+            } else if (down >= kWifiReconnectAfterMs && millis() - s_lastReconnectMs >= 30000UL) {
+                s_lastReconnectMs = millis();
+                log_w("WLAN seit %u s weg - WiFi.reconnect()", (unsigned)(down / 1000));
+                WiFi.reconnect();
+            }
+        }
         break;
     }
 }

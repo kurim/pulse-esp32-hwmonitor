@@ -28,3 +28,27 @@ size_t crash_report_dump_read(size_t offset, uint8_t *buf, size_t len);
 
 // Loescht den gespeicherten Core Dump. true bei Erfolg.
 bool crash_report_dump_erase(void);
+
+// Software-Watchdog fuer loop(): crash_report_loop_heartbeat() muss in jedem
+// loop()-Durchlauf aufgerufen werden. Ist der letzte Aufruf laenger als
+// CRASH_REPORT_LOOP_TIMEOUT_MS her, loest ein esp_timer-Callback abort() aus
+// -> Panic mit Core Dump (alle Tasks inkl. dem haengenden loopTask), danach
+// Reset. Bewusst NICHT der Task-Watchdog des IDF: dessen Timeout ist global
+// (CONFIG_ESP_TASK_WDT_TIMEOUT_S = 60 s, wegen async_tcp, siehe
+// platformio.ini) und liesse sich nicht nur fuer loop() verkuerzen.
+#define CRASH_REPORT_LOOP_TIMEOUT_MS 20000
+
+// Am ENDE von setup() aufrufen - setup() darf laenger dauern (z.B. das
+// OTA-Update beim Boot, siehe ota_boot_run_pending_action()).
+void crash_report_watchdog_start(void);
+void crash_report_loop_heartbeat(void);
+
+// Merkt sich einen eigenen Neustart-Grund (max. 15 Zeichen, z.B. "wifi_lost")
+// im NVS und startet neu. crash_report_reset_reason() liefert ihn beim
+// naechsten Boot statt "software". Kehrt nicht zurueck.
+void crash_report_restart(const char *reason);
+
+// Loggt alle 5 Minuten freien Heap, Minimum seit Boot und groessten
+// zusammenhaengenden Block (Heap-Erschoepfung/-Fragmentierung ist der
+// Hauptverdacht bei "Webportal tot, UI laeuft noch"). Aus loop() aufrufen.
+void crash_report_heap_log(void);

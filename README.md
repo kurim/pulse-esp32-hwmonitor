@@ -194,6 +194,11 @@ from the GitHub release (`esp32-hwmonitor-vX.Y.Z-pio-<env>.elf`) and run:
 espcoredump.py info_corefile -t raw -c pulse-coredump.bin esp32-hwmonitor-vX.Y.Z-pio-<env>.elf
 ```
 
+A hang in `loop()` (> 20 s without a heartbeat) triggers a software watchdog
+that calls `abort()`, so a frozen device ends in a panic with a core dump
+instead of staying dead. `/api/status` also reports `min_free_heap` and
+`max_alloc_heap`, and the serial log prints the heap every 5 minutes.
+
 Without the web portal (e.g. boot loop), read the partition over USB instead
 (offset 0x3F0000 on 4 MB, 0x7F0000 on 8 MB, 0xFF0000 on 16 MB boards, see
 `partitions_*.csv`):

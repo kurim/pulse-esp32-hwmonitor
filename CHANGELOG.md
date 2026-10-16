@@ -17,6 +17,26 @@ auseinanderlaufen).
 
 ### Added
 
+- `loop()`-Watchdog: Hängt `loop()` länger als 20 s (Deadlock, Endlosschleife),
+  löst ein Timer `abort()` aus. Ergebnis ist ein Panic mit Core Dump (alle
+  Tasks, inkl. dem hängenden `loopTask`) und anschließendem Reset, den das
+  Webportal danach anzeigt, statt eines dauerhaft eingefrorenen Geräts. Eigener
+  Software-Watchdog statt des IDF-Task-Watchdogs, weil dessen Timeout global
+  ist (60 s wegen `async_tcp`).
+- Heap-Diagnose: `/api/status` liefert `esp.min_free_heap` und
+  `esp.max_alloc_heap`, zusätzlich steht alle 5 Minuten eine Heap-Zeile im
+  Serial-Log (Hinweis auf Heap-Erschöpfung bei „Webportal tot, UI läuft“).
+
+### Fixed
+
+- WLAN-Selbstheilung: Ist das WLAN nach einer bestehenden Verbindung länger als
+  60 s weg, wird `WiFi.reconnect()` aufgerufen (alle 30 s), nach 5 min startet
+  das Gerät neu (Reset-Grund `wifi_lost` im Webportal). Im Captive-Portal-
+  Modus und vor der ersten Verbindung passiert nichts, es gibt keine
+  Neustart-Schleife bei dauerhaft fehlendem WLAN.
+
+### Added
+
 - Absturzanalyse: Der Reset-Grund des letzten Starts (`panic`, `task_wdt`,
   `brownout`, ...) steht im Serial-Log und im Webportal (Tab „Firmware“). Hat
   ein Absturz einen Core Dump in die `coredump`-Partition geschrieben, bietet

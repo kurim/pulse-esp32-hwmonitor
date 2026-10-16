@@ -97,9 +97,14 @@ void setup() {
   serial_handler_begin();
   time_service_begin();
   weather_service_begin();
+
+  // Erst ganz am Ende von setup(): das Boot-OTA weiter oben darf laenger als
+  // das loop()-Timeout dauern.
+  crash_report_watchdog_start();
 }
 
 void loop() {
+  crash_report_loop_heartbeat();
   lv_timer_handler();
   wifi_provision_loop();
 
@@ -243,6 +248,7 @@ void loop() {
 
   mqtt_handler_loop();
   serial_handler_loop();
+  crash_report_heap_log();
 
   delay(1);
 }

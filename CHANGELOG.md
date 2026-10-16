@@ -15,6 +15,8 @@ auseinanderlaufen).
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-16
+
 ### Added
 
 - `loop()`-Watchdog: Hängt `loop()` länger als 20 s (Deadlock, Endlosschleife),

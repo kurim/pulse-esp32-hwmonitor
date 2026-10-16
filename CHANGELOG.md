@@ -15,7 +15,7 @@ auseinanderlaufen).
 
 ## [Unreleased]
 
-## [1.1.0] - 2026-10-13
+## [1.2.0] - 2026-10-16
 
 ### Added
 
@@ -36,6 +36,8 @@ auseinanderlaufen).
   das Gerät neu (Reset-Grund `wifi_lost` im Webportal). Im Captive-Portal-
   Modus und vor der ersten Verbindung passiert nichts, es gibt keine
   Neustart-Schleife bei dauerhaft fehlendem WLAN.
+
+## [1.1.0] - 2026-10-13
 
 ### Added
 

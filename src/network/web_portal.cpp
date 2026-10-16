@@ -92,6 +92,8 @@ void handleStatus(AsyncWebServerRequest *request)
     esp["temp_c"] = nullptr; // ESP32 (original) hat keinen internen Temp-Sensor
 #endif
     esp["free_heap"] = ESP.getFreeHeap();
+    esp["min_free_heap"] = ESP.getMinFreeHeap();
+    esp["max_alloc_heap"] = ESP.getMaxAllocHeap();
     esp["uptime_s"] = millis() / 1000;
     esp["fw_version"] = FW_VERSION;
     esp["board_name"] = BOARD_NAME;

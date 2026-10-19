@@ -15,6 +15,8 @@ auseinanderlaufen).
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-10-19
+
 ### Added
 
 - `loop()`-Stage-Marker: Jeder Abschnitt in `loop()` setzt eine Stage. Löst der

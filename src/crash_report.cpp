@@ -19,8 +19,10 @@ esp_timer_handle_t s_wdtTimer = nullptr;
 
 void wdtCheck(void *)
 {
-    uint32_t stalled = millis() - s_loopBeatMs;
-    if (stalled > CRASH_REPORT_LOOP_TIMEOUT_MS) {
+    // signed: der Heartbeat (anderer Core) kann nach millis() gesetzt werden -> -1/-2 ms
+    // waeren als uint32_t ~4,29e9 und loesten faelschlich aus.
+    int32_t stalled = (int32_t)(millis() - s_loopBeatMs);
+    if (stalled > (int32_t)CRASH_REPORT_LOOP_TIMEOUT_MS) {
         // abort() -> Panic-Handler schreibt den Core Dump (alle Tasks).
         log_e("loop() haengt seit %u ms in Stage \"%s\" - abort()", (unsigned)stalled, s_stage);
         // Stage ueberlebt den Reset nur im NVS (kein RTC/DRAM-Puffer, siehe CLAUDE.md).

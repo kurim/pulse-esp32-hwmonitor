@@ -23,6 +23,13 @@ auseinanderlaufen).
   sie im Boot-Log. Der Core Dump zeigt nur das Ende des Hängers, die Stage die
   blockierende Stelle.
 
+### Fixed
+
+- `loop()`-Watchdog löste fälschlich `abort()` aus, obwohl `loop()` gesund lief:
+  Setzte der Heartbeat (anderer Core) die Zeit zwischen `millis()` und dem
+  Lesen von `s_loopBeatMs` um 1-2 ms neuer, lief die unsigned Differenz über
+  (`4294967294 ms`). Die Differenz wird jetzt signed bewertet.
+
 ## [1.2.0] - 2026-10-16
 
 ### Added

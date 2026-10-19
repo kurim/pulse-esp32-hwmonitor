@@ -12,7 +12,9 @@ esp_reset_reason_t s_reason = ESP_RST_UNKNOWN;
 size_t s_dumpAddr = 0; // absolute Flash-Adresse des Dump-Images
 size_t s_dumpSize = 0; // 0 = kein gueltiger Dump
 char   s_customReason[16] = ""; // Grund eines gewollten Neustarts, siehe crash_report_restart()
+char   s_loopStall[24] = ""; // "<Stage> <ms>" des letzten Watchdog-Abbruchs, siehe wdtCheck()
 volatile uint32_t s_loopBeatMs = 0;
+volatile const char *s_stage = "";
 esp_timer_handle_t s_wdtTimer = nullptr;
 
 void wdtCheck(void *)
@@ -20,7 +22,15 @@ void wdtCheck(void *)
     uint32_t stalled = millis() - s_loopBeatMs;
     if (stalled > CRASH_REPORT_LOOP_TIMEOUT_MS) {
         // abort() -> Panic-Handler schreibt den Core Dump (alle Tasks).
-        log_e("loop() haengt seit %u ms - abort()", (unsigned)stalled);
+        log_e("loop() haengt seit %u ms in Stage \"%s\" - abort()", (unsigned)stalled, s_stage);
+        // Stage ueberlebt den Reset nur im NVS (kein RTC/DRAM-Puffer, siehe CLAUDE.md).
+        char buf[sizeof(s_loopStall)];
+        snprintf(buf, sizeof(buf), "%.14s %u", s_stage, (unsigned)stalled);
+        Preferences p;
+        if (p.begin("pulsediag", false)) {
+            p.putString("stall", buf);
+            p.end();
+        }
         abort();
     }
 }
@@ -52,6 +62,14 @@ void crash_report_begin(void)
         p.end();
     }
 
+    s_loopStall[0] = '\0';
+    if (p.begin("pulsediag", false)) {
+        String r = p.getString("stall", "");
+        strlcpy(s_loopStall, r.c_str(), sizeof(s_loopStall));
+        p.remove("stall");
+        p.end();
+    }
+
     // esp_core_dump_image_check() validiert die Pruefsumme des Images; ein
     // halb geschriebener Dump (Reset waehrend des Schreibens) gilt als leer.
     if (esp_core_dump_image_check() == ESP_OK) {
@@ -62,8 +80,8 @@ void crash_report_begin(void)
         }
     }
 
-    log_w("Reset-Grund: %s, Core Dump: %u Bytes", crash_report_reset_reason(),
-          (unsigned)s_dumpSize);
+    log_w("Reset-Grund: %s, Core Dump: %u Bytes, loop-Stall: %s", crash_report_reset_reason(),
+          (unsigned)s_dumpSize, s_loopStall[0] ? s_loopStall : "-");
 }
 
 const char *crash_report_reset_reason(void)
@@ -136,6 +154,16 @@ void crash_report_watchdog_start(void)
 void crash_report_loop_heartbeat(void)
 {
     s_loopBeatMs = millis();
+}
+
+void crash_report_stage(const char *name)
+{
+    s_stage = name;
+}
+
+const char *crash_report_loop_stall(void)
+{
+    return s_loopStall;
 }
 
 void crash_report_restart(const char *reason)

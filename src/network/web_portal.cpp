@@ -98,6 +98,7 @@ void handleStatus(AsyncWebServerRequest *request)
     esp["fw_version"] = FW_VERSION;
     esp["board_name"] = BOARD_NAME;
     esp["reset_reason"] = crash_report_reset_reason();
+    esp["loop_stall"] = crash_report_loop_stall();
     esp["reset_was_crash"] = crash_report_reset_was_crash();
     esp["coredump_size"] = crash_report_dump_size();
 

@@ -15,6 +15,14 @@ auseinanderlaufen).
 
 ## [Unreleased]
 
+### Added
+
+- `loop()`-Stage-Marker: Jeder Abschnitt in `loop()` setzt eine Stage. Löst der
+  Watchdog aus, speichert er Stage und Dauer im NVS; `/api/status` liefert sie
+  nach dem Neustart als `esp.loop_stall` (z. B. `draw 20312`), zusätzlich steht
+  sie im Boot-Log. Der Core Dump zeigt nur das Ende des Hängers, die Stage die
+  blockierende Stelle.
+
 ## [1.2.0] - 2026-10-16
 
 ### Added

@@ -43,6 +43,16 @@ bool crash_report_dump_erase(void);
 void crash_report_watchdog_start(void);
 void crash_report_loop_heartbeat(void);
 
+// Markiert den aktuellen loop()-Abschnitt (nur String-Literale uebergeben, es
+// wird nur der Zeiger gemerkt). Loest der Watchdog aus, landet der Name samt
+// Dauer im NVS und ist nach dem Neustart ueber crash_report_loop_stall()
+// lesbar - der Core Dump zeigt nur das ENDE des Haengers (loopTask steht dann
+// schon wieder im delay(1)), nicht die blockierende Stelle.
+void crash_report_stage(const char *name);
+
+// "<Stage> <ms>" des letzten Watchdog-Abbruchs, "" wenn es keinen gab.
+const char *crash_report_loop_stall(void);
+
 // Merkt sich einen eigenen Neustart-Grund (max. 15 Zeichen, z.B. "wifi_lost")
 // im NVS und startet neu. crash_report_reset_reason() liefert ihn beim
 // naechsten Boot statt "software". Kehrt nicht zurueck.

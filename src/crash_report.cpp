@@ -54,21 +54,19 @@ void crash_report_begin(void)
     // einmal lesen und sofort loeschen, damit er nur den direkt folgenden
     // Boot beschreibt.
     s_customReason[0] = '\0';
+    s_loopStall[0] = '\0';
     Preferences p;
     if (p.begin("pulsediag", false)) {
-        String r = p.getString("restart", "");
-        if (r.length() > 0) {
-            strlcpy(s_customReason, r.c_str(), sizeof(s_customReason));
+        // isKey() statt getString() auf fehlende Keys: sonst loggt Preferences bei
+        // jedem normalen Boot "NOT_FOUND" als Error.
+        if (p.isKey("restart")) {
+            strlcpy(s_customReason, p.getString("restart", "").c_str(), sizeof(s_customReason));
             p.remove("restart");
         }
-        p.end();
-    }
-
-    s_loopStall[0] = '\0';
-    if (p.begin("pulsediag", false)) {
-        String r = p.getString("stall", "");
-        strlcpy(s_loopStall, r.c_str(), sizeof(s_loopStall));
-        p.remove("stall");
+        if (p.isKey("stall")) {
+            strlcpy(s_loopStall, p.getString("stall", "").c_str(), sizeof(s_loopStall));
+            p.remove("stall");
+        }
         p.end();
     }
 

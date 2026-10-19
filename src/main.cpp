@@ -105,8 +105,11 @@ void setup() {
 
 void loop() {
   crash_report_loop_heartbeat();
+  crash_report_stage("lvgl");
   lv_timer_handler();
+  crash_report_stage("wifi");
   wifi_provision_loop();
+  crash_report_stage("boot");
 
   static bool                 screenSwitched = false;
   static wifi_provision_phase_t lastPhase     = (wifi_provision_phase_t)-1;
@@ -234,6 +237,7 @@ void loop() {
     }
   }
 
+  crash_report_stage("ui");
   if (s_hasDisplay) {
     displayDrawButtonPoll();
     if (screenSwitched) screen_schedule_poll();
@@ -241,14 +245,20 @@ void loop() {
     static uint32_t s_lastBindingRefresh = 0;
     if (millis() - s_lastBindingRefresh >= 500) {
       s_lastBindingRefresh = millis();
+      crash_report_stage("bindings");
       layout_refresh_bindings();
+      crash_report_stage("draw");
       displayDrawUpdate();
     }
   }
 
+  crash_report_stage("mqtt");
   mqtt_handler_loop();
+  crash_report_stage("serial");
   serial_handler_loop();
+  crash_report_stage("heaplog");
   crash_report_heap_log();
+  crash_report_stage("delay");
 
   delay(1);
 }

@@ -226,61 +226,52 @@ jobs:
       # Factory-Images liegen same-origin im Repo unter
       # docs/firmware/latest/, hier bei jedem Tag-Release aktuell gehalten.
       #
-      # platformio ist geschuetzt (PR-Pflicht + verifizierte Commit-
-      # Signaturen). Weder ein normaler "git push" noch ein Commit ueber die
-      # Git-Data-API oder ein Squash-Merge umgehen die Signaturpflicht -
-      # alles ausprobiert (siehe PR #47/#48): "required_signatures" prueft
-      # jeden neu auf den Branch gelangenden Commit auf eine echte,
-      # verifizierbare Signatur, unabhaengig von Merge-Strategie. Ohne einen
-      # bei GitHub hinterlegten Signaturschluessel FUER DIESEN WORKFLOW kann
-      # der Job also keinen mergefaehigen Commit erzeugen - der PR hier
-      # bleibt bewusst mit einem unsignierten Commit stehen, jemand mit
-      # Schreibzugriff und eigenem GPG-Key muss ihn lokal nachsignieren
-      # (siehe docs/firmware/latest/README.md) bevor er sich mergen laesst.
-      - name: Docs auschecken (platformio-Branch)
+      # Das Deployment laeuft ueber GitHub Actions (Pages-Quelle "GitHub
+      # Actions") statt ueber einen Commit nach platformio: der Branch ist
+      # geschuetzt (PR-Pflicht + verifizierte Signaturen), ein Workflow
+      # kann dort nichts committen (siehe PR #47/#48). Ein Branch-Deploy
+      # laeuft nur bei einem Push auf den Pages-Branch an - der kam bisher
+      # erst nach manuellem Nachsignieren und Mergen des docs/firmware-PRs.
+      # Hier wird die Site stattdessen direkt aus dem getaggten Stand
+      # (docs/) plus den frisch gebauten Factory-Images zusammengesetzt.
+      - name: Repo auschecken (docs/)
         uses: actions/checkout@v6
         with:
-          ref: platformio
-          path: docs-checkout
+          path: src
+          sparse-checkout: docs
 
-      - name: docs/firmware/latest/ aktualisieren und PR erstellen
-        working-directory: docs-checkout
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Site zusammenbauen (docs/ + frische Firmware)
         run: |
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME#v}"
-          BRANCH="docs/firmware-v${VERSION}"
-
-          mkdir -p docs/firmware/latest
-          rm -f docs/firmware/latest/*.bin
-          for f in ../dist/*/esp32-hwmonitor-v${VERSION}-pio-*.bin; do
+          mkdir -p site
+          cp -r src/docs/. site/
+          mkdir -p site/firmware/latest
+          rm -f site/firmware/latest/*.bin
+          for f in dist/*/esp32-hwmonitor-v${VERSION}-pio-*.bin; do
             base=$(basename "$f")
             case "$base" in *-ota.bin) continue ;; esac
             env_slug=${base#esp32-hwmonitor-v${VERSION}-pio-}
             env_slug=${env_slug%.bin}
-            cp "$f" "docs/firmware/latest/esp32-hwmonitor-pio-${env_slug}.bin"
+            cp "$f" "site/firmware/latest/esp32-hwmonitor-pio-${env_slug}.bin"
           done
-          echo -n "$VERSION" > docs/firmware/latest/VERSION
+          echo -n "$VERSION" > site/firmware/latest/VERSION
 
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add docs/firmware/latest
-          if git diff --cached --quiet; then
-            echo "Keine Aenderungen an docs/firmware/latest - nichts zu committen."
-            exit 0
-          fi
+      - name: Pages-Artefakt hochladen
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
 
-          git checkout -b "$BRANCH"
-          git commit -m "docs: web flasher firmware auf v${VERSION} aktualisieren"
-          git push -f origin "$BRANCH"
-
-          if gh pr view "$BRANCH" --json state -q .state >/dev/null 2>&1; then
-            echo "PR fuer $BRANCH existiert bereits."
-          else
-            gh pr create \
-              --base platformio \
-              --head "$BRANCH" \
-              --title "docs: web flasher firmware auf v${VERSION} aktualisieren" \
-              --body "Automatisch von .github/workflows/build.yaml erzeugt (Release v${VERSION}). Aktualisiert docs/firmware/latest/ fuer den Browser-Flasher. Der Commit ist unsigniert (Actions hat keinen GPG-Schluessel) - vor dem Mergen lokal nachsignieren, siehe docs/firmware/latest/README.md."
-          fi
+  deploy-pages:
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Auf GitHub Pages deployen
+        id: deployment
+        uses: actions/deploy-pages@v4

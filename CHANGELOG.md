@@ -15,13 +15,7 @@ auseinanderlaufen).
 
 ## [Unreleased]
 
-### Added
-
-- `loop()`-Stage-Marker: Jeder Abschnitt in `loop()` setzt eine Stage. Löst der
-  Watchdog aus, speichert er Stage und Dauer im NVS; `/api/status` liefert sie
-  nach dem Neustart als `esp.loop_stall` (z. B. `draw 20312`), zusätzlich steht
-  sie im Boot-Log. Der Core Dump zeigt nur das Ende des Hängers, die Stage die
-  blockierende Stelle.
+## [1.2.2] - 2026-10-20
 
 ### Fixed
 
@@ -30,6 +24,16 @@ auseinanderlaufen).
   Lesen von `s_loopBeatMs` um 1-2 ms neuer, lief die unsigned Differenz über
   (`4294967294 ms`). Die Differenz wird jetzt signed bewertet.
 
+## [1.2.1] - 2026-10-19
+
+### Added
+
+- `loop()`-Stage-Marker: Jeder Abschnitt in `loop()` setzt eine Stage. Löst der
+  Watchdog aus, speichert er Stage und Dauer im NVS; `/api/status` liefert sie
+  nach dem Neustart als `esp.loop_stall` (z. B. `draw 20312`), zusätzlich steht
+  sie im Boot-Log. Der Core Dump zeigt nur das Ende des Hängers, die Stage die
+  blockierende Stelle.
+  
 ## [1.2.0] - 2026-10-16
 
 ### Added

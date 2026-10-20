@@ -19,8 +19,10 @@ esp_timer_handle_t s_wdtTimer = nullptr;
 
 void wdtCheck(void *)
 {
-    uint32_t stalled = millis() - s_loopBeatMs;
-    if (stalled > CRASH_REPORT_LOOP_TIMEOUT_MS) {
+    // signed: der Heartbeat (anderer Core) kann nach millis() gesetzt werden -> -1/-2 ms
+    // waeren als uint32_t ~4,29e9 und loesten faelschlich aus.
+    int32_t stalled = (int32_t)(millis() - s_loopBeatMs);
+    if (stalled > (int32_t)CRASH_REPORT_LOOP_TIMEOUT_MS) {
         // abort() -> Panic-Handler schreibt den Core Dump (alle Tasks).
         log_e("loop() haengt seit %u ms in Stage \"%s\" - abort()", (unsigned)stalled, s_stage);
         // Stage ueberlebt den Reset nur im NVS (kein RTC/DRAM-Puffer, siehe CLAUDE.md).
@@ -52,21 +54,19 @@ void crash_report_begin(void)
     // einmal lesen und sofort loeschen, damit er nur den direkt folgenden
     // Boot beschreibt.
     s_customReason[0] = '\0';
+    s_loopStall[0] = '\0';
     Preferences p;
     if (p.begin("pulsediag", false)) {
-        String r = p.getString("restart", "");
-        if (r.length() > 0) {
-            strlcpy(s_customReason, r.c_str(), sizeof(s_customReason));
+        // isKey() statt getString() auf fehlende Keys: sonst loggt Preferences bei
+        // jedem normalen Boot "NOT_FOUND" als Error.
+        if (p.isKey("restart")) {
+            strlcpy(s_customReason, p.getString("restart", "").c_str(), sizeof(s_customReason));
             p.remove("restart");
         }
-        p.end();
-    }
-
-    s_loopStall[0] = '\0';
-    if (p.begin("pulsediag", false)) {
-        String r = p.getString("stall", "");
-        strlcpy(s_loopStall, r.c_str(), sizeof(s_loopStall));
-        p.remove("stall");
+        if (p.isKey("stall")) {
+            strlcpy(s_loopStall, p.getString("stall", "").c_str(), sizeof(s_loopStall));
+            p.remove("stall");
+        }
         p.end();
     }
 
